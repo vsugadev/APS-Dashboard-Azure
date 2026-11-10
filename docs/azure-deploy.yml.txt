@@ -1,0 +1,45 @@
+# Build, test and deploy the APS Dashboard (Azure, Phase 1) to App Service.
+# This project (APS-Dashboard-Azure) is its own repository; the file lives at .github/workflows/azure-deploy.yml.
+# One-time set-up (see README "Deploy"): create a federated credential for this repo in Microsoft Entra ID and add the
+# repository secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID and the variable AZURE_WEBAPP_NAME.
+# No passwords or publish profiles are stored: GitHub signs in to Azure with OpenID Connect.
+name: Deploy APS Dashboard (Azure)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run sync-dashboard   # the page Azure serves = gas-source/Dashboard.html
+      - run: npm test                 # includes parity with gas-source/Code.gs
+      - run: npm prune --omit=dev
+      - name: Package (compiled code, page, production modules only)
+        run: zip -qr app.zip dist/src public node_modules package.json
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: app.zip
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net/healthz"; then exit 0; fi
+            sleep 20
+          done
+          echo "Health check failed"; exit 1

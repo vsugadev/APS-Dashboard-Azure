@@ -1,0 +1,30 @@
+{
+  "copiedAt": "2026-11-10T14:22:02Z",
+  "from": "APS-Classroom-Dashboard (release r121)",
+  "files": {
+    "Code.gs": {
+      "bytes": 1998192,
+      "md5": "44ef1e4219409858c968276a3738f1ce"
+    },
+    "Dashboard.html": {
+      "bytes": 1446599,
+      "md5": "a42d2e3e6e8b65e6f8af2a511112b332"
+    },
+    "PdfLib.gs": {
+      "bytes": 527280,
+      "md5": "aff995cfc3bdad327f4835388b17f7cf"
+    },
+    "PortalBridge.gs": {
+      "bytes": 14962,
+      "md5": "3694dc8c1f3cf9ac14a9408bd16069bd"
+    },
+    "appsscript.json": {
+      "bytes": 2075,
+      "md5": "b6a5417adbb0a22730b0c4c8700266f2"
+    },
+    "APS_PropertyQuota_Fix.gs": {
+      "bytes": 9439,
+      "md5": "4c5587bb83f6b1923d4cc3f2f9055d9e"
+    }
+  }
+}

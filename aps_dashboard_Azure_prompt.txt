@@ -1,0 +1,904 @@
+##############################################################################
+# APS Dashboard — Azure Migration Master Prompt
+# GENERATED FILE — do not edit here. It is rebuilt by `npm run sync-prompt`.
+#   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
+#   Part A md5    : 422baae2530bb9008d76a546102ccd5c
+#   Part B source : docs\prompt\azure_prompt_addendum.txt
+#   Part B md5    : e173a4943be58fb50a8e6d01c8259eb9
+##############################################################################
+
+# PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
+
+# APS Dashboard — Generic Feature Development Master Prompt (Optimized)
+
+## 1. Purpose
+
+You are working on the **APS Dashboard**, a Google Apps Script Web App used by **Avvaiyar Padasalai**.
+
+Use this prompt for every feature, bug fix, performance improvement, UI change, automation, or maintenance task.
+
+**Primary rule:**
+> Read the current code and configuration first → understand the existing flow → reuse existing code → make the smallest safe change → optimize → validate → compare with production → document → report.
+
+Do not assume that a historical note in this prompt is more current than the actual working code.
+
+---
+
+## 2. Production Snapshot — READ ONLY
+
+Production baseline:
+
+`C:\Users\AmChaTS\PycharmProjects\APS-Classroom-Dashboard\CURRENT_PROD_CODE`
+
+Mandatory:
+- Read and analyze it; never modify, delete, rename, or overwrite anything inside it.
+- Treat it as the production comparison baseline.
+- Reuse existing functions, utilities, constants, APIs, UI components, security checks, and patterns whenever safe.
+- Preserve existing behavior unless the requested change explicitly requires it.
+- Compare the working implementation against this snapshot before completion.
+
+Working project:
+
+`C:\Users\AmChaTS\PycharmProjects\APS-Classroom-Dashboard\`
+
+Primary files:
+- `Code.gs`
+- `Dashboard.html`
+- `dashboard-architecture-and-config.md`
+
+Modify only the working project. Do not create parallel implementations unless necessary.
+
+---
+
+## 3. Task
+
+Implement the user's requested feature or fix:
+
+**[USER FEATURE / BUG REQUEST]**
+
+Do not redesign unrelated modules.
+
+If the request is ambiguous, inspect the existing implementation and architecture first. Ask only when a missing requirement would materially change the implementation.
+
+---
+
+## 4. Existing-Code-First Rule
+
+Before coding:
+
+1. Read the relevant working code and the corresponding production code.
+2. Find existing functions that already solve part or all of the problem.
+3. Reuse existing:
+   - authentication and authorization
+   - role resolution
+   - Google Sheet helpers
+   - Classroom helpers
+   - Zoho helpers
+   - caching
+   - email infrastructure
+   - logging/audit
+   - date/time utilities
+   - UI components
+   - modal/tooltip/help systems
+   - dropdown/filter behavior
+   - validation utilities
+   - trigger/configuration helpers
+4. Check for existing tests and architecture documentation.
+5. Add a new function only when existing functionality cannot safely satisfy the requirement.
+
+Never create duplicate business logic, duplicate APIs, duplicate Sheet reads, duplicate triggers, or duplicate UI components.
+
+---
+
+## 5. Production Safety
+
+**Do not break existing functionality.**
+
+Do not unnecessarily change:
+- function names
+- API behavior
+- Sheet names/headers/column meanings
+- role permissions
+- URLs
+- Classroom behavior
+- Zoho behavior
+- user workflows
+- existing UI behavior
+- trigger behavior
+- audit/history behavior
+
+Use surgical changes.
+
+Never modify `CURRENT_PROD_CODE`.
+
+---
+
+# 6. Dashboard Performance & Google Sheet Read Optimization — Mandatory for Every Change
+
+Performance is a requirement for **every future feature and bug fix**, not a separate optional task.
+
+**Never trade data accuracy, security, data integrity, or existing functionality for performance.** Do not add new APIs, libraries, frameworks, or external services just for performance. Make **small, surgical, measurable changes**; do not rewrite working code.
+
+### 6.1 Before and after — measure
+
+Before changing code, and again after, identify where practical:
+- execution time of the affected server functions
+- major Google Sheet reads/writes (which sheet/range, how many times per request)
+- `google.script.run` server calls per screen/action
+- Classroom / Zoho / other API calls
+- payload size returned to the browser
+- cache usage (hits, misses, invalidation)
+- expensive or repeated processing (loops, scans, sorts, JSON parse/stringify)
+
+Report the difference in the final report (§25, item 7). If measurement is not possible, say so.
+
+### 6.2 Google Sheet reads
+
+Pattern:
+
+`one bulk read → validate/normalize → build indexed lookup maps → process in memory → reuse the result`
+
+- Read each sheet/range **at most once per request**. Pass the values (or the built map) to the functions that need them; do not read the same sheet/range again within the same request.
+- Do not call `SpreadsheetApp.open*`, `getSheetByName()`, `getDataRange()`, `getRange()`, `getValues()`, or `getValue()` inside loops or inside helper functions that are called repeatedly when the same data can be read once and reused (pass it in, or memoize it for the current execution).
+- Read only the needed range when it is known; avoid `getDataRange()` when a known range is sufficient.
+- Use indexed lookup maps (by ID, email, APSID, course ID, etc.) for frequently searched datasets instead of repeatedly filtering/scanning large arrays.
+- Never read a Sheet again when the current request already has the data.
+- Reuse existing Sheet helpers and the data access steps in §7.
+
+### 6.3 Caching
+
+- Use CacheService for appropriate **non-critical, reusable** data (rules in §14).
+- Invalidate or version the cache after **every write** that changes the cached data.
+- Respect CacheService size limits (about 100 KB per value); chunk or skip caching large values.
+- Never cache real-time or critical data without a freshness rule.
+
+### 6.4 Google Classroom / Google APIs
+
+- Never call Classroom APIs merely to render data already stored in the Dashboard Sheet/cache.
+- Avoid duplicate course, roster, topic, coursework, Meet, Directory, Reports, Drive, or other API calls.
+- Reuse data already loaded during the request.
+- Batch/paginate only when required.
+- Retry only transient errors with bounded backoff.
+- Do not add a new API call if an existing Sheet/cache/helper can provide the required value.
+
+### 6.5 Browser / `google.script.run`
+
+- Minimize server round trips; reuse the existing request batching where it exists.
+- Prevent duplicate and overlapping requests; do not trigger the same load from multiple initialization paths.
+- Avoid unnecessary polling; pause nonessential polling when the tab is hidden; preserve existing realtime behavior where required.
+- Lazy-load expensive tabs/data when this does not change existing behavior.
+- Return only the data required by the current UI; do not send full datasets unnecessarily.
+- Refresh only the affected UI section; never rebuild the entire Dashboard for one change. Preserve existing data on screen during background refresh and avoid unnecessary loading/flicker (details in §8).
+
+### 6.6 Writes
+
+- Batch Google Sheet writes with `setValues()` where safe; no cell-by-cell writes.
+- Use `LockService` for read-modify-write operations.
+- Keep writes idempotent.
+
+---
+
+# 7. Data Access Pattern
+
+Checklist for each request (rules in §6.2–6.3):
+
+1. Determine the minimum data actually required.
+2. Read each required source once where practical.
+3. Normalize once.
+4. Build indexed maps for repeated lookups.
+5. Reuse those maps for all subsequent operations.
+6. Return only required fields.
+7. Cache only data whose freshness rules permit caching.
+
+Do not blindly cache real-time data.
+
+---
+
+# 8. Auto-Refresh and UI State
+
+Existing APS behavior includes quiet background refresh and targeted realtime updates.
+
+When adding refresh behavior:
+- do not introduce full-page reloads;
+- do not use `location.reload()` unless explicitly required;
+- avoid rebuilding unrelated views;
+- preserve active search/filter/input/scroll state and keep existing data on screen until new data arrives;
+- prevent overlapping refreshes;
+- update only changed DOM sections where practical;
+- keep specialized working screens stable while users are editing/submitting data.
+
+Dropdown/filter changes should refresh the relevant result automatically when that is the existing UX pattern.
+
+---
+
+# 9. Identity, Roles, and Security
+
+Use the existing APS authorization system. Do not invent a second role system.
+
+Server-side authorization is mandatory for every protected operation.
+
+Never trust:
+- client-provided email
+- client-provided role
+- localStorage
+- hidden buttons
+- hidden fields
+- URL parameters for authorization
+
+Use the authenticated Google identity from the existing server-side mechanism.
+
+Typical roles include:
+- Super Admin / Admin
+- Headmaster / HM
+- VP / BOD / other configured staff roles
+- Teacher
+- Student
+
+**Important:** actual role lists, role overrides, access-control configuration, and current permissions must be read from the current code/configuration. Do not copy historical hardcoded email lists from this prompt into new code.
+
+For every new protected tab/action:
+- add/reuse the existing access-control mechanism;
+- enforce authorization on the server;
+- hide/disable unauthorized UI only as a UX layer, never as the security layer.
+
+---
+
+# 10. APSID and Student Identity
+
+When APSID is derived from an APS email:
+
+`name_aps1234@avvaiyarpadasalai.org → APS1234`
+
+Extract the text after `_` and before `@`, normalize consistently, preferably uppercase.
+
+Use `APSXXX` only when APSID genuinely cannot be determined.
+
+Never replace a valid APSID with `APSXXX`.
+
+For student-level records, prefer stable identifiers:
+- APSID
+- APS email
+- Google user ID where available
+- Zoho Student ID where available
+
+Do not use display name as the primary identity key.
+
+---
+
+# 11. Google Classroom Rules
+
+Use the existing Classroom architecture and course filters.
+
+For academic-year-specific features, use the configured/current academic-year rule rather than hardcoding a historical year unless the request explicitly requires it.
+
+Current examples may include course names such as:
+
+`NILAI 3 - EF | FRI 6:30 - 8:00 PM EST | AY26-27`
+
+Do not process unrelated or historical courses.
+
+When working with Classroom:
+- handle pagination correctly;
+- handle missing courses/rosters gracefully;
+- respect permissions;
+- avoid duplicate coursework/announcements;
+- use stable Classroom IDs;
+- do not modify unrelated courses;
+- reuse Sheet-backed synchronized data for dashboard reads when that is the existing architecture.
+
+Do not call live Classroom APIs during ordinary page loads if the existing architecture already provides the data from Sheets/cache.
+
+---
+
+# 12. Google Sheets Data Integrity
+
+Before writing:
+- validate the target sheet;
+- validate headers;
+- validate row shape;
+- validate required fields;
+- preserve existing values;
+- use stable identifiers;
+- prevent duplicates.
+
+Prefer:
+
+`Existing record → UPDATE`
+
+`New record → INSERT`
+
+Use the existing audit/upsert pattern whenever available.
+
+Do not add a new column if an equivalent existing field can be reused.
+
+Preserve audit/history information.
+
+---
+
+# 13. Audit, Logging, and Idempotency
+
+Reuse the existing APS audit/logging framework.
+
+Where applicable preserve:
+- Created Date / By
+- Updated Date / By
+- Sync Date / By
+- Status
+- Error Message
+- Source
+- Request/Correlation ID
+- History
+
+Multi-step workflows must be safe to retry.
+
+Record a step before proceeding to the next step where the workflow requires recovery.
+
+Never send duplicate notifications or create duplicate records on retry.
+
+---
+
+# 14. Caching
+
+Use the existing CacheService/Script Properties caching architecture where appropriate.
+
+Good candidates:
+- relatively static configuration
+- role/access configuration
+- field mappings
+- course/reference data
+- frequently reused lookup data
+
+Requirements:
+- define appropriate TTL;
+- prevent stale data where freshness matters;
+- invalidate or version cache after writes when needed;
+- never use cache as the only source of critical data when it can become stale.
+
+Do not create a new caching system if an existing helper already handles the same data.
+
+---
+
+# 15. Error Handling
+
+Use the existing APS error-handling/logging framework.
+
+Errors should:
+- be caught at appropriate boundaries;
+- be logged without secrets;
+- provide useful user-facing messages;
+- fail safely;
+- avoid taking down the entire dashboard.
+
+Distinguish where practical:
+- authorization
+- validation
+- missing data
+- Sheet errors
+- Classroom/API errors
+- Zoho errors
+- configuration errors
+- transient/quota errors
+- unexpected errors
+
+Do not expose credentials, tokens, internal stack traces, or sensitive data to users.
+
+---
+
+# 16. UI / UX
+
+Preserve the existing APS Dashboard design system.
+
+Reuse existing:
+- cards
+- tables
+- tabs/sub-tabs
+- buttons
+- modals
+- colors
+- icons
+- spacing
+- responsive behavior
+- tooltips/help
+- loading/error states
+
+Do not introduce a new design language for a small feature.
+
+Use reusable tooltip/help and collapse/expand components where they already exist.
+
+Maintain desktop, laptop, tablet, and mobile usability.
+
+---
+
+# 17. Email
+
+Use the existing APS central email infrastructure.
+
+Do not create a new email sender/helper for an existing email pattern.
+
+Preserve:
+- subject
+- recipients
+- CC/BCC
+- branding
+- formatting
+- sender rules
+- existing review/branding footer behavior
+
+unless the request explicitly changes them.
+
+Avoid duplicate email content when a shared email shell already adds the same information.
+
+---
+
+# 18. Scheduled Jobs and Triggers
+
+Use the existing trigger/configuration architecture.
+
+Before creating a trigger:
+1. inspect existing triggers;
+2. reuse/update the correct trigger if possible;
+3. prevent duplicates;
+4. make the job safe if invoked more than once.
+
+Do not hardcode a historical schedule from this prompt when current code/configuration defines the schedule.
+
+If a user explicitly requests a new schedule, implement it through the existing configuration/trigger pattern.
+
+---
+
+# 19. Leave / School Closure
+
+Respect the current APS school-leave/holiday service and its guards.
+
+When a leave/closure is active, follow the existing central guard behavior for affected operations such as teacher availability, attendance, scheduled processing, or other modules.
+
+Do not create a separate leave-date mechanism.
+
+---
+
+# 20. Zoho CRM Compatibility
+
+The Dashboard is the integration hub for Zoho CRM.
+
+Use the current Zoho implementation as the source of truth for what is already built. Do not rely on old statements that Zoho is "not yet built."
+
+General rules:
+- one source of truth per field;
+- match student records by stable IDs, never display name;
+- batch Zoho reads/writes;
+- respect API credit limits;
+- cache metadata/reference data where appropriate;
+- do not call Zoho on every page view;
+- keep secrets in Script Properties/configuration;
+- audit sync operations;
+- make sync idempotent;
+- preserve existing field mappings and sync behavior.
+
+Before changing Zoho behavior, inspect the current implementation and architecture document.
+
+---
+
+# 21. Secrets and Security
+
+Never expose in browser/client code:
+- API tokens
+- OAuth tokens
+- passwords
+- service-account credentials
+- private keys
+- sensitive Script Properties
+- secrets embedded in URLs
+
+Store secrets only in the existing protected configuration mechanism.
+
+Validate:
+- IDs
+- emails
+- URLs
+- enums
+- lengths
+- workflow transitions
+
+Escape user-controlled HTML and sanitize URLs.
+
+---
+
+# 22. Architecture Documentation
+
+Keep:
+
+`dashboard-architecture-and-config.md`
+
+synchronized with the current implementation.
+
+Document only current, useful information:
+- feature purpose
+- changed/new functions
+- data flow
+- Sheet dependencies
+- Classroom/API dependencies
+- Zoho dependencies
+- permissions
+- triggers
+- audit fields
+- performance/caching
+- configuration
+- deployment/setup
+- troubleshooting
+- known limitations
+
+Do not copy an entire historical implementation diary into the generic prompt.
+
+Historical release notes should live in the architecture/changelog documentation, not in this generic development prompt.
+
+---
+
+# 23. Testing and Validation
+
+Before completion:
+
+### Code
+- validate `.gs` syntax;
+- validate HTML/embedded JavaScript syntax;
+- check function references;
+- check for duplicate function names.
+
+### Security
+- test server-side authorization;
+- test role filtering;
+- test unauthorized direct calls.
+
+### Data
+- verify IDs;
+- verify headers/columns;
+- verify upsert/idempotency;
+- verify no duplicate records;
+- verify audit fields.
+
+### API
+- verify pagination;
+- verify retry behavior;
+- verify quota/error handling;
+- verify no unnecessary API calls.
+
+### Performance
+- compare before/after (§6.1): Sheet reads, server calls, API calls, payload size, cache usage;
+- verify no sheet/range is read more than once per request and no Sheet reads remain inside loops;
+- verify lookups use indexed maps, not repeated scans;
+- verify caches are invalidated after writes;
+- verify duplicate server calls are prevented and polling/refresh does not overlap;
+- verify only affected UI is refreshed and on-screen data is kept during refresh;
+- verify payload is not unnecessarily large.
+
+### Regression
+Compare the working tree with `CURRENT_PROD_CODE` and identify:
+- unintended behavior changes
+- duplicate functionality
+- dead code introduced by the change
+- duplicate API calls
+- redundant Sheet operations
+- UI regressions
+- authorization regressions
+- duplicate triggers
+
+Do not remove existing production code merely because it looks unused. Remove only newly introduced dead code when dependencies are verified.
+
+Do not claim a test passed unless it was actually executed.
+
+If execution is unavailable, state:
+
+**Not executed — environment/authorization required.**
+
+---
+
+# 24. Final Self-Review
+
+Before declaring complete, answer:
+
+1. Does the requested feature work?
+2. Did I preserve existing behavior?
+3. Did I reuse existing functions?
+4. Did I enforce server-side authorization?
+5. Did I minimize Google Sheet reads (one bulk read per sheet/range per request, no reads in loops, indexed maps)?
+6. Did I minimize Classroom/Zoho/other API calls?
+7. Did I prevent duplicate `google.script.run` calls/polling?
+8. Did I avoid unnecessary DOM rendering?
+9. Did I preserve user UI state and on-screen data during refresh?
+10. Did I introduce any duplicate logic, triggers, or data?
+11. Did I preserve data integrity and audit history?
+12. Did I protect secrets and sensitive data?
+13. Did I update the architecture documentation?
+14. Did I compare the result with `CURRENT_PROD_CODE`?
+15. Did I make the smallest safe change?
+
+Key performance question:
+
+> **Did I reduce unnecessary Google Sheet reads, duplicate server calls, API calls, DOM rendering, and repeated data processing without changing existing functionality?**
+
+Also confirm: correctness, data accuracy, and security are unchanged, and the before/after measurement (§6.1) is reported.
+
+---
+
+# 25. Final Report
+
+Return a concise report:
+
+1. Feature/fix implemented
+2. Files changed
+3. Existing functions reused
+4. New/changed functions
+5. Sheet/API changes
+6. Security/role changes
+7. Performance changes (before/after: Sheet reads, server calls, API calls, payload, cache — §6.1)
+8. Trigger changes
+9. Validation actually performed
+10. Regression findings
+11. Known limitations
+12. Anything that should be fixed before production
+
+Never fabricate results.
+
+---
+
+# 26. Implementation Constraints
+
+- Do not add a new API/library/framework/external service merely for convenience or performance.
+- Do not rewrite working modules unnecessarily.
+- Do not duplicate existing helpers.
+- Do not modify `CURRENT_PROD_CODE`.
+- Do not change unrelated workflows.
+- Prefer configuration over hardcoded deployment-specific values.
+- Prefer existing architecture over new architecture.
+- Prefer small, reversible changes.
+- Keep the dashboard fast without sacrificing correctness.
+
+Priority:
+
+**Correctness > Data Integrity > Security > Existing Functionality > Performance > UX Polish > Code Simplification**
+
+---
+
+# 27. Current APS Reference — How to Resolve Conflicts
+
+This generic prompt intentionally does **not** contain the complete historical release log.
+
+When a requirement appears to conflict with an older statement:
+
+1. Current working `Code.gs` / `Dashboard.html` behavior is the implementation baseline.
+2. Current `dashboard-architecture-and-config.md` is the architecture reference.
+3. `CURRENT_PROD_CODE` is the immutable production comparison baseline.
+4. The user's current request is the requested change.
+5. The newest confirmed configuration/code wins over historical notes.
+6. If the conflict affects security, data ownership, permissions, or destructive behavior, stop and ask before making the change.
+
+Never copy historical email addresses, schedules, role lists, sheet structures, API assumptions, or feature states into new code without verifying them.
+
+---
+
+# 28. Required Working Sequence
+
+Always follow this sequence:
+
+**Read → Map dependencies → Identify reusable code → Plan smallest change → Implement → Optimize → Validate → Compare with production → Update documentation → Report**
+
+Do not skip the production comparison or validation step.
+
+---
+
+# 29. Help / Tutorial Video
+
+A help video is **not a mandatory deliverable for every code change**.
+
+Create or update an APS Dashboard help/tutorial video only when:
+- the user explicitly requests one; or
+- the feature materially changes a user workflow and the user asks for documentation/video.
+
+When requested:
+- use the actual current APS Dashboard UI;
+- call it **APS Dashboard**;
+- keep instructions simple and accurate;
+- use APS branding/logo where appropriate;
+- do not invent UI elements;
+- keep the video approximately 4–5 minutes unless another duration is requested.
+
+---
+
+# 30. APS Branding
+
+Use these exact names when applicable:
+
+Tamil school name:
+**ஔவையார் பாடசாலை**
+
+Tamil tagline:
+**உலகின் முதல் மெய்நிகர்த் தமிழ்ப்பள்ளி**
+
+English school name:
+**Avvaiyar Padasalai**
+
+English tagline:
+**World's First Virtual Tamil School**
+
+Use the existing centralized APS email/branding infrastructure rather than duplicating branding in individual features.
+
+---
+
+# 31. Completion Standard
+
+The implementation is complete only when:
+
+- the requested behavior is implemented;
+- existing functionality remains intact;
+- security and permissions are enforced server-side;
+- Sheet/API usage is reasonably optimized;
+- no unnecessary duplicate code/calls/triggers were introduced;
+- validation was actually performed or clearly marked as not executed;
+- the working tree was compared with `CURRENT_PROD_CODE`;
+- documentation reflects the actual implementation;
+- remaining risks/limitations are clearly reported.
+
+
+
+==============================================================================
+
+# PART B — APS Dashboard on Azure: Migration Rules (Apps Script → Azure)
+
+Part A (the generic APS Dashboard prompt above) applies IN FULL to this project.
+Part B adds the rules for the Azure migration. Where Part B and Part A differ, Part B
+wins only for the Azure code in this project; Apps Script production rules stay unchanged.
+
+---
+
+## B1. Projects and folders
+
+Azure project (this repository):
+`C:\Users\AmChaTS\PycharmProjects\APS-Dashboard-Azure`
+
+Live Apps Script project (still production until cut-over):
+`C:\Users\AmChaTS\PycharmProjects\APS-Classroom-Dashboard`
+
+Production snapshot — READ ONLY, never modify, delete, rename or overwrite:
+`C:\Users\AmChaTS\PycharmProjects\APS-Classroom-Dashboard\CURRENT_PROD_CODE`
+
+Layout of this project:
+
+| Folder | Purpose |
+|---|---|
+| `src/` | Azure app (Node.js + TypeScript, Express on Azure App Service) |
+| `public/` | Browser files: `Dashboard.html` (synced copy) and `aps-gas-shim.js` |
+| `test/` | Azure unit, API and parity tests |
+| `tools/` | sync-gas, sync-dashboard, sync-prompt, run-gas-regression, e2e-browser |
+| `infra/` | Bicep (App Service, Key Vault, App Insights, managed identity) |
+| `gas-source/` | Reference copy of the live Apps Script + its regression suite |
+| `docs/` | PHASE notes, deploy workflow copy, `reference/`, `prompt/` |
+
+Rules:
+- `gas-source/` is a **reference copy**. Refresh it only with `npm run sync-gas`. Do not hand-edit it.
+- Apps Script changes are made in `APS-Classroom-Dashboard` (following Part A), then synced here.
+- Never copy, print, zip, send or commit `ENV_VARIABLE_*.gs` or any file holding secrets.
+- `aps_dashboard_Azure_prompt.txt` is generated. Edit Part A in the generic prompt and Part B in
+  `docs/prompt/azure_prompt_addendum.txt`, then run `npm run sync-prompt`.
+
+---
+
+## B2. Migration approach (strangler pattern)
+
+- Move one module at a time. Apps Script stays the live system until each module is proven on Azure.
+- Every user-visible behavior must stay identical: same tabs, labels, roles, messages, emails,
+  Sheet columns and audit records. "Do NOT change existing features" (Part A) applies to the port.
+- Keep the **same function names** as `Code.gs`. The browser still calls `google.script.run.<fn>`;
+  `public/aps-gas-shim.js` sends it to `POST /api/run/<fn>`, answered by `src/api/registry.ts`.
+- A function not yet ported must return the standard "not on Azure yet" message — never a fake result.
+- Helper functions ending in `_` are never callable from the browser.
+- Google Sheets remain the system of record until a later phase explicitly approves a database move.
+
+---
+
+## B3. Parity is mandatory
+
+For every ported function:
+1. Read the current `Code.gs` implementation (and its `CURRENT_PROD_CODE` version) first.
+2. Port the logic with the same inputs, outputs, ordering, rounding, messages and edge cases.
+3. Add a parity test that runs the `Code.gs` function in gasmock (`gas-source/`) and the TypeScript
+   port on the same data, and compares results.
+4. Run `npm test` and `npm run test:gas`. Report results exactly as executed.
+
+Generated or shared tables (for example the Access Control catalog) must be derived from `Code.gs`,
+not retyped by hand.
+
+---
+
+## B4. Identity, roles and security on Azure
+
+- Sign-in: Google OAuth code flow, single-use state nonce, ID token verified server-side.
+- Allowed domains, role order, APSID rules and Access Control come from the ported Code.gs logic.
+- Every protected endpoint starts with `requireSession` / `requireTab` — server-side, always.
+- Never trust client role, client email, hidden buttons or browser parameters (Part A §9).
+- `DEV_LOGIN` is for local development only and must be refused in Azure and production.
+- Session tokens, OAuth codes, ID tokens, access tokens and service-account keys must never appear in
+  logs, error messages, the browser, audit records or test output.
+
+---
+
+## B5. Secrets and configuration
+
+- All secrets live in **Azure Key Vault**, read by the App Service **managed identity**
+  through Key Vault references. Never in code, `.env` files committed to git, Bicep, or the workflow.
+- `.env.example` lists setting names only, never values.
+- Google access uses a **service account with domain-wide delegation**, scopes kept to the minimum.
+- Deployment uses **GitHub Actions with OIDC** (no long-lived Azure credentials in GitHub).
+- An unresolved Key Vault reference counts as "not set"; the app must start safely and explain what is missing.
+
+---
+
+## B6. Apps Script → Azure mapping
+
+| Apps Script | Azure equivalent |
+|---|---|
+| `doGet` / HtmlService | Express `GET /` + `src/web/render.ts` (known scriptlets only) |
+| `google.script.run` | `aps-gas-shim.js` → `POST /api/run/:fn` (`{ok}` / `{err}`) |
+| `SpreadsheetApp` reads | Sheets API `values.batchGet` + TTL cache with in-flight de-duplication |
+| `SpreadsheetApp` writes | Sheets API `batchUpdate` / `values.batchUpdate` — one batched call per action |
+| `CacheService` | In-process TTL cache now; Azure Cache for Redis only if scale requires it |
+| `PropertiesService` | Planned per phase (Key Vault for secrets; table/Sheet storage for data) |
+| `LockService` | Planned per phase (single-instance lock now; distributed lock before scale-out) |
+| Time triggers | Planned: Azure Functions timer triggers (one scheduler, same schedules) |
+| `MailApp` / `GmailApp` | Gmail API via the service account, same templates and branding |
+| `ClassroomApp` / Admin APIs | Google REST APIs via the service account, same course filters |
+| `Logger` / execution log | Application Insights (no secrets, no tokens, no personal data beyond what is needed) |
+
+Do not choose a new service for a mapped item without stating why and getting approval.
+
+---
+
+## B7. Performance on Azure (adds to Part A §6)
+
+- Read each Sheet range at most once per request; batch ranges with `batchGet`.
+- Cache by the same freshness rules Apps Script uses; never cache realtime data longer than Apps Script did.
+- Keep payloads at least as small as the Apps Script version; do not send fields the browser does not use.
+- Retry Google API calls only on transient errors, with bounded back-off.
+- Measure before/after where practical and report it.
+
+---
+
+## B8. Infrastructure and deployment
+
+- Infrastructure changes go in `infra/main.bicep` only — no manual portal-only changes without recording them.
+- Node.js version must be a **supported LTS** and identical in `package.json` engines, Bicep and the workflow.
+- The workflow lives at `.github/workflows/azure-deploy.yml` (copy kept at `docs/azure-deploy.yml.txt`;
+  keep both identical).
+- `/healthz` must expose no data or secrets.
+- Do not deploy, create Azure resources, or change Google Workspace settings unless the user asks.
+
+---
+
+## B9. Testing and reporting on Azure
+
+Required before reporting a change as done:
+- `npm test` (TypeScript build + Azure tests, including parity tests)
+- `npm run test:gas` when Apps Script reference behavior is involved
+- `npm run e2e` when the page, shim or sign-in flow changes
+
+Follow Part A's rule: never claim a test passed unless it was actually run. Anything that needs
+Azure, real Google sign-in, real Sheets, or GitHub Actions and was not run must be reported as:
+**"Not executed — environment/authorization required."**
+
+The final report (Part A §25) must also state:
+- which Code.gs functions were ported or changed, and their parity test results;
+- any setting, secret or Azure resource the user must add;
+- what still runs only on Apps Script.
+
+---
+
+## B10. Azure self-review (adds to Part A §24)
+
+Before finishing, confirm:
+- [ ] Behavior matches Code.gs (parity test added and run).
+- [ ] Same function names; no underscore helper exposed.
+- [ ] Every endpoint enforces session and tab access server-side.
+- [ ] No secret, token or key in code, logs, errors, browser or tests.
+- [ ] `CURRENT_PROD_CODE` and the live Apps Script project were not modified.
+- [ ] `gas-source/` changed only through `npm run sync-gas`.
+- [ ] Sheet reads batched and cached by the existing freshness rules.
+- [ ] Bicep, workflow and engines agree on Node version and settings.
+- [ ] Docs updated (`README.md`, `docs/PHASE*.md`) to match the actual implementation.

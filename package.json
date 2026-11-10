@@ -1,0 +1,38 @@
+{
+  "name": "aps-dashboard-azure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "APS Dashboard on Azure \u2014 Phase 1 foundation (sign-in, sessions, roles, Access Control, API registry, browser shim)",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/src/server.js",
+  "scripts": {
+    "prebuild": "node tools/sync-prompt.js",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/server.js",
+    "start:local": "npm run build && node --env-file=.env dist/src/server.js",
+    "predev": "node tools/sync-prompt.js",
+    "dev": "tsc -p tsconfig.json && node dist/src/server.js",
+    "pretest": "node tools/sync-prompt.js",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "sync-dashboard": "node tools/sync-dashboard.js",
+    "e2e": "npm run build && node tools/e2e-browser.js",
+    "sync-gas": "node tools/sync-gas.js",
+    "test:gas": "node tools/run-gas-regression.js",
+    "sync-prompt": "node tools/sync-prompt.js --strict",
+    "watch-prompt": "node tools/sync-prompt.js --watch",
+    "postinstall": "node tools/sync-prompt.js"
+  },
+  "dependencies": {
+    "express": "4.21.2",
+    "google-auth-library": "9.15.1"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.21",
+    "@types/node": "20.17.10",
+    "typescript": "5.7.2"
+  }
+}
