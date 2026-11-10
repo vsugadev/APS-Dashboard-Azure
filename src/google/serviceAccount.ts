@@ -56,7 +56,15 @@ export async function googleFetchJson<T>(url: string, token: string, init: Reque
     const res = await fetch(url, { ...init, headers: { ...(init.headers || {}), Authorization: `Bearer ${token}` } });
     if (res.ok) return (await res.json()) as T;
     const transient = res.status === 429 || res.status >= 500;
-    last = new Error(`GOOGLE_API_${res.status}`);
+    // Keep Google's machine-readable status/reason (e.g. PERMISSION_DENIED SERVICE_DISABLED) — never its free text,
+    // which can contain emails or IDs.
+    let why = '';
+    try {
+      const j = (await res.json()) as { error?: { status?: string; details?: { reason?: string }[] } };
+      const parts = [j.error && j.error.status, ...((j.error && j.error.details) || []).map((d) => d && d.reason)];
+      why = parts.filter((x): x is string => typeof x === 'string' && /^[A-Z_]{3,60}$/.test(x)).map((x) => ' ' + x).join('');
+    } catch { why = ''; }
+    last = new Error(`GOOGLE_API_${res.status}${why}`);
     if (!transient) break;
     await new Promise((r) => setTimeout(r, 400 * Math.pow(2, i) + Math.floor(Math.random() * 200)));
   }

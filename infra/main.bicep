@@ -1,5 +1,5 @@
 // APS Dashboard on Azure — Phase 1 infrastructure.
-// Creates: Log Analytics + Application Insights, Key Vault (RBAC), Linux App Service plan + Node 20 web app with a
+// Creates: Log Analytics + Application Insights, Key Vault (RBAC), Linux App Service plan + Node 22 LTS web app with a
 // system-assigned managed identity that can READ Key Vault secrets. Secrets themselves are added by an administrator
 // afterwards (names below) — none are in this file or in source control.
 //
@@ -73,7 +73,7 @@ resource web 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     clientAffinityEnabled: true // Phase 1 keeps sessions in memory (one instance); Phase 3 moves them to Redis
     siteConfig: {
-      linuxFxVersion: 'NODE|20-lts'
+      linuxFxVersion: 'NODE|22-lts'
       appCommandLine: 'node dist/src/server.js'
       alwaysOn: true
       ftpsState: 'Disabled'

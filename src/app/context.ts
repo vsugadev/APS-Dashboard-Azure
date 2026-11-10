@@ -12,6 +12,7 @@ import { isApsEmailAllowed, normalizeEmail, extractAPSID } from '../lib/email';
 import { getViewerRoleForEmail, roleFromLists, isAdminOrHm, rolePermission, canViewAllDashboardFilters, viewerBadgeName, type Viewer } from '../auth/roles';
 import { acEffectiveForRole, apsTabAllowed, AC_OFF_MSG } from '../auth/accessControl';
 import type { Course } from '../data/types';
+import { describeGoogleError } from '../google/diagnose';
 
 export interface AppContext {
   cfg: AppConfig;
@@ -75,7 +76,7 @@ export async function signInWithClaims(ctx: AppContext, claims: VerifiedClaims):
   } else {
     let configured: Record<string, string>;
     try { [courses, configured] = await Promise.all([ctx.data.readCourses(), ctx.data.readConfiguredUserRoles()]); }
-    catch (e) { console.error('[SignIn] class data unavailable: ' + String((e as Error).message).slice(0, 120)); return { ok: false, code: 'invalid_token', message: 'The dashboard cannot read class data right now. Please try again in a few minutes.' }; }
+    catch (e) { console.error('[SignIn] class data unavailable: ' + describeGoogleError(e)); return { ok: false, code: 'invalid_token', message: 'The dashboard cannot read class data right now. Please try again in a few minutes.' }; }
     viewer = getViewerRoleForEmail(ctx.cfg, email, courses, configured);
   }
   if (viewer.role === 'none') return { ok: false, code: 'not_authorized', email };

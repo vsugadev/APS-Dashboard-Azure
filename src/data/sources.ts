@@ -65,6 +65,7 @@ export class SheetsDataSource implements DataSource {
 
   /** One batchGet for several ranges = one Sheets API call. */
   private async values(ranges: string[]): Promise<string[][][]> {
+    if (!this.cfg.targetSpreadsheetId) throw new Error('TARGET_SPREADSHEET_ID is not set.');
     const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
     const qs = ranges.map((r) => 'ranges=' + encodeURIComponent(r)).join('&');
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(this.cfg.targetSpreadsheetId)}/values:batchGet?${qs}&valueRenderOption=FORMATTED_VALUE`;

@@ -77,11 +77,27 @@ test('an unresolved Key Vault reference counts as "not set", never as a value', 
   assert.equal(c.serviceAccountJson, ''); assert.deepEqual(c.adminEmails, []);
 });
 
-test('sign-in state nonce is single-use and expires after 10 minutes', () => {
-  let now = 0; const n = new StateNonces(600_000, () => now);
-  const s = n.issue(); assert.equal(n.consume(s), true); assert.equal(n.consume(s), false);
-  const s2 = n.issue(); now += 600_001; assert.equal(n.consume(s2), false);
-  assert.equal(n.consume(undefined), false);
+test('sign-in state: signed, single-use, 10 minutes; survives an app restart; forged or altered states refused', () => {
+  let now = 1_000_000; const key = StateNonces.keyFromSecret('client-secret-for-test');
+  const n = new StateNonces(600_000, () => now, key);
+  const s = n.issue(); assert.equal(n.consume(s), true); assert.equal(n.consume(s), false, 'single use');
+  const s2 = n.issue(); now += 600_001; assert.equal(n.consume(s2), false, 'expired after 10 minutes');
+  assert.equal(n.consume(undefined), false); assert.equal(n.consume('abc'), false); assert.equal(n.consume('a.b'), false);
+  // restart: a new instance with the same key (same client secret) accepts a state issued before the restart
+  const before = n.issue('APS-20261109-0042');
+  const afterRestart = new StateNonces(600_000, () => now, StateNonces.keyFromSecret('client-secret-for-test'));
+  assert.deepEqual(afterRestart.take(before), { ok: true, ticket: 'APS-20261109-0042' }, 'ticket rides inside the state');
+  // a different key (another app) or any change to the state is refused
+  const other = new StateNonces(600_000, () => now, StateNonces.keyFromSecret('another-secret'));
+  assert.equal(other.consume(n.issue()), false);
+  const t = n.issue(); const [body, sig] = t.split('.');
+  const forged = Buffer.from(JSON.stringify({ n: 'x', t: now, k: 'APS-20260101-0001' })).toString('base64url') + '.' + sig;
+  assert.equal(n.consume(forged), false); assert.equal(n.consume(body + '.' + sig.slice(0, -2) + 'AA'), false);
+  assert.equal(n.consume(t), true);
+  // nothing secret or personal inside: only a random value, the time and an optional ticket number
+  assert.deepEqual(Object.keys(JSON.parse(Buffer.from(n.issue().split('.')[0], 'base64url').toString())).sort(), ['n', 't']);
+  // without a key (local dev) each instance makes its own random key
+  const a = new StateNonces(); const b = new StateNonces(); assert.equal(b.consume(a.issue()), false);
 });
 
 test('config: names match Script Properties; DEV_LOGIN refused in Azure; missing secrets reported by name only', () => {

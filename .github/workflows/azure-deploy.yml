@@ -1,7 +1,8 @@
 # Build, test and deploy the APS Dashboard (Azure, Phase 1) to App Service.
 # This project (APS-Dashboard-Azure) is its own repository; the file lives at .github/workflows/azure-deploy.yml.
-# One-time set-up (see README "Deploy"): create a federated credential for this repo in Microsoft Entra ID and add the
-# repository secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID and the variable AZURE_WEBAPP_NAME.
+# One-time set-up (docs/PHASE0_STATUS.md): managed identity id-aps-github with a federated credential for this repo's
+# "production" environment, Website Contributor on the web app; repository secrets AZURE_CLIENT_ID (the identity's
+# client ID), AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID and the variable AZURE_WEBAPP_NAME.
 # No passwords or publish profiles are stored: GitHub signs in to Azure with OpenID Connect.
 name: Deploy APS Dashboard (Azure)
 on:
@@ -19,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run sync-dashboard   # the page Azure serves = gas-source/Dashboard.html

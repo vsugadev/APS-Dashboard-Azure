@@ -40,6 +40,18 @@
     new URLSearchParams(window.location.search).forEach(function (v, k) { if (!(k in p)) p[k] = v; (ps[k] = ps[k] || []).push(v); });
     return { parameter: p, parameters: ps };
   }
+  // After the Google sign-in callback the address bar holds ?code=…&state=… (single-use, already handled by the server
+  // when this page was built). Remove them so a reload does not re-send a used code ("sign-in expired") and the code
+  // does not stay in browser history or bookmarks. A ?ticket= deep link is kept. The page never reads these values.
+  try {
+    var q0 = new URLSearchParams(window.location.search);
+    var oauthKeys = ['code', 'state', 'scope', 'authuser', 'hd', 'prompt', 'iss', 'error', 'error_description'];
+    if (q0.has('code') || q0.has('state') || q0.has('error')) {
+      oauthKeys.forEach(function (k) { q0.delete(k); });
+      var rest = q0.toString();
+      history.replaceState(history.state, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
+    }
+  } catch (e) { /* older browser: leave the address as it is */ }
   window.google = window.google || {};
   window.google.script = {
     run: runner(null, null, undefined, false),

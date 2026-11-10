@@ -1,11 +1,11 @@
 {
   "name": "aps-dashboard-azure",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "APS Dashboard on Azure \u2014 Phase 1 foundation (sign-in, sessions, roles, Access Control, API registry, browser shim)",
   "type": "commonjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "main": "dist/src/server.js",
   "scripts": {

@@ -1,5 +1,5 @@
 /**
- * APS Dashboard on Azure — Phase 1 web server (Azure App Service, Node 20+).
+ * APS Dashboard on Azure — Phase 1 web server (Azure App Service, Node 22 LTS).
  *   GET  /            the dashboard page; also the Google sign-in callback (?code=&state=), as Code.gs doGet
  *   POST /api/run/:fn  the google.script.run replacement (see src/api/registry.ts)
  *   GET  /healthz     liveness for App Service health checks (no data, no secrets)
@@ -16,6 +16,7 @@ import { Registry } from './api/registry';
 import { registerCore } from './api/endpoints/core';
 import { DashboardPage } from './web/render';
 import { signInWithClaims, type AppContext, type SignInResult } from './app/context';
+import { describeGoogleError } from './google/diagnose';
 
 export function buildRegistry(): Registry {
   const reg = new Registry();
@@ -25,7 +26,21 @@ export function buildRegistry(): Registry {
 
 export function createContext(cfg: AppConfig): AppContext {
   const data = cfg.dataMode === 'fixture' ? FixtureDataSource.fromFile(cfg.fixturePath) : new SheetsDataSource(cfg, serviceAccountTokenProvider(cfg));
-  return { cfg, data, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces() };
+  return { cfg, data, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+}
+
+/** Start-up self-check: one read of the class list, so the log says at once whether Google access works and, if not,
+ *  what to fix — instead of waiting for someone's sign-in to fail. Never blocks start-up; never logs data or keys. */
+export async function checkGoogleAccess(ctx: AppContext, log: (m: string) => void = console.log): Promise<boolean> {
+  if (ctx.cfg.dataMode !== 'sheets') return true;
+  try {
+    const courses = await ctx.data.readCourses();
+    log(`[Google] Sheet check OK — ${courses.length} classes readable.`);
+    return true;
+  } catch (e) {
+    log('[Google] Sheet check FAILED: ' + describeGoogleError(e));
+    return false;
+  }
 }
 
 export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Registry = buildRegistry()): express.Express {
@@ -108,6 +123,10 @@ if (require.main === module) {
   }
   for (const w of configWarnings(cfg)) console.warn('[Config] ' + w);
   const page = new DashboardPage(path.resolve(cfg.dashboardHtmlPath));
-  const app = createApp(createContext(cfg), page);
-  app.listen(cfg.port, () => console.log(`[Server] APS Dashboard (Azure, Phase 1) listening on ${cfg.port} — data: ${cfg.dataMode}`));
+  const ctx = createContext(cfg);
+  const app = createApp(ctx, page);
+  app.listen(cfg.port, () => {
+    console.log(`[Server] APS Dashboard (Azure, Phase 1) listening on ${cfg.port} — data: ${cfg.dataMode}`);
+    void checkGoogleAccess(ctx);
+  });
 }

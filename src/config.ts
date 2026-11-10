@@ -59,7 +59,8 @@ function resolved(env: NodeJS.ProcessEnv, name: string): string | undefined {
 
 export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
   const env: NodeJS.ProcessEnv = {};
-  for (const k of Object.keys(envIn)) env[k] = resolved(envIn, k);
+  // App Service also exposes every setting a second time as APPSETTING_<name>; only the real names are read.
+  for (const k of Object.keys(envIn)) if (!k.startsWith('APPSETTING_')) env[k] = resolved(envIn, k);
   const runningInAzure = !!envIn.WEBSITE_SITE_NAME; // set by Azure App Service on every app
   const nodeEnv = (env.NODE_ENV === 'production' || env.NODE_ENV === 'test') ? env.NODE_ENV : 'development';
   const cfg: AppConfig = {

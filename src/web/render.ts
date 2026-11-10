@@ -34,11 +34,26 @@ export function checkTemplate(html: string): string[] {
   return found.filter((s) => !KNOWN.has(s));
 }
 
+/** The sign-in help box in Dashboard.html explains the Apps Script set-up (Code.gs, redeploy). On Azure the same box
+ *  explains the Azure set-up instead. Only that static help text changes; the page file itself stays identical to the
+ *  Apps Script copy, and if the text is not found the page is served unchanged. */
+export const AZURE_DEPLOYMENT_HELP =
+  'If you manage the APS Dashboard on Azure: for a sign-in problem, the Key Vault secrets <b>google-oauth-client-id</b> and ' +
+  '<b>google-oauth-client-secret</b> must belong to a Google OAuth client of type "Web application" whose <b>Authorized redirect URIs</b> ' +
+  'include this site\'s address followed by "/". If the message says the dashboard cannot read class data, the Google service account ' +
+  'needs domain-wide delegation and access to the main Sheet. The app log (<b>[SignIn]</b> and <b>[Google]</b> lines) names the exact fix.';
+export function azureWording(html: string): string {
+  return html
+    .replace(/(<p class="aps-gate-text" id="apsDeploymentHelp"[^>]*>)[\s\S]*?(<\/p>)/, (_m, a: string, b: string) => a + AZURE_DEPLOYMENT_HELP + b)
+    .replace('<span>Required Web App setting</span>', '<span>Setting to check: </span>');
+}
+
 export class DashboardPage {
   private html: string;
   constructor(path: string) {
     if (!fs.existsSync(path)) throw new Error(`Dashboard.html not found at ${path} (set DASHBOARD_HTML_PATH).`);
     this.html = fs.readFileSync(path, 'utf8');
+    this.html = azureWording(this.html);
     const unknown = checkTemplate(this.html);
     if (unknown.length) throw new Error('Dashboard.html has template values Azure does not fill yet: ' + unknown.slice(0, 3).join(' | '));
   }

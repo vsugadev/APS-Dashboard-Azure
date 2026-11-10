@@ -31,15 +31,14 @@ No secrets or passwords are in this file.
    Secrets: `superadmin-emails`, `admin-emails`, `headmaster-emails`, `bod-emails`, `on-call-coordinator-emails`,
    optional `role-permissions-json`.
 3. **Retry test:** open https://aps-dashboard-ap.azurewebsites.net/ fresh, sign in, and if it fails run
-   `az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap` and read the `[SignIn] class data unavailable:` line
-   (see the cause/fix table in the chat or README).
+   `az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap` and read the `[Google] Sheet check` line (written at
+   every start) or the `[SignIn] class data unavailable:` line — both name the cause and the fix.
 
-## Planned code update (small, after sign-in works)
+## Code update v0.1.1 (done 2026-11-10)
 
-- Sign-in link survives app restarts (still single-use).
-- Stop duplicate `APPSETTING_` log warnings.
-- Move Node 20 (end of life) → Node 22 LTS in `infra/main.bicep` and the workflow.
-- Azure wording for the sign-in help text (it still mentions Code.gs / Apps Script).
+Restart-safe sign-in link, address-bar clean-up after sign-in, start-up `[Google] Sheet check` with the fix in the log,
+Azure wording in the sign-in help box, no duplicate `APPSETTING_` warnings, Node 22 LTS. See docs/PHASE1.md.
+**Copy `docs\azure-deploy.yml.txt` over `.github\workflows\azure-deploy.yml`** (Node 22) before pushing.
 
 ## Useful commands
 

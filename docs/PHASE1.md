@@ -15,16 +15,35 @@ suites pass.
 - Google: service-account client (domain-wide delegation), Sheets batchGet reader with bounded retry and 60 s caches.
 - Infrastructure (Bicep), CI/CD (GitHub Actions + OIDC), README deploy steps.
 - Separate project `PycharmProjects\APS-Dashboard-Azure` (2026-11-10) with `gas-source/` (Apps Script r121 reference + regression suite) and `docs/reference/`.
+- **v0.1.1 (2026-11-10, after the first real deployment):**
+  - Sign-in state is now **signed** (HMAC, key derived from the OAuth client secret): a sign-in started just before a
+    restart or deploy still completes. Still single-use and 10 minutes; forged/altered states refused; the ticket deep
+    link rides inside it. (Code.gs fails open when its cache entry is gone; Azure keeps the check but survives restarts.)
+  - The shim removes the one-time `code`/`state` from the address bar after the callback, so a reload no longer
+    re-sends a used code ("sign-in expired") and the code is not kept in browser history. `?ticket=` is kept.
+  - Start-up Google check: the log shows `[Google] Sheet check OK — N classes readable.` or
+    `[Google] Sheet check FAILED: <kind> [<cause>] — <fix>`; failed sign-ins log the same cause/fix after `[SignIn]`.
+    Google errors keep only Google's status/reason codes, never its free text (which can contain emails).
+  - Sign-in help box shows Azure set-up wording instead of the Apps Script (Code.gs / redeploy) text — applied when the
+    page is served; `Dashboard.html` itself stays identical to the Apps Script copy.
+  - App Service's duplicate `APPSETTING_*` copies of each setting are ignored (no double warnings).
+  - Node.js 22 LTS in `package.json`, `infra/main.bicep` and the deploy workflow (Node 20 reached end of life).
 
-## Tests (run on 2026-11-09)
+## Tests
+
+v0.1.1 (2026-11-10): `npm test` 22 pass (adds signed state incl. restart, Google error explanations, start-up check,
+Azure help wording, APPSETTING_ handling); browser check 4 pass (adds address-bar clean-up + Azure help text).
+
+Earlier (2026-11-09):
 
 - `npm test`: 17 tests pass — sign-in, sessions, roles, Access Control, API, renderer, Sheets reader, config.
 - Parity with live Code.gs (r121): catalog identical; 300 random switch sets × 8 roles × 44 tabs × 2 viewers
   (over 90,000 checks); 21 role cases incl. case/space variants; visible classes; APSID; domains; permissions — all equal.
 - Browser (Playwright, real Dashboard.html): sign-in screen + state nonce; page accepts the Azure session; shim calls,
   errors and user objects; sign-out ends the server session. No page errors besides not-yet-moved calls.
-- **Not executed — environment/authorization required:** `az deployment` / Bicep compile, real Google sign-in,
-  real Sheets API reads (no service account yet), GitHub Actions run.
+- Since then, on the real Azure deployment (2026-11-10, by the APS admin): Bicep deployed, GitHub Actions deploy
+  works, Google sign-in works. **Waiting:** real Sheets reads (domain-wide delegation can take up to 24 h) and the
+  role-list secrets — the Phase 1 gate "every role signs in on Azure" is checked after that.
 
 ## Deferred on purpose (listed in the user payload as safe "no access" values)
 
@@ -33,7 +52,7 @@ suites pass.
 | `examinationAccess`, `gradingAccess`, `apsRole`, coverage / temp-teacher access | depend on those modules | 2 |
 | Admin / HM badge name from Google profile | needs Admin Directory API (service account) | 2 |
 | Saving Access Control / user roles / permissions on Azure | writes stay in Apps Script until Phase 3 | 3 |
-| Sessions and caches in Redis | single instance is enough until then | 3 |
+| Sessions and caches in Redis | single instance is enough until then; a restart/deploy signs people out (6 h sessions) | 3 |
 | Copying the Script Property `dashboardRolePermissions_v1` | Script Properties are only readable inside Apps Script; paste it into Key Vault `role-permissions-json` | 0/1 |
 
 ## Hand-over to Phase 2

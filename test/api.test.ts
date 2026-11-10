@@ -28,7 +28,7 @@ test('Google callback: valid code + fresh state → page carries the session tok
   const s = await serve(ctx);
   try {
     const first = await (await fetch(s.base + '/')).text();
-    const state = (first.match(/state=([0-9a-f]+)/) || [])[1];
+    const state = (first.match(/state=([A-Za-z0-9_.-]+)/) || [])[1];
     assert.ok(state, 'sign-in link with a state nonce'); assert.ok(first.includes('&amp;x=&lt;&amp;&gt;'), 'auth URL HTML-escaped like <?= ?>');
     assert.ok(first.includes('<script src="/aps-gas-shim.js"></script>'), 'shim injected');
     assert.ok(first.includes('var t = (null)'), 'no token on a plain visit');
@@ -37,12 +37,12 @@ test('Google callback: valid code + fresh state → page carries the session tok
     assert.match(ok, /"role":"admin"/); assert.match(ok, /var e = \(null\)/);
     const replay = await (await fetch(s.base + '/?code=good&state=' + state)).text();
     assert.equal(bootToken(replay), null); assert.match(replay, /"code":"invalid_token"/);
-    const st2 = ((await (await fetch(s.base + '/')).text()).match(/state=([0-9a-f]+)/) || [])[1];
+    const st2 = ((await (await fetch(s.base + '/')).text()).match(/state=([A-Za-z0-9_.-]+)/) || [])[1];
     const gm = await (await fetch(s.base + '/?code=gmail&state=' + st2)).text();
     assert.match(gm, /"code":"invalid_email"/);
     const tk = await (await fetch(s.base + '/?ticket=aps-20261109-0042')).text();
     assert.ok(tk.includes('var k = "APS-20261109-0042"'), 'ticket deep link kept');
-    const tkState = (tk.match(/state=([0-9a-f]+)/) || [])[1];
+    const tkState = (tk.match(/state=([A-Za-z0-9_.-]+)/) || [])[1];
     const tkBack = await (await fetch(s.base + '/?code=good&state=' + tkState)).text();
     assert.ok(tkBack.includes('var k = "APS-20261109-0042"') && bootToken(tkBack), 'the ticket survives the Google round trip');
     assert.ok((await (await fetch(s.base + '/?ticket=<script>')).text()).includes('var k = null'), 'bad ticket ignored');

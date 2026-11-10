@@ -30,7 +30,7 @@ const { DashboardPage } = require('../dist/src/web/render');
       await page.waitForTimeout(500);
       assert.strictEqual(await page.evaluate(() => typeof google.script.run.withSuccessHandler), 'function');
       const href = await page.evaluate(() => { const a = Array.from(document.querySelectorAll('a')).find((x) => /accounts\.google\.com/.test(x.href)); return a ? a.href : ''; });
-      assert.ok(/state=[0-9a-f]{48}/.test(href) && /client_id=local-test/.test(href) && /scope=openid(%20|\+)email/.test(href), href);
+      assert.ok(/state=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(href) && /client_id=local-test/.test(href) && /scope=openid(%20|\+)email/.test(href), href);
       assert.strictEqual(await page.evaluate(() => document.getElementById('apsScreenLogin') && getComputedStyle(document.getElementById('apsScreenLogin')).display !== 'none'), true);
     });
     await t('signed in (local dev login): the page accepts the Azure session and calls the API through the shim', async () => {
@@ -51,6 +51,13 @@ const { DashboardPage } = require('../dist/src/web/render');
       assert.ok(calls.includes('endSession'));
       const r = await (await fetch(base + '/api/run/getCurrentUser', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ args: [tok] }) })).json();
       assert.deepStrictEqual(r, { err: 'SESSION_EXPIRED: please sign in again.' });
+    });
+    await t('after the Google callback the one-time code/state leave the address bar; a ticket link stays; the Azure help text shows', async () => {
+      await page.goto(base + '/?code=used-code&state=abc.def&scope=email&ticket=APS-20261109-0042');
+      await page.waitForTimeout(800);
+      assert.strictEqual(await page.evaluate(() => window.location.search), '?ticket=APS-20261109-0042');
+      const help = await page.evaluate(() => document.getElementById('apsDeploymentHelp').textContent);
+      assert.ok(/on Azure/.test(help) && !/Code\.gs/.test(help), help);
     });
     await page.screenshot({ path: path.join(__dirname, 'e2e-signin.png') });
     const real = errors.filter((e) => !/NOT_ON_AZURE_YET/.test(e));

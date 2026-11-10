@@ -11,7 +11,7 @@ project `APS-Classroom-Dashboard` (which is never changed by anything here).
 | `test/` | Azure tests, incl. parity tests against `gas-source/Code.gs` |
 | `public/` | What the browser loads: `Dashboard.html` (copied from `gas-source/`) and `aps-gas-shim.js` |
 | `infra/` | Azure infrastructure (Bicep) |
-| `tools/` | `sync-gas`, `sync-dashboard`, `sync-prompt`, Apps Script regression runner, browser check |
+| `tools/` | `sync-gas`, `sync-dashboard`, `sync-prompt`, `push-role-lists-to-keyvault.ps1` (copies the role-list Script Properties into Key Vault), Apps Script regression runner, browser check |
 | `gas-source/` | **Reference copy of the Apps Script project** (Code.gs, Dashboard.html, PdfLib.gs, PortalBridge.gs, appsscript.json, APS_PropertyQuota_Fix.gs) + its 119-file regression suite in `gas-source/test/`. Read-only: refresh it from the live project with `npm run sync-gas`. `SNAPSHOT.json` records the release and checksums. Secret files (`ENV_VARIABLE_*.gs`) are never copied. |
 | `docs/` | Phase notes; `docs/reference/` = Help Guide, architecture reference, generic development prompt; `docs/prompt/azure_prompt_addendum.txt` = Azure migration rules |
 | `aps_dashboard_Azure_prompt.txt` | **Generated** master prompt for Azure work = generic prompt (word for word) + Azure rules. Rebuilt automatically on `npm install`, `npm run build`, `npm test`, `npm run dev`; `npm run sync-prompt` for one update, `npm run watch-prompt` to keep it updating. Edit the generic prompt or the addendum, never this file. |
@@ -24,7 +24,7 @@ Phase 1 delivers the foundation every later module plugs into:
 
 | Part | What it does | Code |
 |---|---|---|
-| Web server | Node.js 20 + TypeScript on Azure App Service | `src/server.ts` |
+| Web server | Node.js 22 LTS + TypeScript on Azure App Service | `src/server.ts` |
 | Same page | Serves the **same `Dashboard.html`** and fills its five Apps Script template values | `src/web/render.ts` |
 | `google.script.run` shim | The page's calls go to the Azure API instead — no change to Dashboard.html | `public/aps-gas-shim.js` |
 | Sign-in | Google sign-in (code flow, single-use state, verified ID token), 4 APS domains, ticket deep links | `src/auth/google.ts`, `src/app/context.ts` |
@@ -50,6 +50,14 @@ npm run build
 set -a; . ./.env; set +a; npm start   # Windows PowerShell: npm run start:local
 # open http://localhost:8080/dev/login?email=admin@avvaiyarpadasalai.org  (add that email to ADMIN_EMAILS in .env)
 ```
+
+## Troubleshooting (Azure)
+
+`az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap` — every start writes one of:
+- `[Server] … listening on 8080` — the app is up.
+- `[Config] cannot start: …` — a required setting is missing (named, never its value).
+- `[Google] Sheet check OK — N classes readable.` / `[Google] Sheet check FAILED: <kind> [<cause>] — <fix>`.
+Failed sign-ins log `[SignIn] class data unavailable: <kind> [<cause>] — <fix>`. Current set-up state: `docs/PHASE0_STATUS.md`.
 
 ## Tests
 
