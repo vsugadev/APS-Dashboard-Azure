@@ -15,6 +15,7 @@ import { googleAuth, StateNonces } from './auth/google';
 import { Registry } from './api/registry';
 import { registerCore } from './api/endpoints/core';
 import { registerClasses } from './api/endpoints/classes';
+import { registerReads2 } from './api/endpoints/reads';
 import { DashboardPage } from './web/render';
 import { signInWithClaims, type AppContext, type SignInResult } from './app/context';
 import { describeGoogleError } from './google/diagnose';
@@ -23,6 +24,7 @@ export function buildRegistry(): Registry {
   const reg = new Registry();
   registerCore(reg);
   registerClasses(reg);
+  registerReads2(reg);
   return reg;
 }
 

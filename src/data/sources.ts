@@ -102,11 +102,11 @@ export class SheetsDataSource implements DataSource {
       catch (e) { if (/GOOGLE_API_400/.test(String((e as Error).message))) return {}; throw e; } // sheet not created yet
     });
   }
-  private bookId(book: WorkbookKey): string { return book === 'main' ? this.cfg.targetSpreadsheetId : this.cfg.attendanceSpreadsheetId; }
+  private bookId(book: WorkbookKey): string { return book === 'main' ? this.cfg.targetSpreadsheetId : book === 'attendance' ? this.cfg.attendanceSpreadsheetId : book.slice(3); }
   /** Whole sheets with value types, one spreadsheets.get per uncached group; titles + time zone cached 10 min. */
   async readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot> {
     const id = this.bookId(book);
-    if (!id) throw new Error(book === 'main' ? 'TARGET_SPREADSHEET_ID is not set.' : 'ATTENDANCE_SPREADSHEET_ID is not set.');
+    if (!id) throw new Error(book === 'main' ? 'TARGET_SPREADSHEET_ID is not set.' : book === 'attendance' ? 'ATTENDANCE_SPREADSHEET_ID is not set.' : 'spreadsheet ID missing.');
     const base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}`;
     const meta = await this.cache.get('titles:' + id, TITLES_TTL_MS, async () => {
       const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
@@ -130,7 +130,7 @@ export class SheetsDataSource implements DataSource {
   /** Sheets API values:batchGet with the caller's options (as the Apps Script advanced service), cached 60 s. */
   async readValues(book: WorkbookKey, req: ValuesRequest): Promise<{ valueRanges: { range: string; values?: unknown[][] }[] }> {
     const id = this.bookId(book);
-    if (!id) throw new Error(book === 'main' ? 'TARGET_SPREADSHEET_ID is not set.' : 'ATTENDANCE_SPREADSHEET_ID is not set.');
+    if (!id) throw new Error(book === 'main' ? 'TARGET_SPREADSHEET_ID is not set.' : book === 'attendance' ? 'ATTENDANCE_SPREADSHEET_ID is not set.' : 'spreadsheet ID missing.');
     return this.cache.get('values:' + id + ':' + JSON.stringify(req), SHEET_TTL_MS, async () => {
       const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
       const qs = req.ranges.map((r) => 'ranges=' + encodeURIComponent(r))

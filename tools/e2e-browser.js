@@ -66,6 +66,14 @@ const { DashboardPage } = require('../dist/src/web/render');
       const v = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getAttendanceWeekOptions(tk)), tok);
       assert.ok(v && Array.isArray(v.weeks) && v.weeks.length >= 1 && v.currentWeekId, 'week list returned');
     });
+    await t('Phase 2 step 6: remaining read-only calls served by Azure (Admin Control Meet links, Tickets, Leave)', async () => {
+      const tok = await page.evaluate(() => apsSessionToken);
+      for (const fn of ['getCourseMeetLinkMappings', 'getTicketBootstrap', 'getApplyLeaveData', 'getLastSyncInfo']) {
+        const r = await page.evaluate(([f, tk]) => new Promise((res) => google.script.run.withSuccessHandler((v) => res({ ok: v === undefined ? null : v })).withFailureHandler((e) => res({ err: e.message }))[f](tk)), [fn, tok]);
+        assert.ok(!r.err || !/NOT_ON_AZURE_YET/.test(r.err), fn + ' is on Azure: ' + JSON.stringify(r).slice(0, 200));
+        assert.ok(!r.err, fn + ' answered: ' + JSON.stringify(r).slice(0, 200));
+      }
+    });
     await t('sign-out: endSession sent and the session is gone on the server', async () => {
       const tok = await page.evaluate(() => apsSessionToken);
       await page.evaluate(() => document.getElementById('apsSignOutBtn').click());

@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 31ef3fc1486c38a8cb3c91950e5ddce0
+#   Part B md5    : 5549a4e1fa9fdc2ad4f3925842517eab
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -947,7 +947,14 @@ header is longer, or Code.gs fails quietly in the mock.
 - On Azure (read-only): sign-in, sessions, roles, Access Control (view), Classes view (`getDashboardData`) incl.
   Sheet-based card parts, `getMyCountryPreference`, Teacher Availability (`getClassTeacherAvailabilityView`),
   Active Directory (`getDirectoryIndex`, role-tiered; Onboarding Status is browser-side), Attendance tab (7 reads,
-  `editable: false`).
+  `editable: false`), and 62 more read-only calls (`READS2` in `src/api/endpoints/reads.ts`: Admin Control lists,
+  Teacher Appreciation, Assignment Monitoring, class / grade change, Leave, Coverage, Examination, Reference letters,
+  Special Classes, Temp Teacher, Tickets, Zoho history, Tamil Thadam search) — v0.7.0.
+- Other spreadsheets: only the IDs from the copied code's own ID functions (`EXTRA_BOOK_ID_FNS` in `src/gas/run.ts`:
+  `scSpreadsheetId_`, `zhSheetId_`) can be opened, read-only, on demand. Add a function there (never a hard-coded ID)
+  when another reader opens its own spreadsheet. `setNumberFormat` is a no-op (never sent to Google).
+- Still not on Azure: reads that need Classroom / Drive / Gmail / Zoho / triggers / locks (list in `docs/PHASE2.md`
+  step 6), and every write.
 - Live-data passes (presence / last login / onboarded / hidden staff) have ONE Azure implementation
   (`liveEmptyPasses`, provided to the copied code) — never write a second one.
 - Live Apps Script dashboard remains production for every user; Azure is not yet announced to users.

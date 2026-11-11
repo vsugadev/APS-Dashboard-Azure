@@ -106,11 +106,62 @@ a source that never delivers fails clearly. `npm test` 33 pass; browser 8 pass.
 `values:batchGet` is light; whole-sheet snapshots (`includeGridData`) are heavier — fine for now, to revisit with
 Azure SQL in Phase 5.
 
+## Step 6 — Remaining read-only calls (v0.7.0, 2026-11-11)
+
+62 more browser calls now answered by Azure — each the copied Code.gs function with its own role / Access Control
+checks (`src/api/endpoints/reads.ts`, list `READS2`; 545 functions + 274 constants now copied by `gen-gas-scope`):
+
+| Area | Functions |
+|---|---|
+| Teacher Appreciation | `exportTeacherAppreciation`, `getAppreciationLetterAudit`, `getTeacherAppreciationAdminReport`, `getTeacherAppreciationEmailPreview`, `getTeacherAppreciationHistory`, `previewTeacherAppreciation` |
+| Admin Control | `exportUserCountry`, `getAccessControlHistory`, `getAuthorizedEmailsForGroupSync`, `getCacheSheetUrl`, `getCourseMeetLinkMappings`, `getDashboardRolePermissions`, `getDashboardUserRoles`, `getRemovalContext`, `getUserCountryAdmin` |
+| Assignments / Grading help / Class change | `getAdminAssignmentAuditLog`, `getAdminClassroomAssignments`, `getAssignmentHealthCard`, `getAssignmentMonitoring`, `getAssignmentMonitoringClass`, `getAssignmentMonitoringHistory`, `getClassChangeContext`, `getClassChangeRequestsForApprover`, `getGradeChangeApproverInfo`, `getGradeChangeTimingOptions`, `getMyClassChangeRequests`, `previewMissingGrading` |
+| Leave | `getApplyLeaveData`, `getSchoolLeaveAdminData`, `getSchoolLeaveHistory` |
+| General | `getAuthenticatedAPSUser`, `getCourseNameSuffix`, `getKnowledgeBaseVideos`, `getLastSyncError`, `getLastSyncInfo`, `getShowContactPhone`, `getStudentLoginNoticeStatus` |
+| Coverage | `getClassCoverageHistory`, `getClassCoverageTracking`, `getCoverageBootstrap`, `getCoveragePlan` |
+| Examination | `getExamQuestionPaperAuditLog`, `getExamQuestionPaperMonitoring`, `getExamQuestionPaperPublishPreview`, `getExaminationHistory` |
+| Reference letters | `getMyReferenceLetterRequests`, `getReferenceLetterAccessInfo`, `getReferenceLetterRequestsForApprover` |
+| Special Classes | `getSpecialClassEnrollments`, `getSpecialClasses`, `getSpecialClassesAdmin` |
+| Temp Teacher | `getTempTeacherData` |
+| Tickets | `getTicket`, `getTicketBootstrap`, `getTicketReports`, `getTicketSettings`, `listTickets`, `searchTicketStudents` |
+| Zoho (status / history only) | `getZohoSyncHistory`, `getZohoSyncJob`, `loadZohoSyncStudents` |
+| Tamil Thadam | `searchTamilThadamStudents` |
+
+**Every save / send / sync button on these screens still calls a write** → "not on Azure yet" (use Apps Script).
+
+Runtime additions (all read-only):
+- **Other spreadsheets by ID:** Special Classes and the Zoho sync log live in their own spreadsheets. The copied code's
+  own ID functions (`scSpreadsheetId_`, `zhSheetId_` — Script Property or the Code.gs default) give the only extra IDs
+  Azure may open; they are opened on demand as read-only snapshots (`src/gas/run.ts` `EXTRA_BOOK_ID_FNS`). Any other ID
+  is refused. If the impersonated account cannot open one, Code.gs's own "temporarily unavailable" answer is shown.
+- **Number format:** `setNumberFormat` (Code.gs re-applies text format to the reference-letter date columns on every
+  read) is a no-op on Azure — nothing is sent to Google; values are never changed.
+- `SpreadsheetApp.openById` for the APS spreadsheets, `getUrl()`, `Utilities.base64EncodeWebSafe`, `Utilities.sleep`
+  (no wait), empty User Properties (Phase 3), `apsDashboardUrl_` = `APS_DASHBOARD_URL` or the APS site.
+
+**Optional settings** (same names as the Script Properties; unset = Code.gs default): `SPECIAL_CLASSES_SPREADSHEET_ID`,
+`SPECIAL_CLASSES_SHEET_NAME`, `ZOHO_SYNC_SPREADSHEET_ID`. The account in `GOOGLE_IMPERSONATE_USER` must be able to open
+the Special Classes and Zoho sync spreadsheets (read access is enough).
+
+**Still not on Azure** (they need Google services Azure does not use yet — Classroom, Drive, Gmail, Zoho / UrlFetch,
+triggers, locks — or they write): `checkZohoConnection`, `getAddStudentContext`, `getChatMessages`,
+`getExamQuestionPaperContext`, `getExaminationCourseOptions`, `getGradingData`, `getMaintenanceStatus`,
+`getMeetPreviewData`, `getRealtimeStatusSnapshot`, `getTamilThadam`, `getTeacherAppreciationData`, `getTicketAttachment`,
+`searchExaminationAnnouncement`, `getZohoFieldMapping`, `getZohoSyncStatus`, `getMissingGradingAdmin`,
+`getAssignmentMonitoringAdmin`, `exportGrading`, `fetchExamQuestionPaperDownload`, `exportExamQuestionPaperAudit`,
+`previewExamQuestionPaper`, `previewExaminationAnnouncement`, `previewExaminationClasswork`, `previewZohoStudentSync`,
+`getAdminWebAppDeploymentInfo` (Apps Script deployment info), and the other Classroom-based previews. They answer
+"not on Azure yet".
+
+Tests: 62 functions × 6 viewers (Admin, HM, BOD, VP teacher, teacher, student) compared with Code.gs — same answer or
+the same refusal — with real seeded rows for reference letters, Special Classes (own spreadsheet) and the Zoho sync log
+(own spreadsheet), each asserted to come back through Azure. Browser check: Meet link mappings, Tickets, Apply Leave,
+last sync info through the page's `google.script.run`. `npm test` 34 pass; browser 9 pass.
+
 ### Not on Azure yet (Code.gs "nothing set" values meanwhile)
 
 | Part | Source | When |
 |---|---|---|
-| Assignment Monitoring tab access; Examination / Grading access | their modules | later in Phase 2 |
 | Attendance sync status / diagnostics; editing attendance | Script Properties / writes | Phase 3 / write phase |
 | Online now (heartbeat), last login, stored onboarded list, manual class status, live Meet status, card Status box during class, on-call banner, Hide/Show | Script / User Properties | Phase 3 |
 | Admin / HM badge name from the Google profile | Admin Directory API | later (scope not approved yet) |

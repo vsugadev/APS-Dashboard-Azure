@@ -15,9 +15,9 @@ import type { SheetGrid, WorkbookKey, ValuesRequest } from '../data/types';
 
 /** Something the copied code asked for that is not in this request's snapshot yet. Recorded through `need` (so it is
  *  loaded even when Code.gs catches the error and falls back), then thrown; the runner loads it and runs again. */
-export type NeedRequest = { kind: 'sheet'; book: WorkbookKey; sheet: string } | { kind: 'values'; book: WorkbookKey; req: ValuesRequest };
+export type NeedRequest = { kind: 'sheet'; book: WorkbookKey; sheet: string } | { kind: 'values'; book: WorkbookKey; req: ValuesRequest } | { kind: 'book'; book: WorkbookKey };
 export class NeedData extends Error {
-  constructor(public need: NeedRequest) { super('NEED_DATA: ' + (need.kind === 'sheet' ? need.sheet : 'values')); }
+  constructor(public need: NeedRequest) { super('NEED_DATA: ' + (need.kind === 'sheet' ? need.sheet : need.kind)); }
 }
 export function valuesKey(r: ValuesRequest): string { return JSON.stringify([r.ranges, r.valueRenderOption || '', r.dateTimeRenderOption || '', r.majorDimension || '']); }
 
@@ -61,7 +61,9 @@ export class SnapRange {
   setValues(v: unknown[][]): this { this.sh.write(this.r, this.c, v); return this; }
   setValue(v: unknown): this { this.sh.write(this.r, this.c, [[v]]); return this; }
   setFontWeight(): this { this.sh.guard(); return this; }
-  setNumberFormat(): this { this.sh.guard(); return this; }
+  // Number format only (no value change): Code.gs re-applies it on every read as a self-heal (e.g. the reference-letter
+  // date columns). Azure never sends it to Google — a no-op here, so the read continues exactly as Apps Script's.
+  setNumberFormat(): this { return this; }
 }
 
 export class SnapWorkbook {
@@ -90,6 +92,7 @@ export class SnapWorkbook {
     return names.map((n) => this.sheets[n] || new Proxy({}, { get: (_t, prop) => (prop === 'getName' ? () => n : () => this.missing(n)) }));
   }
   getId(): string { return this.id; }
+  getUrl(): string { return 'https://docs.google.com/spreadsheets/d/' + this.id + '/edit'; }
   getSpreadsheetTimeZone(): string { return this.tz; }
 }
 
@@ -111,6 +114,10 @@ export interface RuntimeDeps {
   /** Sheets advanced service answers already fetched for this request (key = valuesKey), and which book each ID is. */
   values?: Record<string, unknown>;
   bookIds?: Record<string, WorkbookKey>;
+  /** Other spreadsheets the copied code opens by ID (Special Classes, Zoho sync log): only the IDs in `extraIds`
+   *  (computed by the copied code's own ID functions), opened on demand as read-only snapshots. */
+  extraIds?: string[];
+  extra?: Record<string, SnapWorkbook>;
   need?: (n: NeedRequest) => void;
   isRosterHiddenStaffEmail_: (email: unknown) => boolean;
   apsTabAllowed_: (role: string, key: string) => boolean;
@@ -118,6 +125,7 @@ export interface RuntimeDeps {
 }
 
 export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
+  const emptyProps = { getProperty: () => null, getProperties: () => ({}), setProperty: () => { throw new Error(READ_ONLY_MSG); }, deleteProperty: () => { throw new Error(READ_ONLY_MSG); } };
   const props = {
     getProperty: (k: string) => (Object.prototype.hasOwnProperty.call(d.settings, k) ? d.settings[k] : null),
     getProperties: () => ({ ...d.settings }),
@@ -125,11 +133,24 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     deleteProperty: () => { throw new Error(READ_ONLY_MSG); },
   };
   return {
-    SpreadsheetApp: { openById: () => { throw new Error('Azure runtime: use getWorkbook_ / getAttendanceWorkbook_.'); } },
-    // Sheets advanced service (read only): Values.batchGet with the same options Code.gs passes, answered from the real
-    // Sheets API values:batchGet — only for the two APS spreadsheets.
-    Sheets: { Spreadsheets: { Values: { batchGet: (id: string, o: ValuesRequest) => {
+    // openById: the two APS spreadsheets, plus the extra ones the copied code computes (read-only snapshots).
+    SpreadsheetApp: { openById: (id: string) => {
       const book = d.bookIds && d.bookIds[String(id)];
+      if (book === 'main') return d.main;
+      if (book === 'attendance' && d.attendance) return d.attendance;
+      const k = String(id);
+      if (d.extraIds && d.extraIds.indexOf(k) > -1) {
+        if (d.extra && d.extra[k]) return d.extra[k];
+        const n: NeedRequest = { kind: 'book', book: ('id:' + k) as WorkbookKey };
+        if (d.need) d.need(n);
+        throw new NeedData(n);
+      }
+      throw new Error('Azure runtime: SpreadsheetApp.openById only opens the APS spreadsheets.');
+    } },
+    // Sheets advanced service (read only): Values.batchGet with the same options Code.gs passes, answered from the real
+    // Sheets API values:batchGet — only for the APS spreadsheets (and the extra ones above).
+    Sheets: { Spreadsheets: { Values: { batchGet: (id: string, o: ValuesRequest) => {
+      const book = (d.bookIds && d.bookIds[String(id)]) || (d.extraIds && d.extraIds.indexOf(String(id)) > -1 ? ('id:' + String(id)) as WorkbookKey : undefined);
       if (!book) throw new Error('Azure runtime: Sheets.batchGet only reads the APS spreadsheets.');
       const req: ValuesRequest = { ranges: (o.ranges || []).map(String), valueRenderOption: o.valueRenderOption, dateTimeRenderOption: o.dateTimeRenderOption, majorDimension: o.majorDimension };
       const hit = d.values && d.values[book + ':' + valuesKey(req)];
@@ -139,7 +160,8 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
       throw new NeedData(n);
     } } } },
     CacheService: { getScriptCache: () => noCache, getUserCache: () => noCache },
-    PropertiesService: { getScriptProperties: () => props, getUserProperties: () => props },
+    // Script Properties = the plain settings; User Properties (Apps Script's second store of live data) = empty until Phase 3.
+    PropertiesService: { getScriptProperties: () => props, getUserProperties: () => emptyProps },
     Utilities,
     Session: { getActiveUser: () => ({ getEmail: () => '' }), getEffectiveUser: () => ({ getEmail: () => '' }) },
     console: { log: () => undefined, info: () => undefined, warn: (m: unknown) => quiet(m) || console.warn('[Gas] ' + String(m).slice(0, 200)), error: (m: unknown) => quiet(m) || console.error('[Gas] ' + String(m).slice(0, 200)) },
@@ -157,6 +179,10 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
       return { email: d.session.email, role: d.session.role };
     },
     readAllCoursesFromCache_: () => (d.courses ? d.courses() : []),
+    // Google profile names need the Admin Directory API (scope not approved yet) → none, as Code.gs when a lookup fails.
+    getGoogleProfileName_: () => null,
+    // Links in previews point to the LIVE dashboard (Apps Script) until cut-over: APS_DASHBOARD_URL, else Code.gs's fallback.
+    apsDashboardUrl_: () => (d.settings.APS_DASHBOARD_URL || 'https://www.avvaiyarpadasalai.org'),
     applyRosterHiddenStaffFilter_: (c: unknown[]) => (d.live ? d.live.applyRosterHiddenStaffFilter_(c) : c),
     applyLivePresence_: (c: unknown[]) => (d.live ? d.live.applyLivePresence_(c) : c),
     applyLastLogin_: (c: unknown[]) => (d.live ? d.live.applyLastLogin_(c) : c),

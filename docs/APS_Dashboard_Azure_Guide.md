@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-11 (v0.6.0, Phase 2 step 5). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-11 (v0.7.0, Phase 2 step 6). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -21,8 +21,10 @@ show the same data. Nothing on Azure changes any data yet.
 | **Active Directory** → Directory Search | ✅ | Role-tiered on the server: staff / teachers see full details; students see names, classes and only their own details |
 | **Attendance** tab | ✅ view | Week list, records (by week / class / mine), on-call teacher attendance, audit log — all read-only (no edits). Sync status / diagnostics empty until Phase 3 |
 | Active Directory → Student Onboarding Status | ✅ | Built from the Classes data in the browser; "onboarded" = online now until Phase 3 |
+| **Other read-only screens** (Phase 2 step 6) | ✅ view | 62 more calls: Admin Control lists, Teacher Appreciation reports, Assignment Monitoring, Class change / grade change requests, Leave, Coverage, Examination history / monitoring, Reference letters, Special Classes, Temp Teacher, Tickets, Zoho sync history, Tamil Thadam search. Buttons that save / send / sync still say "not on Azure yet" |
+| Grading, Add Student, chat, Classroom / Drive / Gmail / Zoho previews and checks | ⏳ | Need Google services Azure does not use yet |
 | Online now, last login, live Meet status, manual class status, on-call banner | ⏳ Phase 3 | Live data kept in Apps Script properties — empty on Azure for now |
-| Every other tab, every save / email / sync | ⏳ | Shows "not on Azure yet" — use the Apps Script dashboard |
+| Every save / email / sync | ⏳ | Shows "not on Azure yet" — use the Apps Script dashboard |
 
 ---
 
@@ -64,6 +66,7 @@ az webapp restart -g rg-aps-dashboard -n aps-dashboard-ap
 | `ATTENDANCE_SPREADSHEET_ID` | yes (for Meet links) | Attendance spreadsheet (Meet link map sheets) |
 | `GOOGLE_IMPERSONATE_USER` | yes | Account the app reads Sheets as (must open both spreadsheets) |
 | `PUBLIC_BASE_URL` | yes | `https://aps-dashboard-ap.azurewebsites.net` |
+| `SPECIAL_CLASSES_SPREADSHEET_ID`, `SPECIAL_CLASSES_SHEET_NAME`, `ZOHO_SYNC_SPREADSHEET_ID` | optional | Only if Apps Script sets them (unset = Code.gs default). `GOOGLE_IMPERSONATE_USER` must be able to open the Special Classes and Zoho sync spreadsheets |
 | `APS_SCHOOL_LEAVE_ENABLED`, `APS_COUNTRY_FEATURE`, `APS_ENVIRONMENT`, `TCC_CLEANUP_GRACE_MINUTES`, `APS_CLASS_TEACHER_AVAILABILITY_*`, `ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS`, `APS_GRADING_TEAM_EMAILS`, `APS_CLASSES_ALWAYS_SHOW_EMAILS` | optional | Same meaning as in Apps Script; unset = Apps Script default |
 
 Set one (PowerShell):
@@ -111,6 +114,7 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[Classes] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
 | `[Gas] … too many sheet loads` / `requested again after loading` | Developer: a read keeps asking for data the source cannot deliver — check the sheet name / range |
 | `[Gas] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
+| `[Gas] extra spreadsheet not readable` / page "Special Classes are temporarily unavailable" | `GOOGLE_IMPERSONATE_USER` cannot open the Special Classes or Zoho sync spreadsheet — share it (Viewer is enough) |
 | Page: "This sign-in link has expired" | Open the site fresh and sign in again |
 | Page: "cannot read class data right now" | Google access problem — see the `[Google]` / `[SignIn]` line |
 | Chrome "Dangerous" label | Report a false positive at safebrowsing.google.com or verify the site in Search Console; long term use an APS domain |
@@ -142,3 +146,4 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.4.0 | 2026-11-11 | Phase 2 step 3: Teacher Availability view (read-only); generator indexes `const`/`let`; full Java date patterns |
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
+| 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |

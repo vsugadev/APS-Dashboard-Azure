@@ -70,8 +70,8 @@ test('API: same names and arguments as google.script.run; checks on the server; 
     assert.deepEqual(await s.run('getDashboardData', ['forged-token']), { err: 'SESSION_EXPIRED: please sign in again.' });
     assert.deepEqual(await s.run('getRealtimeStatusSnapshot', [tea]), { err: 'NOT_ON_AZURE_YET: getRealtimeStatusSnapshot' });
     assert.deepEqual(await s.run('requireValidSession_', [tea]), { err: 'Bad request.' }, 'private helpers are never callable');
-    const b = await s.run('getStartupBundle', [tea, ['getCurrentUser', 'getLastSyncInfo']]);
-    assert.equal(b.ok.getCurrentUser.ok.role, 'teacher'); assert.deepEqual(b.ok.getLastSyncInfo, { err: 'NOT_ON_AZURE_YET: getLastSyncInfo' });
+    const b = await s.run('getStartupBundle', [tea, ['getCurrentUser', 'getMaintenanceStatus']]);
+    assert.equal(b.ok.getCurrentUser.ok.role, 'teacher'); assert.deepEqual(b.ok.getMaintenanceStatus, { err: 'NOT_ON_AZURE_YET: getMaintenanceStatus' });
     assert.deepEqual(await s.run('endSession', [tea]), { ok: { ok: true } });
     assert.deepEqual(await s.run('getCurrentUser', [tea]), { err: 'SESSION_EXPIRED: please sign in again.' });
     const bad = await fetch(s.base + '/api/run/getCurrentUser', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json' });
@@ -85,7 +85,10 @@ test('errors never reach the browser with tokens, keys or stack traces', async (
   const r = await reg.call(testContext(), 'boom', []);
   assert.deepEqual(r, { err: 'failed: Bearer [hidden] access_token=[hidden]' });
   assert.equal(safeErrorMessage('-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY----- x'), '[hidden] x');
-  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getAttendanceAuditLog', 'getAttendanceCourseAwkMap', 'getAttendanceLastSyncInfo', 'getAttendanceRecordsForViewer', 'getAttendanceSyncDiagnostics', 'getAttendanceWeekOptions', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'getOnCallTeacherAttendance', 'getStartupBundle']);
+  const { READS2 } = require('../src/api/endpoints/reads');
+  const { ATTENDANCE_READS } = require('../src/api/endpoints/classes');
+  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'getStartupBundle']
+    .concat(ATTENDANCE_READS, Object.values(READS2).flat() as string[]).sort());
 });
 
 test('page renderer: fills exactly the five Code.gs template values, script-safe; refuses an unknown template value', () => {

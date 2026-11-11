@@ -56,7 +56,10 @@ function sheetsFromMock(F: any) {
   const all: Record<string, unknown[][]> = {};
   for (const sh of F.env.wb.getSheets()) all[sh.name] = sh.data.map((r: unknown[]) => (r || []).slice());
   void MAIN_SHEETS; void ATTENDANCE_SHEETS;
-  return { main: all, attendance: all };
+  // Extra spreadsheets the copied code opens by ID (Special Classes, Zoho sync log) are the same mock workbook too.
+  const out: Record<string, Record<string, unknown[][]>> = { main: all, attendance: all };
+  for (const f of ['scSpreadsheetId_', 'zhSheetId_']) if (typeof F.G[f] === 'function') out['id:' + F.G[f]()] = all;
+  return out;
 }
 
 export function loadFixture() {
@@ -250,10 +253,58 @@ test('Attendance tab reads (7 functions) match Code.gs for every role — weekly
       let a = az.ok;
       if (fn === 'getAttendanceRecordsForViewer') { for (const r of gas) { if (r.editable) editableOnGas++; r.editable = false; } rows += a.length; }
       if (fn === 'getAttendanceCourseAwkMap') awk += a.length;
-      const d = diffs(a, gas);
+    const d = diffs(a, gas);
       assert.deepEqual(d, [], role + ' ' + fn + ' ' + JSON.stringify(args) + ' differences:\n' + d.slice(0, 15).join('\n'));
       a = null;
     }
   }
   assert.ok(rows > 50 && editableOnGas > 0 && refusals > 0 && awk >= 2, JSON.stringify({ rows, editableOnGas, refusals, awk }));
+});
+
+test('Remaining read-only calls (Phase 2 step 6, 62 functions) match Code.gs for every role — same answer or same refusal', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); seedAttendance(F);
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+  // Real rows for the parts that live in their own sheets / spreadsheets (so "same" is never "empty = empty").
+  const put = (name: string, rows: unknown[][]) => { const sh = F.env.wb.getSheetByName(name) || F.env.wb.insertSheet(name); sh.maxCols = Math.max(sh.maxCols || 26, rows[0].length); sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows); };
+  const kav = 'kavitha_aps8130@avvaiyarpadasalai.org';
+  const rl = (o: Record<string, string>) => G.REFERENCE_LETTER_FIELD_KEYS.map((k: string) => o[k] || '');
+  put(G.REFERENCE_LETTER_SHEET_NAME, [G.REFERENCE_LETTER_COLUMNS,
+    rl({ requestId: 'RL-0001', requestDateTime: '2026-10-01 09:00', teacherEmail: kav, teacherName: 'Kavitha', requestReason: 'Job application', requestStatus: 'PENDING_STAGE1', source: G.REFERENCE_LETTER_SOURCE.TEACHER_SELF, letterType: 'REFERENCE' }),
+    rl({ requestId: 'RL-0002', requestDateTime: '2026-10-05 10:30', teacherEmail: kav, teacherName: 'Kavitha', requestReason: 'Visa', requestStatus: 'COMPLETED', source: G.REFERENCE_LETTER_SOURCE.TEACHER_SELF, letterType: 'REFERENCE' })]);
+  put('APS_SPECIAL_CLASSES_LIVE', [['Title', 'Special Class ID', 'Audience', 'Mode', 'Registration Link', 'Status'],
+    ['Tamil grammar camp', 'SC-2026-010', 'Students Only', 'Zoom Meeting', 'https://ok.example/x', 'Active'],
+    ['Parents meet', 'SC-2026-011', 'All', 'Zoom Meeting', 'https://ok.example/y', 'Active']]);
+  put(G.ZH_LOG_SHEET_, [G.ZH_LOG_HEADER_, G.ZH_LOG_HEADER_.map((h: string, i: number) => (i === 0 ? 'LOG-1' : i === 3 ? 'admin@aps.org' : i === 4 ? 'UPDATE' : 'v' + i))]);
+  const { READS2 } = await import('../src/api/endpoints/reads');
+  const P = Object.getPrototypeOf(F.env.wb.getSheetByName('Courses')); P.getMaxRows = P.getMaxRows || function (this: any) { return Math.max(1000, this.data.length); }; // the mock lacks getMaxRows (real sheets have it)
+  const reg = (await import('../src/server')).buildRegistry();
+  G.getGoogleProfileName_ = () => null; G.apsDashboardUrl_ = () => 'https://www.avvaiyarpadasalai.org'; // same as the Azure runtime
+  const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], [F.vpEmail, 'teacher'],
+    ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student']];
+  const problems: string[] = []; let same = 0, refusals = 0, answers = 0;
+  for (const name of Object.values(READS2).flat()) for (const [email, role] of viewers) {
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const token = await ctx.sessions.create({ email, role });
+    let gas: any; try { gas = J(G[name](F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
+    if (gas === undefined) gas = null;
+    const az: any = await reg.call(ctx, name, [token]);
+    const a = 'ok' in az ? (az.ok === undefined ? null : az.ok) : { err: az.err };
+    if (name === 'getCacheSheetUrl' && gas === 'u' && typeof a === 'string' && /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+\/edit$/.test(a)) gas = a; // the mock's getUrl() is the literal 'u'
+    const d = diffs(a, gas);
+    if (d.length) problems.push(role + ' ' + name + ': ' + d.slice(0, 3).join(' | '));
+    else { same++; if (gas && gas.err) refusals++; else answers++; }
+  }
+  assert.deepEqual(problems, [], problems.length + ' differences:\n' + problems.slice(0, 40).join('\n'));
+  // the seeded parts really came back through Azure (other spreadsheets opened read-only by ID)
+  const one = async (name: string, email: string, role: string) => { const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); return (await reg.call(ctx, name, [await ctx.sessions.create({ email, role })]) as any).ok; };
+  assert.equal((await one('getMyReferenceLetterRequests', kav, 'teacher')).length, 2, 'reference letters');
+  assert.ok((await one('getReferenceLetterRequestsForApprover', 'admin@aps.org', 'admin')).length >= 2, 'approver queue');
+  assert.ok(JSON.stringify(await one('getSpecialClassesAdmin', 'admin@aps.org', 'admin')).includes('SC-2026-010'), 'special classes (own spreadsheet)');
+  assert.ok(JSON.stringify(await one('getSpecialClasses', 'sa0_aps6650@avvaiyarpadasalai.org', 'student')).includes('Tamil grammar camp'), 'special classes for a student');
+  assert.equal((await one('getZohoSyncHistory', 'admin@aps.org', 'admin'))[0]['Log ID'], 'LOG-1', 'Zoho sync log (own spreadsheet)');
+  assert.ok(answers > 100 && refusals > 20, JSON.stringify({ same, answers, refusals }));
 });

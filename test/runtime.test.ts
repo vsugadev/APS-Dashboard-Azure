@@ -24,7 +24,7 @@ test('runtime services: settings readable, never writable; no cache; workbooks a
   assert.throws(() => p.setProperty('APS_X', '2'), { message: READ_ONLY_MSG }); assert.throws(() => p.deleteProperty('APS_X'), { message: READ_ONLY_MSG });
   const c = rt.CacheService.getScriptCache(); c.put('k', 'v'); assert.equal(c.get('k'), null);
   assert.equal(rt.getWorkbook_(), main); assert.throws(() => rt.getAttendanceWorkbook_(), /Attendance data/);
-  assert.throws(() => rt.SpreadsheetApp.openById('x'));
+  assert.throws(() => rt.SpreadsheetApp.openById('x')); // only the APS spreadsheets (+ the extra IDs the copied code computes)
 });
 
 test('Sheets API cells → Apps Script getValues types (dates in the spreadsheet time zone, DST-aware)', () => {
@@ -39,8 +39,9 @@ test('Sheets API cells → Apps Script getValues types (dates in the spreadsheet
 });
 
 test('Code.gs settings for the runtime: plain APS_/TCC_/TTM_… values only — never anything that could be a secret', () => {
-  const s = scriptSettingsFrom({ APS_SCHOOL_LEAVE_ENABLED: 'true', TCC_CLEANUP_GRACE_MINUTES: '30', APS_ZOHO_CLIENT_SECRET: 's', APS_API_KEY: 'k', ATTENDANCE_TOKEN: 't', GOOGLE_OAUTH_CLIENT_SECRET: 'x', PATH: '/bin', APS_SA_JSON: '{}' } as NodeJS.ProcessEnv);
-  assert.deepEqual(s, { APS_SCHOOL_LEAVE_ENABLED: 'true', TCC_CLEANUP_GRACE_MINUTES: '30' });
+  const s = scriptSettingsFrom({ APS_SCHOOL_LEAVE_ENABLED: 'true', TCC_CLEANUP_GRACE_MINUTES: '30', APS_ZOHO_CLIENT_SECRET: 's', APS_API_KEY: 'k', ATTENDANCE_TOKEN: 't', GOOGLE_OAUTH_CLIENT_SECRET: 'x', PATH: '/bin', APS_SA_JSON: '{}',
+    SPECIAL_CLASSES_SPREADSHEET_ID: 'sc', ZOHO_SYNC_SPREADSHEET_ID: 'zh', ZOHO_CLIENT_SECRET: 'z', ZOHO_REFRESH_TOKEN: 'r' } as NodeJS.ProcessEnv);
+  assert.deepEqual(s, { APS_SCHOOL_LEAVE_ENABLED: 'true', TCC_CLEANUP_GRACE_MINUTES: '30', SPECIAL_CLASSES_SPREADSHEET_ID: 'sc', ZOHO_SYNC_SPREADSHEET_ID: 'zh' });
 });
 
 test('Utilities.formatDate shim: every Java pattern the copied Code.gs uses, Eastern time, DST', async () => {

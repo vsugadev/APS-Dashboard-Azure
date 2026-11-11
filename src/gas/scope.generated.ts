@@ -3,13 +3,243 @@
  * Code.gs Sheet readers copied word for word; run inside the read-only runtime (src/gas/runtime.ts). */
 /* eslint-disable */
 export function makeGasScope(rt: any): any {
-  const { Sheets, SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_ } = rt;
+  const { apsDashboardUrl_, getGoogleProfileName_, Sheets, SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_ } = rt;
 
-var APS_REQ_MEMO_ = null;
+var CACHE_SHEET_ID_KEY = 'CACHE_SHEET_ID';
+
+var LAST_SYNC_KEY = 'lastSync';
+
+var LAST_SYNC_ERROR_KEY = 'lastSyncError';
+
+var ON_CALL_COORDINATOR_LABEL_ = 'On-Call Coordinator';
 
 var LAST_LOGIN_TIMEZONE = 'America/New_York';
 
-var APS_TZ = LAST_LOGIN_TIMEZONE;
+var APS_ENV_PROPERTY = 'APS_ENVIRONMENT';
+
+var CLASS_SCHEDULE_DAY_TOKENS = {
+  SUN: 0, SUNDAY: 0, MON: 1, MONDAY: 1, TUE: 2, TUES: 2, TUESDAY: 2,
+  WED: 3, WEDS: 3, WEDNESDAY: 3, THU: 4, THUR: 4, THURS: 4, THURSDAY: 4,
+  FRI: 5, FRIDAY: 5, SAT: 6, SATURDAY: 6
+};
+
+var COURSE_NAME_SUFFIX = 'AY26-27';
+
+var HIDDEN_TEACHER_NAMES = ['google classroom admin'];
+
+var HIDDEN_TEACHER_NAME_PREFIXES = ['avvaiyar padasalai', 'aps','APS','Avvaiyar Padasalai'];
+
+var HIDDEN_TEACHER_EMAIL_PREFIXES = getConfigList_('HIDDEN_TEACHER_EMAIL_PREFIXES', ['aps_']);
+
+var KNOWLEDGE_BASE_VIDEOS = [
+  {
+    videoId: '6tjkHwybGuo',
+    title: 'How to Submit Weekly Homework in Google Classroom',
+    description: 'APS Weekly Home Work Upload to Google Classroom',
+    category: 'Google Classroom',
+    audience: 'All',
+    playlistId: ''
+  },
+   {
+    videoId: '8FpE7Qrd4dg',
+    title: 'APS Dashboard Overview',
+    description: 'APS Dashboard Overview',
+    category: 'APS Dashboard',
+    audience: 'All',
+    playlistId: ''
+  },
+     {
+    videoId: '41QYZvevRog',
+    title: 'APS Examination - Student Guide',
+    description: 'APS Examination - Student Guide',
+    category: 'APS Dashboard',
+    audience: 'All',
+    playlistId: ''
+  },
+
+       {
+    videoId: 'HBMZEV2j0Xg',
+    title: 'Googe Meet - View all the Students',
+    description: 'How To See Everyone At Once In Google Meet (Easy & Fast)',
+    category: 'Google Meet',
+    audience: 'All',
+    playlistId: ''
+  },
+       {
+    videoId: 'HJ0TKq5sATM',
+    title: 'APS Examination Teacher Admin Guide',
+    description: 'APS Examination Teacher Admin Guide',
+    category: 'APS Dashboard',
+    audience: 'All',
+    playlistId: ''
+  },
+    {
+    videoId: 'eCxeOX-2IyU',
+    title: 'APS Examination Tamil Guide Student & Teachers',
+    description: 'APS டேஷ்போர்டில் உள்ள தேர்வுப் பகுதியை, ஆசிரியர்களும் மாணவர்களும் எப்படி எளிதாகப் பயன்படுத்தலாம்',
+    category: 'APS Dashboard',
+    audience: 'All',
+    playlistId: ''
+  },
+    {
+    videoId: '-6OmPlc7DD4',
+    title: 'How to Submit the Weekly Attendance in Google Classroom',
+    description: 'How to Submit the Weekly Attendance in Google Classroom',
+    category: 'Google Classroom',
+    audience: 'All',
+    playlistId: ''
+  },
+      {
+    videoId: 'Rn3REy9L5Hw',
+    title: 'How to Join Tamil School using Google Meet',
+    description: 'How to Join Tamil School using Google Meet',
+    category: 'Google Classroom',
+    audience: 'All',
+    playlistId: ''
+  },
+    {
+    videoId: 'agF_V9sxsWw',
+    title: 'Sign into Google Classroom on Desktop (Official Google for Education)',
+    description: 'Official Google for Education video: a short walkthrough of signing in to Google Classroom on the web for the first time.',
+    category: 'Google Classroom',
+    audience: 'All',
+    playlistId: ''
+  },
+  {
+    videoId: 'H_qJsD17kwI',
+    title: 'Get Started with Google Meet (Official Google Help)',
+    description: 'Official Google Help video: an introductory overview of the Google Meet app for new users.',
+    category: 'Google Meet',
+    audience: 'All',
+    playlistId: ''
+  },
+  {
+    videoId: 'BW9-Mq2Avg0',
+    title: '2025-26 Principal Speech',
+    description: 'A message from the Principal for the 2025-26 academic year.',
+    category: "Principal's Message",
+    audience: 'All',
+    playlistId: 'PLSiFXbPWgQ-iWp41AIJvMRJLD4oG_KsIm'
+  },
+  {
+    videoId: 'tO3d5sv4k_U',
+    title: 'How to Use Google Account & Google Classroom (Student Guide)',
+    description: 'கீழ்கண்ட காணொளியில் எப்படி கூகுள் அக்கவுண்ட் / கூகுள் கிளாஸ் ரூம் உபயோகப்படுத்துவது என்று மிகத் தெளிவாக விளக்கம் அளிக்கப்பட்டுள்ளது.',
+    category: 'Student Onboarding',
+    audience: 'Teachers',
+    playlistId: ''
+  },
+  {
+    videoId: 'Rn3REy9L5Hw',
+    title: 'Weekly Tamil Classes via Google Meet — Schedule & Access',
+    description: 'ஔவையார் பாடசாலை அமெரிக்கா - வாராந்திர தமிழ் வகுப்புகள் அனைத்தும் Google Meet செயலி வழியாக திட்டமிட்ட நேரத்தில் நடைபெறும். மேலதிக விவரங்களுக்கு இந்த காணொளியைப் பாருங்கள்.',
+    category: 'Google Meet',
+    audience: 'Teachers & Students',
+    playlistId: ''
+  },
+  {
+    videoId: '-1cB0TOnbQc',
+    title: 'How to Submit Homework in Google Classroom',
+    description: 'வீட்டுப் பாடங்களை எப்படி சமர்ப்பிப்பது என்பதை இந்த காணொளியில் தெளிவாக விளக்கப்பட்டுள்ளது.',
+    category: 'Google Classroom',
+    audience: 'Students',
+    playlistId: ''
+  },
+  {
+    videoId: 'KhzDywCQwoM',
+    title: 'Teachers Orientation and Training (2023-2024)',
+    description: '2023-2024 ஆசிரியர் நெறியமைப்பு மற்றும் பயிற்சி — orientation and training session covering APS procedures and expectations for the year.',
+    category: 'Teacher Training',
+    audience: 'Teachers',
+    playlistId: ''
+  },
+  {
+    videoId: '_w2D9CDDpkA',
+    title: 'Tamil Voice Typing Made Easy',
+    description: 'தமிழில் மிக எளிமையாக பேசி தட்டச்சு செய்வது எப்படி என்பதை இந்த காணொளியில் பார்க்கலாம்.',
+    category: 'APS Procedures',
+    audience: 'Teachers',
+    playlistId: ''
+  },
+  {
+    videoId: 'brmdtCvxNxM',
+    title: 'How to Admit a Student from Another Class in Google Meet',
+    description: 'Step-by-step guide for teachers and students on admitting a student from a different class into a Google Meet session.',
+    category: 'Google Meet',
+    audience: 'Teachers & Students',
+    playlistId: ''
+  },
+  {
+    videoId: 'q-kFw1ZDXCE',
+    title: 'APS Tech: How to Login and Play Kahoot',
+    description: 'A walkthrough of logging in and playing a Kahoot game as part of APS classroom activities.',
+    category: 'APS Procedures',
+    audience: 'Teachers',
+    playlistId: ''
+  },
+  {
+    videoId: 'zy0s6-Jow7k',
+    title: 'How to Generate a Student Appreciation Certificate',
+    description: 'Step-by-step instructions for generating a Student Appreciation Certificate.',
+    category: 'APS Procedures',
+    audience: 'Teachers',
+    playlistId: ''
+  },
+  {
+    videoId: 'xGP8k40lToI',
+    title: 'How to Create a Kahoot Assignment as Classwork',
+    description: 'Teachers reference video: how to create a Kahoot assignment and assign it as Classwork in Google Classroom.',
+    category: 'Teacher Training',
+    audience: 'Teachers',
+    playlistId: ''
+  }
+];
+
+var WHATSAPP_LINKS_SHEET_NAME = 'WhatsApp_Group_Links';
+
+var SHOW_CONTACT_PHONE = true;
+
+var TARGET_SPREADSHEET_ID = getTargetSpreadsheetId_();
+
+var SUPERADMIN_EMAILS = getConfigList_('SUPERADMIN_EMAILS', []);
+
+var ADMIN_EMAILS = getConfigList_('ADMIN_EMAILS', []);
+
+var HEADMASTER_EMAILS = getConfigList_('HEADMASTER_EMAILS', []);
+
+var APS_GRADING_TEAM_EMAILS_ = ['grading@avvaiyarpadasalai.org'].concat(getConfigList_('APS_GRADING_TEAM_EMAILS', []));
+
+var APS_ALLOWED_DOMAINS = ['avvaiyarpadasalai.org', 'amchats.org', 'namaps.org', 'apsamerica.org'];
+
+var USER_ROLE_SHEET_NAME = 'Dashboard_User_Roles';
+
+var USER_ROLE_CACHE_KEY = 'dashboardUserRoles_v1';
+
+var USER_ROLE_CACHE_SECONDS = 60;
+
+var VCFO_AMCHSTS_BOD_ROLE = 'vcfo_amchsts_bod';
+
+var SUPERADMIN_ROLE = 'superadmin';
+
+var AUTHORIZED_ROLE = 'authorized';
+
+var DASHBOARD_ROLES = ['admin', 'headmaster', 'teacher', 'student', VCFO_AMCHSTS_BOD_ROLE, SUPERADMIN_ROLE];
+
+var ROLE_PERMISSION_PROP_KEY = 'dashboardRolePermissions_v1';
+
+var ROLE_PERMISSION_CACHE_KEY = 'dashboardRolePermissions_v1';
+
+var ROLE_PERMISSION_CACHE_SECONDS = 60;
+
+var VCFO_AMCHATS_BOD_EMAILS = getConfigList_('VCFO_AMCHATS_BOD_EMAILS', []);
+
+var CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_ = null;
+
+var NILAI_FILTER_OPTIONS = ['All', 'MUNMAZHALAI', 'MAZHALAI', 'NILAI 1', 'NILAI 2', 'NILAI 3', 'NILAI 4', 'NILAI 5', 'NILAI 6', 'NILAI 7', 'NILAI 8', 'THULIR(துளிர்)'];
+
+var CLASS_TIME_FILTER_OPTIONS = ['All', 'FRI 6:30 - 8:00 PM EST', 'FRI 7:30 - 9:00 PM EST', 'FRI 9:00 - 10:30 PM EST', 'SAT 12:00 - 1:30 PM EST', 'SUN 7:30 - 9:00 PM EST'];
+
+var TEACHER_AVAILABILITY_SHEET_NAME = 'Teacher_Weekly_Availability';
 
 var AVAILABILITY_STATUS = {
   PENDING: 'pending',            // ⚪ no response yet this week
@@ -17,60 +247,134 @@ var AVAILABILITY_STATUS = {
   NOT_AVAILABLE: 'not_available' // 🔴 (plain) or 🟡 (once an alternative is on file) teacher said NO
 };
 
-var TEACHER_AVAILABILITY_SHEET_NAME = 'Teacher_Weekly_Availability';
+var AVAILABILITY_ALTERNATIVE_LABELS = {
+  parent_teacher_arranged: 'Parent Teacher Arranged',
+  sub_teacher_arranged: 'Sub-Teacher Arranged',
+  need_hm_support: 'Need HM Support to Arrange Alternative Teacher',
+  // Sept 2026, twenty-ninth round: primary teacher is on leave, HM has
+  // talked to an on-call teacher (the VCFO_AMCHATS_BOD_EMAILS / tcs_*
+  // directory — see getOnCallTeachers_()), and assigned them to cover this
+  // one class for this week only. Uses the same permission gate as every
+  // other status change below (HM/Admin/Superadmin, or that class's own
+  // Teacher) — no separate check needed.
+  on_call_assigned: 'Alternative: On-Call Assigned'
+};
 
-var WHATSAPP_LINKS_SHEET_NAME = 'WhatsApp_Group_Links';
+var APS_CLASS_TIMINGS = {
+  ALL_GRADES: [
+    { day: 'FRI', start: '6:30 PM', end: '8:00 PM' },
+    { day: 'FRI', start: '7:30 PM', end: '9:00 PM' },
+    { day: 'FRI', start: '9:00 PM', end: '10:30 PM' },
+    { day: 'SAT', start: '12:00 PM', end: '1:30 PM' }
+  ],
+  NILAI_4_TO_8: [
+    { day: 'SUN', start: '7:30 PM', end: '9:00 PM' }
+  ],
+  MAX_STUDENTS: 7,
+  TIMING_CHANGE_DEADLINE: '2026-09-30' // yyyy-MM-dd, Eastern time — configurable per academic year; change this one value each year
+};
 
-var CLASS_MEET_CACHE_KEY_ = 'aps_class_meet_links_v2';
+var NILAI_4_TO_8_GRADE_NAMES = ['NILAI 4', 'NILAI 5', 'NILAI 6', 'NILAI 7', 'NILAI 8'];
+
+var GRADE_CHANGE_APPROVER_EMAILS = getConfigList_('GRADE_CHANGE_APPROVER_EMAILS', []);
+
+var FINAL_APPROVER_EMAIL = getConfigString_('FINAL_APPROVER_EMAIL', '');
+
+var GRADE_TIME_CHANGE_SHEET_NAME = 'Grade_Time_Change_Request';
+
+var APS_TIMEZONE_LABEL = 'EST';
+
+var APS_SCHOOL_LOGO_URL = 'https://avvaiyarpadasalai.org/media/aps-logo.jpg';
+
+var STUDENT_NOTICE_EXPIRY = '2026-11-15';
+
+var STUDENT_NOTICE_PROP_PREFIX = 'apsStudentNoticeAccepted_v1:';
+
+var ASSIGN_CLASSROOM_AUDIT_SHEET_NAME = 'Student_Classroom_Assignment_Audit';
+
+var GTR_STATUS = {
+  AWAITING_FINAL_APPROVAL: 'AWAITING FINAL APPROVAL',
+  PROCESSING: 'PROCESSING',
+  PROCESSING_ERROR: 'PROCESSING ERROR',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+  REQUEST_SUBMITTED: 'REQUEST SUBMITTED',
+  NO_CLASS_AVAILABLE: 'NO CLASS AVAILABLE',
+  CLOSED: 'CLOSED',
+  PENDING_GRADE_APPROVAL: 'PENDING GRADE APPROVAL',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CLASS_NO_LONGER_AVAILABLE: 'CLASS NO LONGER AVAILABLE'
+};
+
+var GTR_ACTIVE_STATUSES = [
+  GTR_STATUS.REQUEST_SUBMITTED, GTR_STATUS.AWAITING_FINAL_APPROVAL, GTR_STATUS.PROCESSING,
+  GTR_STATUS.PENDING_GRADE_APPROVAL, GTR_STATUS.PROCESSING_ERROR
+];
+
+var GTR_COLUMNS = [
+  'Request ID', 'Request Date & Time', 'Student Name', 'APS ID', 'Student APS Email',
+  'Parent Email', 'Request Type', 'Current Grade', 'Current Classroom', 'Current Class Timing',
+  'Requested Grade', 'Requested Class Timing', 'Requested Classroom', 'Current Student Count',
+  'Request Status', 'Parent/Student Acknowledgement', 'Reason/Comments', 'Approver Email',
+  'Approver Comments', 'Processed Date & Time', 'Processed By',
+  'Final Approver Email', 'Final Approver Comments', 'Final Approved At', 'Processing Notes'
+];
+
+var GTR_FIELD_KEYS = [
+  'requestId', 'requestDateTime', 'studentName', 'apsId', 'studentEmail',
+  'parentEmail', 'requestType', 'currentGrade', 'currentClassroom', 'currentClassTiming',
+  'requestedGrade', 'requestedClassTiming', 'requestedClassroom', 'currentStudentCount',
+  'requestStatus', 'acknowledgement', 'reasonComments', 'approverEmail',
+  'approverComments', 'processedDateTime', 'processedBy',
+  'finalApproverEmail', 'finalApproverComments', 'finalApprovedAt', 'processingNotes'
+];
+
+var GTR_MESSAGES = {
+  NO_TIMING_CLASS_AVAILABLE: 'No class is currently available for a timing change — every other class in your grade is either already full or not offered. Please check back later or contact APS Tech Support.',
+  NO_GRADE_CLASS_AVAILABLE: 'No class is currently available in the requested grade. Please check back later or contact APS Tech Support.',
+  DUPLICATE_ACTIVE_REQUEST: 'You already have an active class/timing change request in progress. Please wait for it to be processed before submitting another.',
+  ACKNOWLEDGEMENT_TEXT: 'I confirm that I have reviewed my pending homework/assignments in my current class, and I understand this Class/Timing Change request is subject to seat availability and school approval.',
+  HOMEWORK_REMINDER: 'Please make sure any pending homework or assignments in your current class have been submitted before changing classes.'
+};
+
+var REFERENCE_LETTER_APPROVER_EMAILS = getConfigList_('REFERENCE_LETTER_APPROVER_EMAILS', []);
+
+var REFERENCE_LETTER_FINAL_APPROVER_EMAIL = getConfigString_('REFERENCE_LETTER_FINAL_APPROVER_EMAIL', '');
+
+var REFERENCE_LETTER_SHEET_NAME = 'Teacher_Reference_Letter_Request';
+
+var REFERENCE_LETTER_SOURCE = { TEACHER_SELF: 'TEACHER_SELF', ADMIN_INITIATED: 'ADMIN_INITIATED' };
+
+var REFERENCE_LETTER_COLUMNS = [
+  'Request ID', 'Request Date Time', 'Teacher Email', 'Teacher Full Name', 'APSID', 'APS Join Date',
+  'Request Reason', 'Request Status', 'Stage 1 Approver Email', 'Stage 1 Approval Date Time',
+  'Stage 1 Comments', 'Final Approver Email', 'Final Approval Date Time', 'Final Approval Comments',
+  'PDF File ID', 'PDF File Name', 'Processing Notes', 'Completed Date Time',
+  'Source', 'Recipient Personal Email', 'Initiated By Admin Email', 'Letter Type'
+];
+
+var REFERENCE_LETTER_FIELD_KEYS = [
+  'requestId', 'requestDateTime', 'teacherEmail', 'teacherName', 'apsId', 'apsJoinDate',
+  'requestReason', 'requestStatus', 'stage1ApproverEmail', 'stage1ApprovalDateTime',
+  'stage1Comments', 'finalApproverEmail', 'finalApprovalDateTime', 'finalApprovalComments',
+  'pdfFileId', 'pdfFileName', 'processingNotes', 'completedDateTime',
+  'source', 'recipientPersonalEmail', 'initiatedByAdminEmail', 'letterType'
+];
+
+var REFERENCE_LETTER_DATE_TIME_COLUMNS_ = [2, 6, 10, 13, 18];
+
+var ATTENDANCE_SPREADSHEET_ID = getConfigString_('ATTENDANCE_SPREADSHEET_ID', '');
+
+var ATTENDANCE_SHEET_PREFIX = 'AWK';
+
+var APS_TZ = LAST_LOGIN_TIMEZONE;
 
 var ATTENDANCE_MEET_LINK_MAP_SHEET_NAME = 'Course_Meet_Link_Map';
 
-var CLASS_MEET_DETECTED_SHEET_ = 'Course_Meet_Link_Detected';
+var ATTENDANCE_SYNC_DIAGNOSTIC_KEY = 'attendanceSyncDiagnostic_v1';
 
-var SL_MEMO_ = { list: null, enabled: null, seen: {} };
-
-var SL_CACHE_KEY_ = 'aps_school_leaves_v1';
-
-var SL_SHEET_ = 'APS_SCHOOL_LEAVES';
-
-var SL_HEADER_ = ['Leave_ID', 'Leave_Title', 'Start_Date', 'End_Date', 'Reason', 'Leave_Type', 'Status', 'Created_By', 'Created_At', 'Updated_By', 'Updated_At',
-  'Approved_By', 'Approved_At', 'Notification_Status', 'Notification_Sent_At', 'Change_Version', 'Notified_Version'];
-
-var SL_STATUS_ = { DRAFT: 'DRAFT', APPROVED: 'APPROVED', CANCELLED: 'CANCELLED' };
-
-var TCC_CACHE_KEY_ = 'aps_tcc_rows_v1';
-
-var TCC_SHEET_ = 'Temporary_Class_Coverage';
-
-var TCC_HEADER_ = ['Merge_ID', 'Created_At', 'Created_By', 'Requesting_Role', 'Original_Course_ID', 'Original_Course_Name', 'Original_Teacher',
-  'Destination_Course_ID', 'Destination_Course_Name', 'Destination_Teacher', 'Session_Date', 'Session_Start', 'Session_End', 'Session_Start_ISO', 'Session_End_ISO',
-  'Timezone', 'Meet_URL', 'Meet_Source', 'Announcement_ID', 'Announcement_Status', 'Student_Email_Status', 'Staff_Email_Status', 'Recipients',
-  'Cleanup_Status', 'Cleanup_After_ISO', 'Last_Error', 'Retry_Count', 'Last_Retry_At', 'Completed_At', 'Request_ID', 'Notes'];
-
-var TTM_CARD_CACHE_ = 'ttm_cards_v1';
-
-var TTM_SHEET_ = 'TEMP_TEACHER_ASSIGNMENTS';
-
-var TTM_HEADER_ = ['Assignment_ID', 'Classroom_ID', 'Classroom_Name', 'Section', 'Primary_Teacher_Name', 'Primary_Teacher_Email', 'Temp_Teacher_Name', 'Temp_Teacher_APSID', 'Temp_Teacher_Email',
-  'Start_Date', 'Removal_Date', 'Reason', 'Created_By', 'Created_By_Email', 'Created_By_Role', 'Created_Timestamp',
-  'Status', 'Added_Timestamp', 'Removed_Timestamp', 'Removed_By', 'Last_Process_Timestamp', 'Last_Process_Status', 'Last_Error', 'Add_Email_Sent', 'Removal_Email_Sent', 'Manual_Action',
-  'Failed_Stage', 'Failure_Email_Sent', 'Cancelled_By', 'Cancelled_Timestamp', 'Attempts'];
-
-var UC_SHEET_ = 'USER_COUNTRY';
-
-var UC_HEADER_ = ['Email', 'APSID', 'Name', 'Role', 'Country_Code', 'Country_Name', 'Source', 'First_Seen', 'Updated_At', 'Updated_By'];
-
-var UC_CACHE_KEY_ = 'aps_user_country_v1';
-
-var UC_MEMO_ = null;
-
-var SUPERADMIN_ROLE = 'superadmin';
-
-var VCFO_AMCHSTS_BOD_ROLE = 'vcfo_amchsts_bod';
-
-var ATTENDANCE_EFFECTIVE_CAP_FROM_MIN = 90;
-
-var ATTENDANCE_EFFECTIVE_CAP_MIN = 95;
+var ATTENDANCE_LAST_SYNC_SUMMARY_KEY = 'attendanceLastSyncSummary_v1';
 
 var ATTENDANCE_SCORE_TIERS_ = [
   { minPct: 75, exclusive: true, score: 100 },
@@ -78,24 +382,18 @@ var ATTENDANCE_SCORE_TIERS_ = [
   { minPct: 30, score: 60 }, { minPct: 20, score: 50 }, { minPct: 0, score: 0 }
 ];
 
+var ATTENDANCE_OVERRIDE_SCORES_ = { PRESENT: 100, PARTIAL: 70, EXCUSED: 70, ABSENT: 0 };
+
+var ATTENDANCE_SUMMARY_SHEET_NAME = 'Attendance_Summary';
+
+var ATTENDANCE_SUMMARY_HEADER_ROW = [
+  'Course ID', 'Class Name', 'Person Name', 'Email', 'Role', 'Weeks Recorded',
+  'Attended Minutes', 'Call Minutes', 'Weighted Score Sum', 'Weight Minutes', 'Overall %', 'Last Updated'
+];
+
+var ATTENDANCE_ROLE = { STUDENT: 'STUDENT', TEACHER: 'TEACHER' };
+
 var ATTENDANCE_STATUS = { PRESENT: 'PRESENT', PARTIAL: 'PARTIAL', ABSENT: 'ABSENT' };
-
-var ROLE_PERMISSION_CACHE_KEY = 'dashboardRolePermissions_v1';
-
-var ROLE_PERMISSION_PROP_KEY = 'dashboardRolePermissions_v1';
-
-var ROLE_PERMISSION_CACHE_SECONDS = 60;
-
-var ATTENDANCE_COL_ = {
-  DATE: 0, COURSE_ID: 1, CLASS_NAME: 2, LEVEL: 3, SECTION: 4, DAY: 5,
-  SCHED_START: 6, SCHED_END: 7, TZ: 8, ACADEMIC_YEAR: 9,
-  PERSON_NAME: 10, APS_ID: 11, EMAIL: 12, ROLE: 13,
-  SESSION_COUNT: 14, SESSION_DETAILS: 15, FIRST_JOIN: 16, LAST_LEAVE: 17,
-  ACTIVE_MINUTES: 18, STATUS: 19, LAST_UPDATED: 20,
-  AUTO_STATUS: 21, OVERRIDE_STATUS: 22, OVERRIDE_BY: 23, OVERRIDE_AT: 24, OVERRIDE_REASON: 25, CAPTURE_SOURCE: 26, WEEK_OF: 27, WEEK_NO: 28,
-  CALL_START: 29, CALL_END: 30, CALL_MINUTES: 31, ATTENDED_PCT: 32, AUTO_SCORE: 33, SCORE: 34,
-  ACTUAL_CLASS_MINUTES: 35, EFFECTIVE_CLASS_MINUTES: 36, CLASS_WINDOW_BASIS: 37
-};
 
 var ATTENDANCE_HEADER_ROW = [
   'Attendance Date', 'Course ID', 'Class Name', 'Level', 'Section', 'Day',
@@ -109,26 +407,20 @@ var ATTENDANCE_HEADER_ROW = [
   'Actual Class Minutes', 'Effective Class Minutes', 'Class Window Basis' // class-duration rule (Sept 27): Call Minutes = Effective
 ];
 
-var ATTENDANCE_SPREADSHEET_ID = getConfigString_('ATTENDANCE_SPREADSHEET_ID', '');
-
-var ATTENDANCE_OVERRIDE_SCORES_ = { PRESENT: 100, PARTIAL: 70, EXCUSED: 70, ABSENT: 0 };
+var ATTENDANCE_COL_ = {
+  DATE: 0, COURSE_ID: 1, CLASS_NAME: 2, LEVEL: 3, SECTION: 4, DAY: 5,
+  SCHED_START: 6, SCHED_END: 7, TZ: 8, ACADEMIC_YEAR: 9,
+  PERSON_NAME: 10, APS_ID: 11, EMAIL: 12, ROLE: 13,
+  SESSION_COUNT: 14, SESSION_DETAILS: 15, FIRST_JOIN: 16, LAST_LEAVE: 17,
+  ACTIVE_MINUTES: 18, STATUS: 19, LAST_UPDATED: 20,
+  AUTO_STATUS: 21, OVERRIDE_STATUS: 22, OVERRIDE_BY: 23, OVERRIDE_AT: 24, OVERRIDE_REASON: 25, CAPTURE_SOURCE: 26, WEEK_OF: 27, WEEK_NO: 28,
+  CALL_START: 29, CALL_END: 30, CALL_MINUTES: 31, ATTENDED_PCT: 32, AUTO_SCORE: 33, SCORE: 34,
+  ACTUAL_CLASS_MINUTES: 35, EFFECTIVE_CLASS_MINUTES: 36, CLASS_WINDOW_BASIS: 37
+};
 
 var ATTENDANCE_WEEK1_START_DEFAULT_ = '2026-09-11';
 
 var ATTENDANCE_WEEK_SHEET_PATTERN_ = /^AWK(\d{2,})ATT$/;
-
-var ATTENDANCE_SUMMARY_SHEET_NAME = 'Attendance_Summary';
-
-var ATTENDANCE_SUMMARY_HEADER_ROW = [
-  'Course ID', 'Class Name', 'Person Name', 'Email', 'Role', 'Weeks Recorded',
-  'Attended Minutes', 'Call Minutes', 'Weighted Score Sum', 'Weight Minutes', 'Overall %', 'Last Updated'
-];
-
-var ATTENDANCE_SHEET_PREFIX = 'AWK';
-
-var ATTENDANCE_AUDIT_LOG_SHEET_NAME = 'Attendance_Audit_Log';
-
-var ATTENDANCE_ROLE = { STUDENT: 'STUDENT', TEACHER: 'TEACHER' };
 
 var ATTENDANCE_SOURCE = {
   AUDIT_MAPPED_CODE: 'MEET_AUDIT_MAPPED_CODE',
@@ -140,45 +432,385 @@ var ATTENDANCE_SOURCE = {
   COVERAGE: 'MEET_AUDIT_COVERAGE_MERGE' // r58: Temporary Class Coverage — the class met in the coverage class's Meet that session
 };
 
+var ATTENDANCE_AUDIT_LOG_SHEET_NAME = 'Attendance_Audit_Log';
+
 var ATTENDANCE_AUDIT_LOG_HEADER_ROW = [
   'Edited At', 'Edited By Email', 'Edited By Role', 'Course ID', 'Class Name',
   'Attendance Date', 'Person Name', 'Person Email', 'Person Role', 'Old Status', 'New Status', 'Reason',
   'Action', 'Auto Status' // appended (weekly-attendance round) — columns 1-12 unchanged
 ];
 
-var ATTENDANCE_SYNC_DIAGNOSTIC_KEY = 'attendanceSyncDiagnostic_v1';
-
-var ATTENDANCE_LAST_SYNC_SUMMARY_KEY = 'attendanceLastSyncSummary_v1';
-
-var AUTHORIZED_ROLE = 'authorized';
-
-const EXAM_QP_DAY_TOKENS_ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-
-var ATTENDANCE_ON_CALL_PREFIXES_MEMO_ = null;
-
-var ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_ = ['tcs_', 'tts_'];
-
-var SL_AUDIT_SHEET_ = 'APS_SCHOOL_LEAVE_AUDIT_LOG';
-
-var SL_AUDIT_HEADER_ = ['Audit_ID', 'Leave_ID', 'Action', 'Old_Value', 'New_Value', 'Performed_By', 'Timestamp'];
-
-var CLASS_SCHEDULE_DAY_TOKENS = {
-  SUN: 0, SUNDAY: 0, MON: 1, MONDAY: 1, TUE: 2, TUES: 2, TUESDAY: 2,
-  WED: 3, WEDS: 3, WEDNESDAY: 3, THU: 4, THUR: 4, THURS: 4, THURSDAY: 4,
-  FRI: 5, FRIDAY: 5, SAT: 6, SATURDAY: 6
-};
-
 var ATTENDANCE_EXCLUDED_MEMO_ = null;
-
-var ADMIN_EMAILS = getConfigList_('ADMIN_EMAILS', []);
-
-var HEADMASTER_EMAILS = getConfigList_('HEADMASTER_EMAILS', []);
 
 var ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_ = ['vsugadev@avvaiyarpadasalai.org', 'vasuki_aps999@avvaiyarpadasalai.org'];
 
-var VCFO_AMCHATS_BOD_EMAILS = getConfigList_('VCFO_AMCHATS_BOD_EMAILS', []);
+var ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_ = ['tcs_', 'tts_'];
+
+var ATTENDANCE_ON_CALL_PREFIXES_MEMO_ = null;
+
+var ATTENDANCE_EFFECTIVE_CAP_FROM_MIN = 90;
+
+var ATTENDANCE_EFFECTIVE_CAP_MIN = 95;
 
 var ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_ = 'admin@avvaiyarpadasalai.org';
+
+const EXAMINATION_TOPICS = ['PROJECT WORK', 'HOMEWORK', 'QUIZ', 'ATTENDANCE', 'EXAMINATION'];
+
+const EXAMINATION_ASSIGNMENT_NAMES = {
+  'HOMEWORK': examLessonNames_('HW_LSN_', 20),
+  'ATTENDANCE': examLessonNames_('ATT_LSN_', 20),
+  'QUIZ': examLessonNames_('QUZ_LSN_', 20),
+  'PROJECT WORK': ['TRMST01_PRO01', 'TRMST01_PRO02', 'TRMST02_PRO01', 'TRMST02_PRO02', 'TRMST03_PRO01', 'TRMST03_PRO02'],
+  'EXAMINATION': ['MODEL_EXAM_1', 'EXAM_TRIMESTER_1', 'MODEL_EXAM_2', 'EXAM_TRIMESTER_2', 'MODEL_EXAM_3', 'EXAM_FINAL_TRIMESTER_3']
+};
+
+const EXAMINATION_HELP_LINKS_ = '• Help Page: https://sites.google.com/avvaiyarpadasalai.org/intranet [Login using APS Email Address]\n' +
+  '• School Calendar: https://www.avvaiyarpadasalai.org/calendar.html';
+
+const EXAMINATION_PRESETS = {
+  'ATTENDANCE': {
+    type: 'MULTIPLE_CHOICE_QUESTION', graded: true, points: 100, choices: ['YES', 'NO'],
+    instructions: '{TITLE} - வருகைப்பதிவு 25%: வாராந்திர தமிழ் வகுப்பு வருகையை உரிய தேதிக்கு முன் சமர்ப்பிக்கவும்.\n' +
+      'ATTENDANCE: 25% [Mandatory]: Submit the Weekly Attendance before Due Date.\n' +
+      'Login to Google Classroom > Classwork Tab > Choose Respective Weekly Attendance (Ex: {TITLE}) > Select YES > Click Turn in.\n\n' +
+      'Watch this Video: https://youtu.be/-6OmPlc7DD4\n\n' +
+      'ஆசிரியருக்கான வழிமுறைகள்:\n' +
+      '1.தமிழ் வகுப்பில் முழுவதுமாக பங்கு பெற்ற மாணவர்களுக்கு 100% புள்ளிகள் வழங்கவும்.\n' +
+      '2.45 நிமிடங்களுக்கு மேல் தாமதமாக இணைந்த மாணவர்களுக்கு 50% புள்ளிகள் வழங்கவும்.\n' +
+      '3.விடுப்பு எடுத்தால் மாணவர்களுக்கு 0% புள்ளிகள் வழங்கவும்.\n\n' +
+      'Guidelines to Teacher:\n' +
+      '1.100% marks to students who have participated fully in Tamil class.\n' +
+      '2.50% marks to students who join more than 45 minutes late.\n' +
+      '3.Give students 0% marks if they take leave.\n\n' +
+      '• Help Page: https://sites.google.com/avvaiyarpadasalai.org/intranet [Login using APS Email Address]'
+  },
+  'HOMEWORK': {
+    type: 'ASSIGNMENT', graded: true, points: 100,
+    instructions: '{TITLE}-வீட்டுப்பாடம்: பயிற்சி நூலில், இந்த வாரம் படித்த பாடத்தின் பயிற்சிகளை நிறைவு செய்து பதிவேற்றம் செய்க.\n' +
+      "HOMEWORK: Please complete the exercises for today's lesson in the work book, and submit the assignment before the due date.\n\n" +
+      EXAMINATION_HELP_LINKS_ + '\n\n' +
+      'Please refer to this video on how to submit homework:\nhttps://youtu.be/6tjkHwybGuo?si=aIr1c4ruf4HgdrZ'
+  },
+  'QUIZ': {
+    type: 'QUIZ_ASSIGNMENT', graded: false, points: 100,
+    instructions: '{TITLE}-Quiz: Practice the assigned material below.\n\n' +
+      'வினாடி வினா: கீழே கொடுக்கப்பட்டுள்ள பயிற்சி material-ஐ திறந்து பயிற்சி செய்யவும்.\n\n' +
+      'Assignment Material:\n{MATERIAL_LINK}.\n\n' +
+      '📢 Clarification Regarding Quiz Grading\n' +
+      'The quiz assignment has been marked as "Ungraded" in Google Classroom to avoid any confusion about grading.\n' +
+      '✅ Please continue to encourage the kids to complete the assignments and turn them in with their scores. This helps us know that they are making an effort and participating. But the scores maynot be recorded anywhere but just for your own information!.\n'
+  },
+  'PROJECT WORK': {
+    type: 'ASSIGNMENT', graded: true, points: 100,
+    instructions: '{TITLE}: Please complete the project work assigned by your Class Teacher.\n\n' +
+      'Examples:\n' +
+      '- Memorize at least one story or song from the lessons learned in class.\n' +
+      '- Memorize Aathichoodi (ஆத்திசூடி) and be prepared to recite it in class.\n' +
+      '- Memorize Agara Mudhala Thirukkural (அகர முதல திருக்குறள்) and be prepared to recite it in class.\n\n' +
+      'Please complete the assigned work and be ready to present or recite it in class.\n\n' +
+      '-----------------------------------------------------------------------------------\n\n' +
+      'திட்டப்பணி : உங்கள் வகுப்பு ஆசிரியர் வழங்கிய திட்டப்பணியைத் தவறாமல் முடிக்கவும்.\n\n' +
+      'எடுத்துக்காட்டுகள்:\n' +
+      '- வகுப்பில் கற்றுக்கொண்ட பாடங்களில் இருந்து குறைந்தது ஒரு கதை அல்லது பாடலை மனப்பாடம் செய்யவும்.\n' +
+      '- ஆத்திசூடியை மனப்பாடம் செய்து, வகுப்பில் ஒப்பிக்கத் தயாராக இருக்கவும்.\n' +
+      '- அகர முதல திருக்குறளை மனப்பாடம் செய்து, வகுப்பில் ஒப்பிக்கத் தயாராக இருக்கவும்.\n\n' +
+      'வழங்கப்பட்ட திட்டப்பணியை முழுமையாக முடித்து, வகுப்பில் அதை வழங்கவும் / ஒப்பிக்கவும் தயாராக இருக்கவும்.\n\n' +
+      'பயனுள்ள இணைப்புகள்:\nஉதவிப் பக்கம் (Help Page):\nhttps://sites.google.com/avvaiyarpadasalai.org/intranet\n\n' +
+      'பள்ளி நாட்காட்டி (School Calendar):\nhttps://www.avvaiyarpadasalai.org/calendar.html'
+  },
+  'EXAMINATION': {
+    type: 'ASSIGNMENT', graded: true, points: 100,
+    instructions: '{TITLE}: Please complete this examination before the due date.\n\n' +
+      'தேர்வு: இந்தத் தேர்வை உரிய தேதிக்கு முன் நிறைவு செய்து சமர்ப்பிக்கவும்.\n\n' + EXAMINATION_HELP_LINKS_
+  }
+};
+
+const EXAMINATION_CLASSWORK_TYPES = {
+  ASSIGNMENT: { label: 'Assignment', api: 'COURSE_WORK', workType: 'ASSIGNMENT', gradable: true, dueDate: true },
+  QUIZ_ASSIGNMENT: { label: 'Quiz Assignment', api: 'COURSE_WORK', workType: 'ASSIGNMENT', gradable: true, dueDate: true, quizMaterial: true },
+  SHORT_ANSWER_QUESTION: { label: 'Question (Short answer)', api: 'COURSE_WORK', workType: 'SHORT_ANSWER_QUESTION', gradable: true, dueDate: true },
+  MULTIPLE_CHOICE_QUESTION: { label: 'Question (Multiple choice)', api: 'COURSE_WORK', workType: 'MULTIPLE_CHOICE_QUESTION', gradable: true, dueDate: true, needsChoices: true },
+  MATERIAL: { label: 'Material', api: 'COURSE_WORK_MATERIAL', gradable: false, dueDate: false }
+};
+
+const EXAMINATION_CONFIG = {
+  // CRITICAL: exact, case-sensitive "ends with" — deliberately NOT the
+  // dashboard's COURSE_NAME_SUFFIX (case-insensitive, and '' disables it),
+  // so nothing can ever be published to an older school year by accident.
+  COURSE_SUFFIX: 'AY26-27',
+  TIMEZONE: APS_TZ,                         // America/New_York (existing constant)
+  TOPICS: EXAMINATION_TOPICS,
+  TOPIC_ALIASES: { 'EXAMINATION': ['EXAMNIATION'] }, // legacy misspelling: recognised for duplicate checks, never created
+  ASSIGNMENT_NAMES: EXAMINATION_ASSIGNMENT_NAMES,
+  CLASSWORK_TYPES: EXAMINATION_CLASSWORK_TYPES,
+  PRESETS: EXAMINATION_PRESETS,
+  ANNOUNCEMENT_ID_PREFIX: 'ANN',
+  ANNOUNCEMENT_ID_LABEL: 'ANNOUNCEMENT_ID',
+  ANNOUNCEMENT_HEADER: '*** 📢 APS ADMIN Team - ANNOUNCEMENT 📢 ***', // matches the Dashboard checkbox label (Sept 28, 2026 edit)
+  ANNOUNCEMENT_SEQ_PROP_KEY: 'examAnnouncementSeq_v1',
+  // Added to the end of EVERY announcement (before the ANNOUNCEMENT_ID line) and every classwork description.
+  SIGNATURE: 'Thanks\nAPS Tech Team - Admin\nSugadev Velayutham\nDirector of Technology and Public Relations',
+  MIN_SCHEDULE_LEAD_MINUTES: 2,             // scheduledTime must be at least this far in the future when each batch runs
+  MAX_POINTS: 1000,
+  MAX_TEXT_CHARS: 20000,
+  COURSES_PER_CALL: 6,                      // client sends at most this many classrooms per server call (progress + no 6-min timeout)
+  MAX_COURSES_PER_CALL: 12,                 // server-side hard cap
+  COURSE_CACHE_KEY: 'examCourses_v1',
+  COURSE_CACHE_SECONDS: 600,
+  INFLIGHT_SECONDS: 120,
+  AUDIT_SHEET_NAME: 'Examination_Audit_Log',
+  HISTORY_SCAN_ROWS: 3000,
+  HISTORY_MAX_RESULTS: 500,
+  QUIZ_MATERIAL_SHEET_ID_PROP: 'EXAM_QUIZ_MATERIAL_SHEET_ID',
+  QUIZ_MATERIAL_SHEET_ID_DEFAULT: '19uXeCLw7Oe2Aa3KbWpMS1dJ8sarwkZKnZzMR0Uf1M8M',
+  QUIZ_MATERIAL_SHEET_NAME: 'KAHOOT_LINK_ALL_NILAI_ASSIGNMENT_POST'
+};
+
+const EXAMINATION_AUDIT_HEADER = ['Timestamp', 'User', 'User Role', 'Action', 'Operation Type', 'Batch ID', 'Announcement ID',
+  'Course ID', 'Course Name', 'Topic', 'Topic ID', 'Classwork Type', 'Assignment Name', 'Grading', 'Points', 'Scheduled Time',
+  'Due', 'Status', 'Google Classroom ID', 'Message', 'Error Message', 'Content Preview', 'APSID'];
+
+const EXAM_AUDIT_COL = { TS: 0, USER: 1, ROLE: 2, ACTION: 3, OP: 4, BATCH: 5, ANN_ID: 6, COURSE_ID: 7, COURSE_NAME: 8, TOPIC: 9, TOPIC_ID: 10,
+  TYPE: 11, NAME: 12, GRADING: 13, POINTS: 14, SCHEDULED: 15, DUE: 16, STATUS: 17, CLASSROOM_ID: 18, MESSAGE: 19, ERROR: 20, PREVIEW: 21, APSID: 22 };
+
+const EXAM_QP_CONFIG = {
+  SHEET_ID_PROP_LIVE: 'LIVE_QUESTION_PAPER_SPREADSHEET_ID',
+  SHEET_ID_PROP_TEST: 'TEST_QUESTION_PAPER_SPREADSHEET_ID',
+  RELEASE_MINUTES_PROP: 'EXAM_QUESTION_PAPER_RELEASE_MINUTES',
+  CLOSE_AT_START_PROP: 'EXAM_QUESTION_PAPER_CLOSE_AT_CLASS_START',
+  HM_CAN_MANAGE_PROP: 'EXAM_QUESTION_PAPER_HM_CAN_MANAGE',
+  FOLDER_PROP: 'EXAM_QUESTION_PAPER_FOLDER_ID',
+  DEFAULT_RELEASE_MINUTES: 15,
+  DEFAULT_CLOSE_AT_CLASS_START: true,
+  SUPPORTED_ACADEMIC_YEAR: EXAMINATION_CONFIG.COURSE_SUFFIX, // 'AY26-27'
+  SHEET_PAPERS: 'EXAM_QUESTION_PAPERS',
+  // LIVE_QUESTION_PAPER_DOWNLOAD_LINK is the school's own link table (NILAI | TITLE | QUESTION PAPER DOWNLOAD LINK):
+  // READ-ONLY here — it tells the dashboard which Google Drive PDF belongs to each grade + exam. It is never written to.
+  SHEET_LINKS: 'LIVE_QUESTION_PAPER_DOWNLOAD_LINK',
+  SHEET_DOWNLOADS: 'EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT',
+  SHEET_SUMMARY: 'EXAM_QUESTION_PAPER_DOWNLOAD_SUMMARY',
+  SHEET_AUDIT: 'EXAM_QUESTION_PAPER_AUDIT',
+  MAX_PDF_BYTES: 15 * 1024 * 1024,
+  TICKET_SECONDS: 900,
+  RECORD_CACHE_SECONDS: 60,
+  STUDENT_HISTORY_DAYS: 3,        // students keep seeing a paper for 3 days after its window closes
+  REPEAT_WINDOW_MINUTES: 10,      // 2+ completed downloads within this window = "repeated" (suspicious)
+  MAX_EVENTS_RETURNED: 500
+};
+
+const EXAM_QP_STATUS = { NOT_UPLOADED: 'NOT_UPLOADED', UPLOADED: 'UPLOADED', READY: 'READY', PUBLISHED: 'PUBLISHED', CANCELLED: 'CANCELLED' };
+
+const EXAM_QP_EXAM_STATUS = { DRAFT: 'DRAFT', UPLOADED: 'UPLOADED', SCHEDULED: 'SCHEDULED', AVAILABLE: 'AVAILABLE', IN_PROGRESS: 'IN_PROGRESS', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED' };
+
+const EXAM_QP_STUDENT_STATUS = { NOT_ELIGIBLE: 'NOT_ELIGIBLE', WAITING: 'WAITING', ELIGIBLE: 'ELIGIBLE', VERIFICATION_PENDING: 'VERIFICATION_PENDING', DOWNLOADED: 'DOWNLOADED', FAILED: 'FAILED', NOT_DOWNLOADED: 'NOT_DOWNLOADED' };
+
+const EXAM_QP_DOWNLOAD_STATUS = {
+  ELIGIBLE: 'ELIGIBLE', NOT_YET_AVAILABLE: 'NOT_YET_AVAILABLE', INVALID_STUDENT: 'INVALID_STUDENT', INVALID_APSID: 'INVALID_APSID',
+  INVALID_CLASS: 'INVALID_CLASS', INVALID_EXAM: 'INVALID_EXAM', UNAUTHORIZED: 'UNAUTHORIZED', VERIFICATION_FAILED: 'VERIFICATION_FAILED',
+  CONFIRMATION_REQUIRED: 'CONFIRMATION_REQUIRED', DOWNLOAD_STARTED: 'DOWNLOAD_STARTED', DOWNLOAD_COMPLETED: 'DOWNLOAD_COMPLETED',
+  DOWNLOAD_FAILED: 'DOWNLOAD_FAILED', QUESTION_PAPER_NOT_FOUND: 'QUESTION_PAPER_NOT_FOUND', QUESTION_PAPER_CANCELLED: 'QUESTION_PAPER_CANCELLED',
+  DOWNLOAD_WINDOW_CLOSED: 'DOWNLOAD_WINDOW_CLOSED', QUESTION_PAPER_LOCKED: 'QUESTION_PAPER_LOCKED'
+};
+
+const EXAM_QP_PAPER_HEADER = ['Question_Paper_ID', 'Exam_ID', 'Exam_Title', 'Academic_Year', 'Grade', 'Class_Name', 'Section', 'Day',
+  'Class_Date', 'Class_Start_Time', 'Class_End_Time', 'Time_Zone', 'Course_ID', 'Teacher_Name', 'Teacher_APSID', 'Teacher_Email',
+  'Question_Paper_File', 'Original_File_Name', 'Version', 'Release_Window_Minutes', 'Close_At_Class_Start',
+  'Calculated_Release_Date_Time', 'Calculated_Close_Date_Time', 'Status', 'Locked', 'Published_By', 'Published_Date_Time',
+  'Replaced_By', 'Replaced_Date_Time', 'Replacement_Reason', 'Cancelled_By', 'Cancelled_Date_Time', 'Cancel_Reason',
+  'Created_By', 'Created_Date_Time', 'Updated_By', 'Updated_Date_Time', 'File_Size_Bytes', 'Page_Count', 'Version_History', 'Row_Version',
+  'Source_Drive_Link', 'Source_Drive_File_ID', 'Schedule_Mode',
+  'Auto_Email_Enabled', 'Auto_Email_Minutes', // r99: "Send Email to Student After X Minutes" (per exam; blank = OFF)
+  'Teacher_Copy_Email_Sent_At', 'Teacher_Copy_Email_Sent_To'];
+
+const EXAM_QP_DOWNLOAD_HEADER = ['Audit_ID', 'Question_Paper_ID', 'Exam_ID', 'Exam_Title', 'Academic_Year', 'Grade', 'Class_Name', 'Section',
+  'Class_Start_Date', 'Class_Start_Time', 'Release_Date_Time', 'Student_Full_Name', 'APSID', 'Student_Email', 'Teacher_Name', 'Teacher_APSID',
+  'Authenticated_User_Email', 'Verification_Status', 'Confirmation_Checked', 'Download_Status', 'Download_Date', 'Download_Time',
+  'Download_Date_Time_EST', 'IP_Address', 'Session_ID', 'User_Agent', 'File_Name', 'Personalized_File_ID', 'Created_Date_Time', 'Created_By',
+  'Download_Attempt_Count', 'Last_Download_Date_Time', 'Reason', 'User_Role', 'Entered_APSID', 'Question_Paper_Version', 'Course_ID', 'Download_Key'];
+
+const EXAM_QP_AUDIT_HEADER = ['Audit_ID', 'Event_Type', 'Exam_ID', 'Question_Paper_ID', 'User_Email', 'User_Role', 'APSID', 'Student_Name',
+  'Class_Name', 'Timestamp_EST', 'Result', 'Reason', 'Metadata'];
+
+const EXAM_QP_DAY_TOKENS_ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+var EXAM_QP_MEMO_ = { ss: {}, sheets: {} };
+
+const EXAM_QP_MESSAGES_ = {
+  UNAUTHORIZED: 'You are not authorized to access this question paper.',
+  INVALID_CLASS: 'This question paper is not assigned to your class.',
+  INVALID_STUDENT: 'You are not enrolled in an eligible class for this question paper.',
+  INVALID_APSID: 'The APSID entered does not match your student account.\nPlease verify your APSID and try again.',
+  QUESTION_PAPER_NOT_FOUND: 'This question paper could not be found.',
+  QUESTION_PAPER_CANCELLED: 'This question paper has been cancelled.',
+  INVALID_EXAM: 'This question paper is not available.',
+  QUESTION_PAPER_LOCKED: 'This question paper is temporarily unavailable. Please contact your Class Teacher.',
+  CONFIRMATION_REQUIRED: 'Please confirm that you will not share this question paper with any other student.',
+  VERIFICATION_FAILED: 'Please confirm your name to continue.',
+  DOWNLOAD_WINDOW_CLOSED: 'The download window for this question paper has closed. Please contact your Class Teacher.',
+  DOWNLOAD_FAILED: 'We could not generate your personalized question paper.\nPlease try again or contact APS Tech Support.'
+};
+
+const EXAM_QP_SEND_SHEET_ = 'EXAM_QUESTION_PAPER_EMAIL_AUDIT';
+
+const EXAM_QP_SEND_HEADER_ = ['Send_ID', 'Sent_Date_Time_EST', 'Sender_Email', 'Sender_Role', 'Student_Name', 'Student_APSID', 'Student_Email',
+  'Exam_Title', 'Exam_ID', 'Question_Paper_ID', 'Class_Grade', 'Email_Status', 'Error_Message', 'Request_ID'];
+
+const EXAM_QP_APS_DOMAIN_ = '@avvaiyarpadasalai.org';
+
+const EXAM_QP_TCOPY_ = { MIN_PUBLISH_MS: 24 * 3600000, OPEN_BEFORE_MS: 60 * 60000, EMAIL_BEFORE_MS: 60 * 60000, EMAIL_ENABLED_PROP: 'EXAM_QP_TEACHER_COPY_EMAIL_ENABLED' };
+
+const EXAM_QP_TCOPY_MSG_ = {
+  NOT_PUBLISHED: 'Teacher Copy is unavailable because the examination question paper has not been published.',
+  NOT_24H: 'Teacher Copy is unavailable because the question paper was not published at least 24 hours before the exam start time.',
+  UNAUTHORIZED: 'You are not authorized to access this Teacher Copy.',
+  NOT_ASSIGNED: 'Teacher Copy is unavailable because you are not assigned to this examination.',
+  FAILED: 'Unable to download the Teacher Copy. Please try again or contact APS Tech Support.',
+  CANCELLED: 'Teacher Copy is unavailable because this examination was cancelled.'
+};
+
+const EXAM_QP_AUTO_ = {
+  HANDLER: 'processExamQuestionPaperAutoEmail', SHEET: 'EXAM_QUESTION_PAPER_AUTO_EMAIL_LOG', ENABLED_PROP: 'EXAM_QP_AUTO_EMAIL_ENABLED',
+  DEFAULT_MINUTES: 20, MIN_MINUTES: 1, MAX_MINUTES: 120, EVERY_MINUTES: 5, MAX_FAILS: 3, RUN_BUDGET_MS: 240000, MAX_SENDS_PER_RUN: 40, METHOD: 'AUTO_EMAIL_FALLBACK',
+  RUN_KEY: 'examQpAuto_run_v1', CLAIM_PREFIX: 'examQpAuto_claim_'
+};
+
+const EXAM_QP_AUTO_HEADER_ = ['Log_ID', 'Evaluated_Date_Time_EST', 'Exam_ID', 'Exam_Title', 'Exam_Date', 'Exam_Start_Time', 'Question_Paper_ID', 'Course_ID', 'Class_Name',
+  'Student_Name', 'Student_APSID', 'Student_Email', 'Configured_Minutes', 'Download_Status', 'Meet_Status', 'Attendance_Status', 'Eligibility', 'Email_Status', 'Delivery_Method',
+  'Key_Reference', 'Result', 'Reason', 'Error_Message', 'Attempt'];
+
+const EXAM_QP_AUTO_REASON_ = {
+  SENT: 'NOT_DOWNLOADED_AFTER_CONFIGURED_TIME', NOT_ONLINE: 'STUDENT_NOT_ONLINE', UA: 'UNREPORTED_ABSENCE',
+  DOWNLOADED: 'DASHBOARD_DOWNLOADED', NO_EMAIL: 'NO_VALID_APS_EMAIL', FAILED: 'EMAIL_DELIVERY_FAILED',
+  MEET_UNKNOWN: 'MEET_STATUS_UNKNOWN' // r100: no Google Meet data for this class at the exam time (e.g. a custom-time exam) — never sent
+};
+
+var ROSTER_CONFIG = {
+  SHEET_CLASSROOMS: 'Roster_Classrooms',
+  SHEET_TEACHERS: 'Roster_Teachers',
+  SHEET_STUDENTS: 'Roster_Students',
+  SHEET_SYNC_LOG: 'Roster_Sync_Log',
+  SHEET_AUDIT: 'Roster_Audit_Log',
+  MAX_RUN_MS: 210000,           // stop starting new classrooms after 3.5 min (Apps Script hard limit is 6 min; leaves room for backoff + bulk writes)
+  RUN_STALE_MS: 10 * 60000,     // a "sync running" marker older than this is treated as a crashed run
+  CACHE_SECONDS: 21600,         // 6 h; invalidated immediately by every sync (generation bump)
+  CACHE_CHUNK: 30000,           // characters; CacheService value limit is 100 KB (bytes) and Tamil text is multi-byte
+  VIEW_AUDIT_DEDUPE_SECONDS: 1800,
+  MAX_ERRORS_KEPT: 100,
+  MAX_DEFERRED_KEPT: 400        // Script Property values are limited to 9 KB
+};
+
+var ROSTER_STATUS = { ACTIVE: 'ACTIVE', INVITED: 'INVITED', INACTIVE: 'INACTIVE', OTHER: 'OTHER' };
+
+var ROSTER_CLASSROOM_HEADER = ['Course_ID', 'Course_Name', 'Course_State', 'Status', 'Section', 'Description', 'Room', 'Owner_ID',
+  'Creation_Time', 'Update_Time', 'Academic_Year', 'Nilai', 'Section_Code', 'Class_Day', 'Start_Time', 'End_Time', 'Time_Zone',
+  'Teacher_Count', 'Student_Count', 'First_Seen', 'Last_Seen', 'Last_Synced', 'Last_Error'];
+
+var ROSTER_TEACHER_HEADER = ['Enrollment_Key', 'Course_ID', 'Course_Name', 'Teacher_User_ID', 'Teacher_Name', 'Teacher_Email', 'APSID',
+  'Teacher_Role', 'Membership_State', 'Support_Account', 'Nilai', 'Academic_Year', 'First_Seen', 'Last_Seen', 'Last_Synced', 'Inactive_Since'];
+
+var ROSTER_STUDENT_HEADER = ['Enrollment_Key', 'Course_ID', 'Course_Name', 'Student_User_ID', 'Student_Name', 'Student_Email', 'APSID',
+  'Membership_State', 'Nilai', 'Section', 'Teacher_Name', 'Teacher_Email', 'Academic_Year', 'First_Seen', 'Last_Seen', 'Last_Synced', 'Inactive_Since'];
+
+var ROSTER_MEMO_ = { ds: null, gen: null, enabled: null };
+
+var GRADES_CONFIG = { SHEET_WORK: 'Grading_CourseWork', SHEET_SUBS: 'Grading_Submissions' };
+
+var GRADES_WORK_HEADER = ['Work_Key', 'Course_ID', 'CourseWork_ID', 'Title', 'Work_Type', 'Max_Points', 'Assigned_Date', 'Due_Date', 'Lesson_No',
+  'State', 'Status', 'First_Seen', 'Last_Synced', 'Link'];
+
+var GRADES_SUB_HEADER = ['Submission_Key', 'Course_ID', 'CourseWork_ID', 'Student_User_ID', 'Student_Email', 'Student_Name', 'APSID', 'State', 'Late',
+  'Assigned_Grade', 'Draft_Grade', 'Turn_In_Date', 'Graded_Date', 'Returned_Date', 'Update_Time', 'Last_Synced'];
+
+var GRADES_MEMO_ = { ds: null, gen: null, fieldsOk: true };
+
+var GRADES_CATEGORY_PREFIXES_ = [['ATT_', 'ATTENDANCE'], ['HW_', 'HOMEWORK'], ['QUZ_', 'QUIZ'], ['TRMST', 'PROJECT WORK'], ['MODEL_EXAM', 'EXAMINATION'], ['EXAM', 'EXAMINATION']];
+
+var CTA_SELECTION_SHEET_ = 'Teacher_Availability_Selection';
+
+var CTA_SELECTION_HEADER_ = ['Week ID', 'Academic Year', 'Teacher Email', 'Teacher Name', 'APSID', 'Nilai', 'Available Time', 'Status', 'Submitted At', 'Updated At', 'Updated By Email'];
+
+var CTA_DEFAULT_TO_ = 'teachers@avvaiyarpadasalai.org';
+
+var CTA_LABEL_ = { AVAILABLE: 'AVAILABLE', NOT_AVAILABLE: 'NOT AVAILABLE', SUBMITTED: 'SUBMITTED', NOT_SUBMITTED: 'NOT SUBMITTED', PENDING: 'PENDING' };
+
+var CTA_CODE_TO_LABEL_ = { confirmed: 'AVAILABLE', not_available: 'NOT AVAILABLE', pending: 'PENDING' };
+
+var CTA_DAY_NAMES_ = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+var CTA_EXCLUDE_ROLES_ = ['admin', 'headmaster', SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE];
+
+var CTA_AVAIL_ALT_LABELS_ = { parent_teacher_arranged: 'Parent-Teacher Arranged', sub_teacher_arranged: 'Sub-Teacher Arranged', need_hm_support: 'Need HM Support', on_call_assigned: 'Alternative: On-Call Assigned' };
+
+var CLASS_ROLE_RANK_ = { TEACHER: 1, PRIMARY_TEACHER: 1, VP: 2, HM: 3, ADMIN: 4 };
+
+var CLASS_MEET_DETECTED_SHEET_ = 'Course_Meet_Link_Detected';
+
+var CLASS_MEET_CACHE_KEY_ = 'aps_class_meet_links_v2';
+
+var APPRECIATION_CERTIFICATE_AUDIT_SHEET_NAME = 'Appreciation_Certificate_Audit';
+
+var APPRECIATION_MIN_WORDS = 5;
+
+var APPRECIATION_MAX_WORDS = 15;
+
+var APPRECIATION_MSG_ = {
+  notTeacher: 'Only a Teacher account can generate an APS Appreciation Certificate.',
+  noStudent: 'Please select a student.',
+  noName: 'Please enter the student name.',
+  tooShort: 'Appreciation must contain at least ' + APPRECIATION_MIN_WORDS + ' words.',
+  tooLong: 'Appreciation must contain no more than ' + APPRECIATION_MAX_WORDS + ' words.',
+  badEmail: 'The selected student does not have a valid APS email address.',
+  unauthorized: 'You are not authorized to generate a certificate for this student.',
+  template: 'The appreciation certificate template could not be accessed. Please contact APS support.',
+  generate: 'The certificate could not be generated. Please try again.',
+  email: 'The certificate was generated, but the email could not be sent.',
+  busy: 'This certificate is already being generated or was just sent. Please wait a moment.',
+  notLeader: 'Only an Admin, Super Admin or Head Master can send a Teacher Appreciation Letter.',
+  noTeacher: 'Please select a teacher.',
+  unauthorizedTeacher: 'You are not authorized to send an appreciation letter to this person.',
+  badTeacherEmail: 'The selected teacher does not have a valid APS email address.',
+  generateLetter: 'The appreciation letter could not be generated. Please try again.',
+  emailLetter: 'The appreciation letter was generated, but the email could not be sent.',
+  manualEmail: 'Please enter a valid APS email address (for example name_aps1234@avvaiyarpadasalai.org).'
+};
+
+var TK_TYPES_ = ['BOOKS', 'CLASS ROOM', 'LEAVE', 'TECH SUPPORT', 'EXAMINATION', 'ATTENDANCE', 'EVENTS', 'KAHOOT', 'OTHERS'];
+
+var TK_TYPE_ICON_ = { 'BOOKS': '📚', 'CLASS ROOM': '🏫', 'LEAVE': '📝', 'TECH SUPPORT': '🛠️', 'EXAMINATION': '📝', 'ATTENDANCE': '📅', 'EVENTS': '🎉', 'KAHOOT': '🎮', 'OTHERS': '📌' };
+
+var TK_STATUSES_ = ['NEW', 'ASSIGNED', 'IN PROGRESS', 'WAITING FOR USER', 'RESOLVED', 'CLOSED'];
+
+var TK_ACTIVE_STATUSES_ = ['NEW', 'ASSIGNED', 'IN PROGRESS', 'WAITING FOR USER'];
+
+var TK_PRIORITIES_ = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
+
+var TK_CHAIN_TYPES_ = ['ATTENDANCE', 'LEAVE', 'EXAMINATION', 'CLASS ROOM', 'KAHOOT', 'EVENTS'];
+
+var TK_DEFAULT_RULES_ = {
+  'BOOKS': { chain: false, emails: ['simplysuga_aps501@avvaiyarpadasalai.org'] },
+  'TECH SUPPORT': { chain: false, emails: ['info@avvaiyarpadasalai.org', 'info1@avvaiyarpadasalai.org'] },
+  'ATTENDANCE': { chain: true, emails: [] },
+  'LEAVE': { chain: true, emails: [] },
+  'EXAMINATION': { chain: true, emails: ['examinations_aps9021@avvaiyarpadasalai.org'] },
+  'CLASS ROOM': { chain: true, emails: ['info@avvaiyarpadasalai.org', 'info1@avvaiyarpadasalai.org'] },
+  'KAHOOT': { chain: true, emails: ['games_aps9020@avvaiyarpadasalai.org'] },
+  'EVENTS': { chain: true, emails: ['events_aps9018@avvaiyarpadasalai.org', 'competitions_aps9019@avvaiyarpadasalai.org'] },
+  'OTHERS': { chain: false, emails: [] }
+};
+
+var TK_EVENTS_ = ['CREATED', 'ASSIGNED', 'REASSIGNED', 'ADMIN_OVERRIDE', 'REPLY', 'INTERNAL_NOTE', 'STATUS_CHANGED', 'RESOLVED', 'CLOSED', 'REOPENED'];
+
+var TK_SHEETS_ = {
+  tickets: { name: 'APS_TICKETS', header: ['Ticket_ID', 'Ticket_Number', 'Type', 'Subject', 'Description', 'Requester_Name', 'Requester_Email', 'Requester_Role', 'Created_By',
+    'Student_Name', 'APSID', 'Student_Email', 'Course_ID', 'Classroom', 'Primary_Teacher', 'Primary_Teacher_Email', 'Headmaster', 'Headmaster_Email', 'VP', 'VP_Email',
+    'Priority', 'Status', 'Assigned_To', 'Assignment_Flags', 'Created_At', 'Updated_At', 'Resolved_At', 'Closed_At', 'Last_Activity_By', 'Reply_Count', 'Request_ID'] },
+  messages: { name: 'APS_TICKET_MESSAGES', header: ['Message_ID', 'Ticket_ID', 'Ticket_Number', 'Author_Name', 'Author_Email', 'Author_Role', 'Message_Type', 'Message', 'Created_At', 'Attachments'] },
+  participants: { name: 'APS_TICKET_PARTICIPANTS', header: ['Ticket_ID', 'Ticket_Number', 'Email', 'Name', 'Role', 'Participant_Type', 'Active', 'Added_By', 'Added_At', 'Removed_By', 'Removed_At'] },
+  audit: { name: 'APS_TICKET_AUDIT_LOG', header: ['Audit_ID', 'Ticket_ID', 'Ticket_Number', 'Action', 'Old_Value', 'New_Value', 'Performed_By', 'Performed_By_Email', 'Date_Time', 'Notes'] },
+  config: { name: 'APS_TICKET_CONFIG', header: ['Key', 'Value_JSON', 'Updated_By', 'Updated_At'] }
+};
+
+var TK_EMAIL_RE_ = /^[a-z0-9._%+'-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
 
 var APS_MAIL_PROFILES_ = {
   TICKETS: { label: 'Tickets', fromKey: 'TICKET_MAIL_FROM', fromDefault: 'donotreply@avvaiyarpadasalai.org', displayName: 'APS Dashboard Tickets',
@@ -191,43 +823,408 @@ var APS_MAIL_PROFILES_ = {
     notConfigured: 'Attendance email is not configured: set ATTENDANCE_OAUTH_CLIENT_ID, ATTENDANCE_OAUTH_CLIENT_SECRET and ATTENDANCE_REFRESH_TOKEN in Script Properties.' }
 };
 
-var USER_ROLE_CACHE_KEY = 'dashboardUserRoles_v1';
+var AC_ROLES_ = ['superadmin', 'admin', 'headmaster', 'teacher', 'student', VCFO_AMCHSTS_BOD_ROLE, 'authorized'];
 
-var USER_ROLE_SHEET_NAME = 'Dashboard_User_Roles';
+var AC_ROLE_LABELS_ = { superadmin: 'Super Admin', admin: 'Admin', headmaster: 'Headmaster', teacher: 'Teacher', student: 'Student', vcfo_amchsts_bod: 'BOD / On-Call Coordinator', authorized: 'Authorized' };
 
-var USER_ROLE_CACHE_SECONDS = 60;
+var AC_CATALOG_ = [
+  { key: 'classes', label: '🏫 Classes', cells: 'AAAAAAA' },
+  { key: 'classes.list', parent: 'classes', label: 'Classes', cells: 'AAAAAAA' },
+  { key: 'classes.teacherAvail', parent: 'classes', label: 'Teacher Availability Report', cells: 'AYYYLYL' },
+  { key: 'classes.coverage', parent: 'classes', label: 'Temporary Class Coverage', cells: 'AYYYLLL' }, // r58: Teacher = class-level VP / HM only
+  { key: 'classes.coverageTracking', parent: 'classes', label: 'Class Coverage Tracking', cells: 'AYYYLLL' }, // r70: Teacher = class-level VP / HM only
+  { key: 'classes.tempTeacher', parent: 'classes', label: 'Temp Teacher', cells: 'AYYYLYL' }, // r89: Temporary Teacher Assignment (TCS/TTS). Teacher = classes they teach or support (server re-checks). r98: BOD column ON — only the On-Call Coordinator (ON_CALL_COORDINATOR_EMAILS) gets in; other BOD members are refused server-side
+  { key: 'directory', label: '📇 Active Directory', cells: 'AYYYYYY' },
+  { key: 'directory.search', parent: 'directory', label: 'Directory Search', cells: 'AYYYYYY' },
+  { key: 'directory.onboarding', parent: 'directory', label: 'Student Onboarding Status', cells: 'AYYYYYY' },
+  { key: 'kb', label: '🎬 Knowledge Base – Videos', cells: 'AYYYYYY' },
+  { key: 'tamilThadam', label: '👣 தமிழ்த் தடம் (Tamil Thadam)', cells: 'AYLLYLL' },
+  { key: 'specialClasses', label: '🎓 சிறப்பு வகுப்புகள் (Special Classes)', cells: 'AYNNYNN' }, // r79: Student / Admin / Super Admin on; HM, Teacher (incl. VP / HM of a class), BOD, Authorized off until an Admin switches them on // r74: students (own journey); r75: Admin / Super Admin read-only look-up. Server checks the role on every call
+  { key: 'classChange', label: '🔄 Class Change Requests', cells: 'AYYLYYL' },
+  { key: 'assignClassroom', label: 'Assign Classroom', cells: 'AYLLLYL' },
+  { key: 'assignClassroom.remap', parent: 'assignClassroom', label: 'Re-Map Student', cells: 'AYLLLYL' }, // r60
+  { key: 'assignClassroom.remove', parent: 'assignClassroom', label: 'Add/Remove Student', cells: 'AYLLLYL' }, // r60 (BOD: audit log read-only); r84: renamed — Add Student lives here too (same key)
+  { key: 'letters', label: '📄 Letters', cells: 'AYYYLYL' },
+  { key: 'letters.reference', parent: 'letters', label: 'Reference Letter', cells: 'AYYYLYL' },
+  { key: 'letters.appreciation', parent: 'letters', label: 'Appreciation Certificate', cells: 'AYYYLYL' },
+  { key: 'letters.teacherLetter', parent: 'letters', label: 'Teacher Appreciation Letter', cells: 'AYYLLYL' },
+  { key: 'rlApprovals', label: '📄 Reference Letter Approvals', cells: 'LYYLLYL' },
+  { key: 'attendance', label: '🗓️ Attendance', cells: 'AYYYYYL' },
+  { key: 'exam', label: '📝 Examination', cells: 'AYYYYYL' },
+  { key: 'exam.announcements', parent: 'exam', label: 'Announcements', cells: 'AYLLLYL' },
+  { key: 'exam.classwork', parent: 'exam', label: 'Classwork', cells: 'AYLLLYL' },
+  { key: 'exam.questionPaper', parent: 'exam', label: 'Exam Question Paper', cells: 'AYYYYYL' },
+  { key: 'exam.grading', parent: 'exam', label: 'Grading', cells: 'AYYYYYL' },
+  { key: 'assignMon', label: '📚 Assignment Monitoring', cells: 'AYYNNNN' }, // r85: Admin / Super Admin / HM on; Teacher, Student, BOD, Authorized off by default (switchable). Class VP / HM (teacher accounts) always see their own classes while the module is ON
+  { key: 'meetPreview', label: '🎥 GCM - Preview', cells: 'AYLLLLL' },
+  { key: 'zohoSync', label: '🔄 Zoho CRM Sync', cells: 'AYLLLLL' }, // r70: Admin / Super Admin only (server re-checks the role on every call)
+  { key: 'applyLeave', label: '📨 Apply Leave', cells: 'AYYYYYY' }, // r94: every role applies leave for themself (server re-checks the session on every call)
+  { key: 'tickets', label: '🎫 Tickets', cells: 'AYYYYYY' },
+  { key: 'tickets.self', parent: 'tickets', label: 'My Tickets · Assigned to Me · Create Ticket', cells: 'AYYYYYY' },
+  { key: 'tickets.all', parent: 'tickets', label: 'All Tickets', cells: 'AYLLLLL' },
+  { key: 'tickets.reports', parent: 'tickets', label: 'Ticket Reports', cells: 'AYLLLLL' },
+  { key: 'tickets.settings', parent: 'tickets', label: 'Ticket Settings', cells: 'AYLLLLL' },
+  { key: 'adminControl', label: '🛡️ Admin Control', cells: 'AALLLLL' },
+  { key: 'adminControl.access', parent: 'adminControl', label: '🔐 Access Control', cells: 'AALLLLL' },
+  { key: 'adminControl.userRoles', parent: 'adminControl', label: '👥 User Roles & Permissions', cells: 'ALLLLLL' },
+  { key: 'adminControl.backup', parent: 'adminControl', label: '💾 Backup & Archive', cells: 'AYLLLLL' },
+  { key: 'adminControl.schoolLeave', parent: 'adminControl', label: '🏖️ School Leave Management', cells: 'AYLLLLL' }, // r110: Admin / Super Admin only (server re-checks the role)
+  { key: 'teacherMgmt', label: '👩‍🏫 Volunteer/Teacher Management', cells: 'AYLLLYL' }, // r114: Admin / Super Admin; BOD read-only (server re-checks the role on every call)
+  { key: 'teacherMgmt.appreciation', parent: 'teacherMgmt', label: 'Weekly Teacher Appreciation', cells: 'AYLLLYL' }, // r114
+  { key: 'teacherMgmt.userCountry', parent: 'teacherMgmt', label: '🌍 Users outside the USA', cells: 'AYLLLLL' } // r120: Admin / Super Admin only (server re-checks the role)
+];
 
-var DASHBOARD_ROLES = ['admin', 'headmaster', 'teacher', 'student', VCFO_AMCHSTS_BOD_ROLE, SUPERADMIN_ROLE];
+var AC_SHEET_ = 'Dashboard_Access_Control';
 
-var SUPERADMIN_EMAILS = getConfigList_('SUPERADMIN_EMAILS', []);
+var AC_HEADER_ = ['Role', 'Tab_Key', 'Tab_Label', 'Visible', 'Updated_At', 'Updated_By'];
 
-var CTA_EXCLUDE_ROLES_ = ['admin', 'headmaster', SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE];
+var AC_AUDIT_SHEET_ = 'Access_Control_Audit';
 
-var APS_GRADING_TEAM_EMAILS_ = ['grading@avvaiyarpadasalai.org'].concat(getConfigList_('APS_GRADING_TEAM_EMAILS', []));
+var AC_AUDIT_HEADER_ = ['Date_Time', 'Changed_By', 'Changed_By_Role', 'Role', 'Tab_Key', 'Tab_Label', 'Old_Value', 'New_Value'];
 
-var HIDDEN_TEACHER_NAMES = ['google classroom admin'];
+var AC_CACHE_KEY_ = 'aps_access_ctl_v1';
 
-var HIDDEN_TEACHER_NAME_PREFIXES = ['avvaiyar padasalai', 'aps','APS','Avvaiyar Padasalai'];
+var AC_OFF_MSG_ = 'ACCESS_OFF: This section has been turned off for your role by the APS administrator.';
 
-var HIDDEN_TEACHER_EMAIL_PREFIXES = getConfigList_('HIDDEN_TEACHER_EMAIL_PREFIXES', ['aps_']);
+var AC_PROTECTED_ = { 'superadmin|adminControl': true, 'superadmin|adminControl.access': true };
 
-var CTA_DEFAULT_TO_ = 'teachers@avvaiyarpadasalai.org';
+var TCC_SHEET_ = 'Temporary_Class_Coverage';
 
-var NILAI_FILTER_OPTIONS = ['All', 'MUNMAZHALAI', 'MAZHALAI', 'NILAI 1', 'NILAI 2', 'NILAI 3', 'NILAI 4', 'NILAI 5', 'NILAI 6', 'NILAI 7', 'NILAI 8', 'THULIR(துளிர்)'];
+var TCC_HEADER_ = ['Merge_ID', 'Created_At', 'Created_By', 'Requesting_Role', 'Original_Course_ID', 'Original_Course_Name', 'Original_Teacher',
+  'Destination_Course_ID', 'Destination_Course_Name', 'Destination_Teacher', 'Session_Date', 'Session_Start', 'Session_End', 'Session_Start_ISO', 'Session_End_ISO',
+  'Timezone', 'Meet_URL', 'Meet_Source', 'Announcement_ID', 'Announcement_Status', 'Student_Email_Status', 'Staff_Email_Status', 'Recipients',
+  'Cleanup_Status', 'Cleanup_After_ISO', 'Last_Error', 'Retry_Count', 'Last_Retry_At', 'Completed_At', 'Request_ID', 'Notes'];
 
-var CLASS_TIME_FILTER_OPTIONS = ['All', 'FRI 6:30 - 8:00 PM EST', 'FRI 7:30 - 9:00 PM EST', 'FRI 9:00 - 10:30 PM EST', 'SAT 12:00 - 1:30 PM EST', 'SUN 7:30 - 9:00 PM EST'];
+var TCC_CACHE_KEY_ = 'aps_tcc_rows_v1';
 
-var CTA_SELECTION_SHEET_ = 'Teacher_Availability_Selection';
+var TCC_DAY_INDEX_ = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
 
-var CTA_SELECTION_HEADER_ = ['Week ID', 'Academic Year', 'Teacher Email', 'Teacher Name', 'APSID', 'Nilai', 'Available Time', 'Status', 'Submitted At', 'Updated At', 'Updated By Email'];
+var TCC_DAY_NAMES_ = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-var CTA_LABEL_ = { AVAILABLE: 'AVAILABLE', NOT_AVAILABLE: 'NOT AVAILABLE', SUBMITTED: 'SUBMITTED', NOT_SUBMITTED: 'NOT SUBMITTED', PENDING: 'PENDING' };
+var TCC_MONTHS_ = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-var CTA_CODE_TO_LABEL_ = { confirmed: 'AVAILABLE', not_available: 'NOT AVAILABLE', pending: 'PENDING' };
+var TCC_MAX_DAYS_AHEAD_ = 60;
 
-var CTA_DAY_NAMES_ = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+var TCC_DAY_FULL_ = { FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday' };
 
-var COURSE_NAME_SUFFIX = 'AY26-27';
+var SRM_SHEET_ = 'Student_Removal_Audit';
+
+var SRM_HEADER_ = ['Request_ID', 'Requested_At', 'Requested_By', 'Requested_By_Role', 'Student_Name', 'Student_APSID', 'Student_Email', 'Course_ID', 'Course_Name',
+  'Class_Teacher', 'Reason', 'Removal_Status', 'Verification_Status', 'Email_Status', 'Email_Recipients', 'Error', 'Last_Retry_At', 'Completed_At', 'Removed_At'];
+
+var SRM_MIN_WORDS_ = 5, SRM_MAX_WORDS_ = 200, SRM_MAX_CHARS_ = 3000;
+
+var GR_URL_DEFAULT_ = 'https://g.page/r/CUwNOLbnb2InEAE/review';
+
+var GR_MESSAGE_ = 'Avvaiyar Padasalai America would love your feedback. Post a review.';
+
+var GR_PROMPT_PROP_PREFIX_ = 'GOOGLE_REVIEW_PROMPT_';
+
+var ADS_SHEET_ = 'Student_Add_Audit';
+
+var ADS_HEADER_ = ['Request_ID', 'Requested_At', 'Requested_By', 'Requested_By_Role', 'Action', 'Student_Name', 'Student_APSID', 'Student_Email',
+  'Existing_Classroom_Count', 'Existing_Classroom_Names', 'Existing_Classroom_Types', 'New_Classroom_Name', 'New_Course_ID', 'New_Classroom_Type', 'Override_Reason', 'Source',
+  'Status', 'Verification_Status', 'Sheet_Update_Status', 'Email_Status', 'Email_Recipients', 'Result_Message', 'Error', 'Completed_At', 'Zoho_Student_ID'];
+
+var ADS_MULTI_ACK_ = 'I understand this student will be enrolled in more than one Regular Academic Classroom.';
+
+var CCT_SHEET_ = 'Class_Coverage_Tracking';
+
+var CCT_HEADER_ = ['Record_ID', 'Week_ID', 'Course_ID', 'Class_Name', 'Teacher_Name', 'Teacher_Email', 'Teacher_Availability',
+  'Coverage_Status', 'Coverage_Status_Label', 'Action_Taken', 'Updated_At_EST', 'Updated_By', 'Updated_By_Role', 'Created_At_EST', 'Created_By', 'Request_ID'];
+
+var CCT_AUDIT_SHEET_ = 'Class_Coverage_Tracking_Audit';
+
+var CCT_AUDIT_HEADER_ = ['Audit_ID', 'Date_Time_EST', 'Week_ID', 'Course_ID', 'Class_Name', 'Changed_By', 'Changed_By_Role',
+  'Previous_Status', 'New_Status', 'Previous_Action', 'New_Action', 'Request_ID'];
+
+var CCT_STATUSES_ = [
+  { code: 'PENDING_COVERAGE', label: 'Pending Coverage', group: 'pending' },
+  { code: 'SUBSTITUTE_ASSIGNED', label: 'Substitute Assigned', group: 'covered' },
+  { code: 'HM_COVERED', label: 'HM Covered', group: 'covered' },
+  { code: 'VP_COVERED', label: 'VP Covered', group: 'covered' },
+  { code: 'PARENT_VOLUNTEER_ASSIGNED', label: 'Parent Volunteer Assigned', group: 'covered' },
+  { code: 'ON_CALL_TEACHER_ASSIGNED', label: 'On-Call Teacher Assigned', group: 'covered' },
+  { code: 'ORIGINAL_TEACHER_COVERED', label: 'Original Teacher Covered', group: 'covered' },
+  { code: 'CLASS_RESCHEDULED', label: 'Class Rescheduled', group: 'rescheduled' },
+  { code: 'CLASS_CANCELLED', label: 'Class Cancelled', group: 'cancelled' },
+  { code: 'CLASS_NOT_COVERED', label: 'Class Not Covered', group: 'notCovered' }
+];
+
+var CCT_ACTION_MAX_ = 300;
+
+var CCT_WEEKS_BACK_ = 12, CCT_WEEKS_AHEAD_ = 2;
+
+var ZOHO_SYNC_SPREADSHEET_ID_DEFAULT_ = '1rfPGPBmyEi7h2nyOwkbu9OVw9NS0c4s4iLZ1w91Ok0Q';
+
+var ZH_LOG_SHEET_ = 'ZOHO_STUDENT_CONTACT_SYNC_LOG';
+
+var ZH_LOG_HEADER_ = ['Log ID', 'Run ID', 'Date/Time (EST)', 'Admin', 'Operation', 'Student Email', 'Student Name', 'APSID', 'Zoho Record ID',
+  'Old Google Classroom', 'New Google Classroom', 'Old Grade', 'New Grade', 'Old Teacher Name', 'New Teacher Name', 'Old Teacher Email', 'New Teacher Email', 'Status', 'Message', 'All Field Changes'];
+
+var ZH_SOURCES_ = [
+  { key: 'studentEmail', label: 'Student APS Email', group: 'Student' },
+  { key: 'studentName', label: 'Student Name', group: 'Student' },
+  { key: 'apsId', label: 'APSID', group: 'Student' },
+  { key: 'classroom', label: 'Google Classroom – full name', group: 'Class' },
+  { key: 'classShort', label: 'Google Classroom – short name (e.g. NILAI 4 - EA)', group: 'Class' },
+  { key: 'grade', label: 'Grade / Nilai (e.g. Nilai 4)', group: 'Class' },
+  { key: 'section', label: 'Section (e.g. EA)', group: 'Class' },
+  { key: 'classDay', label: 'Class day (e.g. Friday)', group: 'Class' },
+  { key: 'classTime', label: 'Class time (e.g. 6:30 PM – 8:00 PM EST)', group: 'Class' },
+  { key: 'classSchedule', label: 'Class day + time (e.g. FRI 6:30 PM – 8:00 PM EST)', group: 'Class' },
+  { key: 'academicYear', label: 'Academic year (e.g. 2026-2027)', group: 'Class' },
+  { key: 'courseId', label: 'Google Classroom course ID', group: 'Class' },
+  { key: 'classroomLink', label: 'Google Classroom link', group: 'Class' },
+  { key: 'teacherName', label: 'Class Teacher – name', group: 'People' },
+  { key: 'teacherEmail', label: 'Class Teacher – email', group: 'People' },
+  { key: 'vpName', label: 'VP – name', group: 'People' },
+  { key: 'vpEmail', label: 'VP – email', group: 'People' },
+  { key: 'hmName', label: 'HM – name', group: 'People' },
+  { key: 'hmEmail', label: 'HM – email', group: 'People' },
+  { key: 'syncDate', label: 'Date of this sync (Eastern)', group: 'Other' },
+  { key: 'FIXED', label: 'Fixed value (always the Default value)', group: 'Other' }
+];
+
+var ZH_JOB_PROP_ = 'ZOHO_SYNC_JOB', ZH_JOB_SEL_PROP_ = 'ZOHO_SYNC_JOB_SEL_', ZH_CONTINUE_HANDLER_ = 'apsZohoSyncContinue';
+
+var ZH_DAY_NAMES_ = { SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday' };
+
+var SC_SPREADSHEET_ID_DEFAULT_ = '1itBHvjvjPwQc4BUJMenFdDoqKcSKutjk10v5F_NlpcE';
+
+var SC_SHEET_DEFAULT_ = 'APS_SPECIAL_CLASSES_LIVE';
+
+var SC_CACHE_KEY_ = 'aps_special_classes_v1';
+
+var SC_CACHE_SECONDS_ = 600;
+
+var SC_FIELDS_ = [ // key, header (canonical), extra accepted header spellings
+  ['id', 'Special Class ID', ['specialclassid', 'classid', 'id']], ['title', 'Title', []], ['description', 'Description', []], ['audience', 'Audience', []], ['mode', 'Mode', []],
+  ['programStart', 'Program Start Date', ['programstart']], ['programEnd', 'Program End Date', ['programend']], ['enrollStart', 'Enrollment Start Date', ['enrollmentstart', 'registrationstartdate']],
+  ['enrollEnd', 'Enrollment End Date', ['enrollmentend', 'registrationenddate']], ['fees', 'Fees', ['fee']], ['startTime', 'Class Start Time', ['starttime']], ['endTime', 'Class End Time', ['endtime']],
+  ['link', 'Registration Link', ['registrationurl', 'registerlink']], ['status', 'Status', ['activeinactive']], ['order', 'Display Order', ['order', 'sortorder']],
+  ['createdAt', 'Created Date', ['createdat']], ['createdBy', 'Created By', []], ['updatedAt', 'Updated Date', ['updatedat']], ['updatedBy', 'Updated By', []],
+  ['modeDetails', 'Mode Details', []], ['classDay', 'Class Day', ['classdays', 'day']], ['registrationMode', 'Registration Mode', []],
+  // r79 (Admin-customisable + ready for native enrollment → Google Classroom mapping by the student's preferred option)
+  ['icon', 'Card Icon', ['icon']], ['instructor', 'Instructor / Coordinator', ['instructor', 'coordinator']], ['infoLink', 'More Info Link', ['infolink', 'informationlink']],
+  ['maxSeats', 'Maximum Seats', ['maxseats', 'seats']], ['classroomId', 'Google Classroom ID', ['classroomid', 'googleclassroom']],
+  ['enrollmentOptions', 'Enrollment Options', ['options', 'batches', 'preferences']],
+  ['classLink', 'Class Link (enrolled only)', ['classlink', 'meetlink', 'zoomlink', 'joinlink']]
+];
+
+var SC_AUDIENCES_ = [{ code: 'STUDENTS_ONLY', label: 'Students Only' }, { code: 'TEACHERS_ONLY', label: 'Teacher Only' }, { code: 'STUDENTS_AND_TEACHERS', label: 'Both Student and Teachers' }, { code: 'ALL', label: 'All' }];
+
+var SC_MODES_ = [{ code: 'GOOGLE_CLASSROOM_MEET', label: 'Google Classroom - Google Meet' }, { code: 'ZOOM', label: 'Zoom Meeting' }, { code: 'OTHER', label: 'Others' }];
+
+var SC_STATES_ = {
+  OPEN: { code: 'OPEN', icon: '🟢', label: 'Registration Open' }, UPCOMING: { code: 'UPCOMING', icon: '🕐', label: 'Registration Opens Soon' },
+  CLOSED: { code: 'CLOSED', icon: '🔴', label: 'Registration Closed' }, COMPLETED: { code: 'COMPLETED', icon: '⚫', label: 'Program Completed' },
+  NONE: { code: 'NONE', icon: 'ℹ️', label: 'Registration details coming soon' }
+};
+
+var SC_MONTHS_ = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+var SC_STATE_RANK_ = { OPEN: 0, UPCOMING: 1, CLOSED: 2, NONE: 3, COMPLETED: 5 };
+
+var SC_UNAVAILABLE_MSG_ = 'Special Classes are temporarily unavailable. Please try again later.';
+
+var SC_SETTINGS_PROPS_ = { showCompleted: 'SPECIAL_CLASSES_SHOW_COMPLETED', intro: 'SPECIAL_CLASSES_INTRO_TEXT', emptyText: 'SPECIAL_CLASSES_EMPTY_TEXT' };
+
+var SC_ENR_SHEET_ = 'APS_SPECIAL_CLASSES_ENROLLMENTS';
+
+var SC_ENR_HEADER_ = ['Enrollment_ID', 'Special_Class_ID', 'User_Email', 'User_APSID', 'User_Name', 'Role', 'Enrollment_Option', 'Google_Classroom_ID', 'Enrollment_Status',
+  'Payment_Status', 'Enrollment_Date', 'Source', 'Added_By', 'Updated_At', 'Updated_By', 'Classroom_Mapping_Status', 'Notes'];
+
+var SC_ENR_STATUSES_ = ['ENROLLED', 'WAITLISTED', 'CANCELLED'];
+
+var SC_PAY_STATUSES_ = ['NOT_REQUIRED', 'PENDING', 'PAID', 'WAIVED'];
+
+var SC_ENR_CACHE_KEY_ = 'aps_special_classes_enr_v1';
+
+var AM_CONFIG_PROP_ = 'ASSIGNMENT_MONITORING_CONFIG';
+
+var AM_OV_SHEET_ = 'AM_Overrides';
+
+var AM_OV_HEADER_ = ['Override_ID', 'Created_At', 'Created_By', 'Kind', 'Course_ID', 'Class_Name', 'CourseWork_ID', 'Assignment', 'Student_Email', 'Student_APSID', 'Type', 'Reason', 'Active', 'Removed_At', 'Removed_By'];
+
+var AM_LOG_SHEET_ = 'AM_Notification_Log';
+
+var AM_LOG_HEADER_ = ['Logged_At', 'Notification_Key', 'Channel', 'Stage', 'Course_ID', 'Class_Name', 'CourseWork_ID', 'Assignment', 'Recipient', 'Student_Email', 'Student_APSID', 'Result', 'Details', 'Triggered_By'];
+
+var AM_STAGES_ = ['R48', 'R24', 'DUE_DAY', 'MISSING'];
+
+var AM_STATUS_LABEL_ = { NOT_STARTED: 'Not started', TURNED_IN: 'Turned in', GRADED: 'Graded', RETURNED: 'Returned', MISSING: 'Missing', UNGRADED: 'Submitted, not graded', EXCLUDED: 'Excluded' };
+
+var AM_OFF_MSG_ = 'Assignment & Grading Monitoring is turned off by the APS administrator.';
+
+var AM_GRADE_STEPS_ = ['Open Google Classroom (classroom.google.com) with your APS account.', 'Select the class.', 'Select Classwork.', 'Open the assignment.', 'Open Student Work.',
+  'Review the student\'s submission.', 'Enter the grade.', 'Click Return.'];
+
+var AM_MEMO_ = { cfg: null, ov: null };
+
+var AM_NUM_LIMITS_ = { r48Hours: [2, 240], r24Hours: [1, 120], finalHours: [1, 24], missingWindowHours: [1, 336], teacherActionEveryDays: [1, 30], teacherDailyHour: [0, 23], weeklyHour: [0, 23],
+  missingAfterHours: [0, 336], gradingGraceDays: [0, 60], repeatMissing: [1, 20], vpHmUngradedBacklog: [1, 500], adminAfterDays: [1, 90], classRedMissingPct: [1, 100], classRedUngraded: [1, 500],
+  classRedRepeatStudents: [1, 100], assignmentRedPct: [1, 100], lookbackDays: [1, 180], aheadDays: [0, 60], maxEmailsPerRun: [1, 1000] };
+
+var AM_MAX_ITEMS_ = 4000;
+
+var TTM_SHEET_ = 'TEMP_TEACHER_ASSIGNMENTS';
+
+var TTM_HEADER_ = ['Assignment_ID', 'Classroom_ID', 'Classroom_Name', 'Section', 'Primary_Teacher_Name', 'Primary_Teacher_Email', 'Temp_Teacher_Name', 'Temp_Teacher_APSID', 'Temp_Teacher_Email',
+  'Start_Date', 'Removal_Date', 'Reason', 'Created_By', 'Created_By_Email', 'Created_By_Role', 'Created_Timestamp',
+  'Status', 'Added_Timestamp', 'Removed_Timestamp', 'Removed_By', 'Last_Process_Timestamp', 'Last_Process_Status', 'Last_Error', 'Add_Email_Sent', 'Removal_Email_Sent', 'Manual_Action',
+  'Failed_Stage', 'Failure_Email_Sent', 'Cancelled_By', 'Cancelled_Timestamp', 'Attempts'];
+
+var TTM_OPEN_ = { SCHEDULED: 1, ACTIVE: 1, FAILED: 1 };
+
+var TTM_MIN_WORDS_ = 5, TTM_MAX_WORDS_ = 200;
+
+var TTM_MSG_ = {
+  noPerm: 'You do not have permission to perform this action.',
+  classroom: 'Unable to access this Google Classroom. Please verify that the classroom is active and accessible.',
+  account: 'The selected teacher\'s APS Google account could not be verified.',
+  add: 'Temporary teacher could not be added to the Google Classroom. Please try again or contact APS Admin.',
+  removal: 'Automatic removal could not be completed. APS Admin has been notified.',
+  already: 'This teacher is already assigned as a Teacher in this Google Classroom.',
+  overlap: 'This classroom already has a temporary teacher assignment that overlaps the selected dates.',
+  student: 'This email belongs to a student account. Enter a teacher\'s APS email address.' // r98
+};
+
+var TTM_CARD_CACHE_ = 'ttm_cards_v1';
+
+var TTM_TCS_SHEET_ = 'TCS_ONCALL_TEACHER_LIST', TTM_TCS_EMAIL_COL_ = 5, TTM_TCS_CACHE_KEY_ = 'ttm_tcs_list_v1';
+
+var LV_SHEET_ = 'APS_LEAVE_REQUESTS';
+
+var LV_HEADER_ = ['Leave_ID', 'Request_ID', 'APSID', 'User_Email', 'User_Name', 'Role', 'Leave_Start_Date', 'Leave_End_Date', 'Reason',
+  'Submitted_DateTime', 'Submitted_By', 'Affected_Classes', 'Zoho_Student_ID',
+  'Status', 'Notification_Status', 'Notification_Detail', 'Attendance_Override_Status', 'Comments', 'Updated_At', 'Updated_By'];
+
+var LV_STATUS_ = { APPLIED: 'APPLIED', APPROVED: 'APPROVED', REJECTED: 'REJECTED', CANCELLED: 'CANCELLED' };
+
+var CCW_EXCLUDE_DEFAULT_ = '^NILAI\\s*99\\b|ON\\s*CALL';
+
+var DS_TA_MONTHS_ = ['ஜனவரி', 'பிப்ரவரி', 'மார்ச்', 'ஏப்ரல்', 'மே', 'ஜூன்', 'ஜூலை', 'ஆகஸ்ட்', 'செப்டம்பர்', 'அக்டோபர்', 'நவம்பர்', 'டிசம்பர்'];
+
+var DS_EN_MONTHS_ = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+var SL_SHEET_ = 'APS_SCHOOL_LEAVES';
+
+var SL_HEADER_ = ['Leave_ID', 'Leave_Title', 'Start_Date', 'End_Date', 'Reason', 'Leave_Type', 'Status', 'Created_By', 'Created_At', 'Updated_By', 'Updated_At',
+  'Approved_By', 'Approved_At', 'Notification_Status', 'Notification_Sent_At', 'Change_Version', 'Notified_Version'];
+
+var SL_AUDIT_SHEET_ = 'APS_SCHOOL_LEAVE_AUDIT_LOG';
+
+var SL_AUDIT_HEADER_ = ['Audit_ID', 'Leave_ID', 'Action', 'Old_Value', 'New_Value', 'Performed_By', 'Timestamp'];
+
+var SL_TYPES_ = ['School Holiday', 'Festival Holiday', 'Emergency Closure', 'Weather Closure', 'Administrative Holiday', 'Other'];
+
+var SL_STATUS_ = { DRAFT: 'DRAFT', APPROVED: 'APPROVED', CANCELLED: 'CANCELLED' };
+
+var SL_CACHE_KEY_ = 'aps_school_leaves_v1';
+
+var SL_MEMO_ = { list: null, enabled: null, seen: {} };
+
+var SL_EMAIL_SHEET_ = 'APS_SCHOOL_LEAVE_EMAIL_LOG';
+
+var SL_EMAIL_HEADER_ = ['Log_ID', 'Leave_ID', 'Recipients', 'Email_Subject', 'Sent_At', 'Status', 'Error_Message', 'Triggered_By', 'Version', 'Kind'];
+
+var SL_LISTS_DEFAULT_ = ['students@avvaiyarpadasalai.org', 'teachers@avvaiyarpadasalai.org', 'admin@avvaiyarpadasalai.org', 'allparents2026_2027@avvaiyarpadasalai.org'];
+
+var TA_SCORES_SHEET_ = 'TEACHER_APPRECIATION_SCORES', TA_RUNS_SHEET_ = 'TEACHER_APPRECIATION_RUNS';
+
+var TA_CONFIG_SHEET_ = 'TEACHER_APPRECIATION_CONFIG', TA_CONFIG_AUDIT_SHEET_ = 'TEACHER_APPRECIATION_CONFIG_AUDIT';
+
+var TA_SCORES_HEADER_ = ['Score_Key', 'Week_ID', 'Week_Start', 'Week_End', 'Teacher_APSID', 'Teacher_Email', 'Teacher_Name', 'Nilai', 'Classes',
+  'Classes_Scheduled', 'Classes_Held', 'Classes_Excluded', 'Completion', 'Punctuality', 'Student_Attendance', 'Engagement', 'Grading', 'Consistency',
+  'Submission_Rate', 'Coverage_Pct', 'Score', 'Band', 'Data_Status', 'Eligible', 'Highlights', 'Reasons', 'Details', 'Config_Version', 'Evaluated_At', 'Evaluated_By', 'Run_ID'];
+
+var TA_RUNS_HEADER_ = ['Run_ID', 'Week_ID', 'Started_At', 'Finished_At', 'Trigger', 'Run_By', 'Mode', 'Phase', 'Teachers_Active', 'Teachers_Scored',
+  'Exceptional', 'Outstanding', 'Good', 'Improvement', 'Insufficient', 'Eligible', 'Emails_Sent', 'Emails_Failed', 'Emails_Pending', 'Admin_Report', 'Result', 'Error', 'Summary'];
+
+var TA_CONFIG_HEADER_ = ['Setting', 'Value', 'Updated_At', 'Updated_By'];
+
+var TA_TZ_ = 'America/New_York';
+
+var TA_METRICS_ = ['completion', 'punctuality', 'attendance', 'engagement', 'grading', 'consistency'];
+
+var TA_METRIC_LABELS_ = { completion: 'Class completion', punctuality: 'Teacher punctuality', attendance: 'Student attendance', engagement: 'Engagement (lesson work posted)',
+  grading: 'Grading follow-up', consistency: 'Classroom activity consistency' };
+
+var TA_ITEM_PREFIX_ = { ATT: 'ATTENDANCE', HW: 'HOMEWORK', QUZ: 'QUIZ' };
+
+var TA_DEFAULTS_ = {
+  weights: { completion: 25, punctuality: 15, attendance: 20, engagement: 20, grading: 10, consistency: 10 },
+  bands: { exceptional: 90, outstanding: 85, good: 75 },
+  appreciateMin: 85, minCoverage: 70, heldPct: 60,
+  punctuality: { full: 2, good: 5, fair: 10 },          // minutes after the start: ≤2 = 100, ≤5 = 80, ≤10 = 50, later = 0
+  attendanceTarget: 80, gradingDays: 7, gradingLookbackWeeks: 4, consistencyWeeks: 4, submissionHighlight: 70,
+  monthlyMinWeeks: 3, monthlyQualPct: 75, gradeSyncMaxHours: 30,
+  adminEmails: ['admin@avvaiyarpadasalai.org'],
+  expected: { DEFAULT: ['ATT', 'HW', 'QUZ'] }
+};
+
+var TA_BAND_ = { EXCEPTIONAL: 'EXCEPTIONAL', OUTSTANDING: 'OUTSTANDING', GOOD: 'GOOD', IMPROVEMENT: 'IMPROVEMENT_OPPORTUNITY', INSUFFICIENT: 'INSUFFICIENT_DATA' };
+
+var TA_BAND_LABEL_ = { EXCEPTIONAL: 'Exceptional', OUTSTANDING: 'Outstanding', GOOD: 'Good', IMPROVEMENT_OPPORTUNITY: 'Improvement Opportunity', INSUFFICIENT_DATA: 'Insufficient data' };
+
+var TA_CLASS_STATUS_ = { HELD: 'HELD', HOLIDAY: 'SCHOOL_LEAVE', CANCELLED: 'CANCELLED', LEAVE: 'TEACHER_LEAVE', COVERED: 'COVERED', NOT_VERIFIED: 'NOT_VERIFIED', COVERING: 'COVERING' };
+
+var TA_EMAILS_PROP_ = 'TEACHER_APPRECIATION_EMAILS', TA_CONT_PROP_ = 'TEACHER_APPRECIATION_CONTINUE';
+
+var TA_HIGHLIGHT_EN_ = { ALL_CLASSES: 'Conducted every class in full', ON_TIME: 'Started every class on time', ATTENDANCE: 'Strong student attendance', POSTED: 'Posted the lesson work (attendance, homework, quiz) on time',
+  GRADING: 'Graded and returned students’ work promptly', CONSISTENT: 'Posted classroom work every week for the last weeks', SUBMISSIONS: 'Most students submitted their work' };
+
+var TA_EMAIL_SHEET_ = 'TEACHER_APPRECIATION_EMAIL_LOG';
+
+var TA_EMAIL_HEADER_ = ['Email_Key', 'Type', 'Period_ID', 'Period_Label', 'Teacher_APSID', 'Teacher_Email', 'Teacher_Name', 'Status', 'Mode', 'Attempts',
+  'First_Attempt_At', 'Last_Attempt_At', 'Sent_At', 'Subject', 'Highlights', 'Error', 'Run_ID'];
+
+var TA_HIGHLIGHT_TA_ = {
+  ALL_CLASSES: 'இந்த வாரம் உங்கள் எல்லா வகுப்புகளையும் முழுமையாக நடத்தினீர்கள்.',
+  ON_TIME: 'ஒவ்வொரு வகுப்பையும் சரியான நேரத்தில் தொடங்கினீர்கள்.',
+  ATTENDANCE: 'உங்கள் வகுப்பில் மாணவர்களின் வருகை சிறப்பாக இருந்தது.',
+  POSTED: 'பாடத்திற்கான வருகை, வீட்டுப்பாடம், வினாடி வினா பணிகளை உரிய நேரத்தில் Google Classroom-இல் பதிவிட்டீர்கள்.',
+  GRADING: 'மாணவர்கள் சமர்ப்பித்த பணிகளை விரைவாக மதிப்பீடு செய்து திருப்பி அளித்தீர்கள்.',
+  CONSISTENT: 'கடந்த சில வாரங்களாகத் தொடர்ந்து ஒவ்வொரு வாரமும் வகுப்புப் பணிகளை வழங்கி வருகிறீர்கள்.',
+  SUBMISSIONS: 'உங்கள் ஊக்கத்தால் பெரும்பாலான மாணவர்கள் தங்கள் பணிகளைச் சமர்ப்பித்துள்ளனர்.'
+};
+
+var TA_OPENINGS_TA_ = [
+  'இந்த வாரம் உங்கள் வகுப்பில் நீங்கள் காட்டிய அர்ப்பணிப்பு எங்களை மிகவும் மகிழ்விக்கிறது. உங்கள் சேவைக்கு எங்கள் மனமார்ந்த நன்றியும் பாராட்டுகளும்!',
+  'தமிழ் கற்பிப்பதில் நீங்கள் காட்டும் ஆர்வமும் உழைப்பும் எங்கள் மாணவர்களுக்குப் பெரும் ஊக்கமாக உள்ளது. இந்த வாரமும் சிறப்பாகப் பணியாற்றியதற்கு நன்றி!',
+  'ஒவ்வொரு வாரமும் நீங்கள் வழங்கும் தன்னலமற்ற சேவைக்கு ஔவையார் பாடசாலை என்றும் கடமைப்பட்டுள்ளது. இந்த வாரம் உங்கள் பணி மிகச் சிறப்பாக இருந்தது!',
+  'உங்களைப் போன்ற தன்னார்வ ஆசிரியர்களே எங்கள் பள்ளியின் பலம். இந்த வாரம் நீங்கள் ஆற்றிய சிறந்த பணிக்கு எங்கள் உளமார்ந்த பாராட்டுகள்!'
+];
+
+var TA_CLOSINGS_TA_ = [
+  'உங்கள் தொடர்ந்த சேவைக்கு மீண்டும் நன்றி. தொடர்ந்து தமிழ் வளர்ப்போம்!',
+  'உங்கள் வழிகாட்டுதலால் எங்கள் மாணவர்கள் தமிழில் நாளுக்கு நாள் வளர்கிறார்கள். மிக்க நன்றி!'
+];
+
+var MHG_PROP_ = 'MISSING_GRADING_CONFIG', MHG_HANDLER_ = 'apsMissingGradingWeekly';
+
+var MHG_CATS_ = { HW: { label: 'Homework', cat: 'HOMEWORK' }, QUZ: { label: 'Quiz', cat: 'QUIZ' }, TRMST: { label: 'Project', cat: 'PROJECT WORK' } };
+
+var MHG_KIND_LABEL_ = { NOT_GRADED: 'Not graded', DRAFT_NOT_RETURNED: 'Draft grade — needs Return', GRADED_NOT_RETURNED: 'Grade entered — not returned' };
+
+var MHG_TZ_ = 'America/New_York';
+
+var APC_KEYS_ = {};
+
+var APC_DOMAIN_ = '@avvaiyarpadasalai.org';
+
+var APC_LL_SLOTS_ = ['gc', 'gm', 'db'];
+
+var UC_SHEET_ = 'USER_COUNTRY';
+
+var UC_HEADER_ = ['Email', 'APSID', 'Name', 'Role', 'Country_Code', 'Country_Name', 'Source', 'First_Seen', 'Updated_At', 'Updated_By'];
+
+var UC_CACHE_KEY_ = 'aps_user_country_v1';
+
+var UC_MEMO_ = null;
+
+var APS_REQ_MEMO_ = null;
 
 function extractMeetCode_(input) {
   var s = String(input || '').trim();
@@ -669,6 +1666,4358 @@ function ttmFmtDate_(ymd) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd 
 function ttmCanUse_(role, email) { return (isAdminRole_(role) || role === 'headmaster' || role === 'teacher' || ttmIsCoordinator_(role, normalizeEmail_(email))) && apsTabAllowed_(role, 'classes.tempTeacher'); }
 
 function ttmIsCoordinator_(role, email) { return role === VCFO_AMCHSTS_BOD_ROLE && isOnCallCoordinatorEmail_(email); }
+
+function apcIso_(t) { return new Date(parseInt(t, 36)).toISOString(); }
+
+function acItem_(key) { for (var i = 0; i < AC_CATALOG_.length; i++) if (AC_CATALOG_[i].key === key) return AC_CATALOG_[i]; return null; }
+
+function apcKeyOut_(k) { return k.charAt(k.length - 1) === '@' ? k + APC_DOMAIN_.slice(1) : k; }
+
+function apcVal_(kind, v) { // compact value → original
+  if (Array.isArray(v)) return v[0];
+  if (kind === 'ob') return apcIso_(v);
+  var p = String(v).split(','), o = {};
+  APC_LL_SLOTS_.forEach(function (s, i) { if (p[i]) o[s] = apcIso_(p[i]); });
+  return o;
+}
+
+function rosterSheet_(name, header) {
+  var ss = getWorkbook_();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (sheet.getMaxColumns() < header.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), header.length - sheet.getMaxColumns());
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    return { sheet: sheet, header: header.slice() };
+  }
+  var width = Math.max(1, sheet.getLastColumn());
+  var current = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  if (!current.some(Boolean)) current = [];
+  var missing = header.filter(function (h) { return current.indexOf(h) === -1; });
+  if (missing.length) {
+    var start = current.length + 1;
+    if (sheet.getMaxColumns() < current.length + missing.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), current.length + missing.length - sheet.getMaxColumns());
+    sheet.getRange(1, start, 1, missing.length).setValues([missing]).setFontWeight('bold');
+    current = current.concat(missing);
+  }
+  return { sheet: sheet, header: current };
+}
+
+function acOverridesRaw_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get(AC_CACHE_KEY_);
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* re-read */ } }
+  var out = {}, meta = { at: '', by: '' };
+  try {
+    var sh = getWorkbook_().getSheetByName(AC_SHEET_);
+    if (sh && sh.getLastRow() > 1) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, AC_HEADER_.length).getValues().forEach(function (r) {
+        var role = String(r[0] || '').trim().toLowerCase(), key = String(r[1] || '').trim();
+        if (AC_ROLES_.indexOf(role) < 0 || !acItem_(key)) return;
+        (out[role] = out[role] || {})[key] = String(r[3]).toUpperCase() === 'TRUE' || r[3] === true;
+        var at = r[4] instanceof Date ? r[4].toISOString() : String(r[4] || '');
+        if (at && at > meta.at) { meta.at = at; meta.by = String(r[5] || ''); }
+      });
+    }
+  } catch (e) { console.warn('[AccessControl] read failed — defaults used: ' + (e && e.message)); }
+  out.__meta = meta;
+  try { cache.put(AC_CACHE_KEY_, JSON.stringify(out), 600); } catch (e2) { /* ignore */ }
+  return out;
+}
+
+function scNorm_(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function scCodeOf_(list, v) {
+  var n = scNorm_(v); if (!n) return '';
+  for (var i = 0; i < list.length; i++) if (scNorm_(list[i].code) === n || scNorm_(list[i].label) === n) return list[i].code;
+  if (list === SC_AUDIENCES_) { if (/^(students?|studentonly)$/.test(n)) return 'STUDENTS_ONLY'; if (/^teachers?(only)?$/.test(n)) return 'TEACHERS_ONLY'; if (/both|studentsandteachers|studentandteachers/.test(n)) return 'STUDENTS_AND_TEACHERS'; }
+  if (list === SC_MODES_) { if (/zoom/.test(n)) return 'ZOOM'; if (/meet|classroom/.test(n)) return 'GOOGLE_CLASSROOM_MEET'; if (/other/.test(n)) return 'OTHER'; }
+  return '';
+}
+
+function scDate_(v) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : Utilities.formatDate(v, APS_TZ, 'yyyy-MM-dd');
+  var t = String(v).trim(), m;
+  if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) return tccDateParts_(m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : null;
+  if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) { var s = m[3] + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2); return tccDateParts_(s) ? s : null; }
+  return null;
+}
+
+function scTime_(v, tz) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : Utilities.formatDate(v, tz || APS_TZ, 'h:mm a');
+  var t = String(v).trim().toUpperCase(), m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/.exec(t);
+  if (!m) return null;
+  var h = Number(m[1]), mi = Number(m[2]);
+  if (mi > 59 || (m[3] ? (h < 1 || h > 12) : h > 23)) return null;
+  if (!m[3]) { m[3] = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; }
+  return h + ':' + ('0' + mi).slice(-2) + ' ' + m[3];
+}
+
+function scSafeUrl_(u) {
+  var t = String(u || '').trim();
+  if (!t) return '';
+  return /^https?:\/\/[^\s"'<>\\]+$/i.test(t) && t.length <= 2000 ? t : null;
+}
+
+function scParseOptions_(txt) {
+  if (!String(txt || '').trim()) return [];
+  try {
+    var a = JSON.parse(txt);
+    return (Array.isArray(a) ? a : []).slice(0, 20).map(function (o) {
+      var seats = Number(o && o.seats);
+      return { label: String(o && o.label || '').trim().slice(0, 100), classroomId: /^\d{6,20}$/.test(String(o && o.classroomId || '')) ? String(o.classroomId) : '', seats: seats >= 1 && seats <= 10000 && Math.floor(seats) === seats ? seats : null };
+    }).filter(function (o) { return o.label; });
+  } catch (e) { console.warn('[SpecialClasses] Enrollment Options is not valid JSON — ignored'); return []; }
+}
+
+function apsBigStore_() { return PropertiesService.getUserProperties(); }
+
+function apcIsC_(o) { return !!(o && typeof o === 'object' && o._c === 2 && o.e && typeof o.e === 'object'); }
+
+function apcDecodeObj_(o, kind) {
+  if (!apcIsC_(o)) return o;
+  kind = kind || o.k || 'll';
+  var out = {};
+  Object.keys(o.e).forEach(function (k) { out[apcKeyOut_(k)] = apcVal_(kind, o.e[k]); });
+  return out;
+}
+
+function srmFmt_(iso) { var d = new Date(iso); return iso && !isNaN(d.getTime()) ? Utilities.formatDate(d, APS_TZ, 'MM/dd/yyyy h:mm a') + ' ' + (typeof tccTzAbbrev_ === 'function' ? tccTzAbbrev_(d) : 'ET') : ''; }
+
+function amDefaults_() {
+  return {
+    enabled: true,
+    types: [
+      { code: 'ATT', label: 'Attendance', patterns: ['ATT'], monitor: true, missing: true, grading: true },
+      { code: 'HW', label: 'Homework', patterns: ['HW'], monitor: true, missing: true, grading: true },
+      { code: 'QUIZ', label: 'Quiz', patterns: ['QUIZ', 'QUZ'], monitor: true, missing: true, grading: true }
+    ],
+    studentEmails: false, stages: { R48: true, R24: true, DUE_DAY: true, MISSING: true },
+    r48Hours: 48, r24Hours: 24, finalHours: 6, missingWindowHours: 72,
+    teacherActionEmails: false, teacherActionEveryDays: 3, teacherDailyHour: 19, teacherWeeklyEmails: false, adminWeeklyEmails: false, weeklyHour: 7,
+    missingAfterHours: 24, gradingGraceDays: 3, repeatMissing: 2, vpHmUngradedBacklog: 5, adminAfterDays: 7,
+    classRedMissingPct: 25, classRedUngraded: 5, classRedRepeatStudents: 2, assignmentRedPct: 30,
+    lookbackDays: 21, aheadDays: 7, maxEmailsPerRun: 150, trainingUrl: ''
+  };
+}
+
+function amDayStart_(ymd) { return /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '')) ? String(ymd) + ' 00:00:00' : ''; }
+
+function amDayEnd_(ymd) { return /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '')) ? String(ymd) + ' 23:59:59' : ''; }
+
+function amOvRows_() {
+  var sh = getWorkbook_().getSheetByName(AM_OV_SHEET_);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, AM_OV_HEADER_.length).getValues().map(function (r, i) {
+    var o = { _row: i + 2 }; AM_OV_HEADER_.forEach(function (h, j) { o[h] = r[j] instanceof Date ? r[j].toISOString() : String(r[j] === null || r[j] === undefined ? '' : r[j]); }); return o;
+  });
+}
+
+function rosterLoadTable_(name, header, keyColumn) {
+  var t = rosterSheet_(name, header);
+  t.col = {};
+  t.header.forEach(function (h, i) { t.col[h] = i; });
+  var last = t.sheet.getLastRow();
+  t.rows = last >= 2 ? t.sheet.getRange(2, 1, last - 1, t.header.length).getValues().map(function (r) { return r.map(function (v) { return v === null || v === undefined ? '' : String(v); }); }) : [];
+  t.byKey = {};
+  if (keyColumn) t.rows.forEach(function (r, i) { var k = r[t.col[keyColumn]]; if (k && t.byKey[k] === undefined) t.byKey[k] = i; });
+  return t;
+}
+
+function rosterGet_(t, row, name) { return row[t.col[name]]; }
+
+function canViewAllDashboardFilters_(role) {
+  return getDashboardRolePermission_(role).filters && (isAdminOrHm_(role) || role === VCFO_AMCHSTS_BOD_ROLE);
+}
+
+function examQpStudentTeacherAccessEnabled_() {
+  return String(PropertiesService.getScriptProperties().getProperty('EXAM_QUESTION_PAPER_STUDENT_TEACHER_ACCESS') || 'false').trim().toLowerCase() === 'true';
+}
+
+function rosterEnabled_() {
+  if (ROSTER_MEMO_.enabled !== null) return ROSTER_MEMO_.enabled;
+  var cache = CacheService.getScriptCache(), c = null;
+  try { c = cache.get('rosterEnabled'); } catch (e) { c = null; }
+  if (c === null || c === undefined) {
+    c = String(rosterProp_('APS_CLASSROOM_ROSTER_ENABLED', 'true')).trim().toLowerCase() === 'false' ? '0' : '1';
+    try { cache.put('rosterEnabled', c, 300); } catch (e) { /* ignore */ }
+  }
+  ROSTER_MEMO_.enabled = c === '1';
+  return ROSTER_MEMO_.enabled;
+}
+
+function classRolesPrimary_(roles) {
+  var best = 'TEACHER';
+  (roles || []).forEach(function (r) { if (CLASS_ROLE_RANK_[r] > CLASS_ROLE_RANK_[best]) best = r; });
+  return best === 'PRIMARY_TEACHER' ? 'TEACHER' : best;
+}
+
+function acOverrides_() { return apsReqMemo_('acOverrides', acOverridesRaw_); }
+
+function acSwitchable_(item, role) { var c = acCell_(item, role); return c === 'Y' || c === 'N' || (c === 'A' && !acProtected_(item, role)); }
+
+function acCell_(item, role) { var i = AC_ROLES_.indexOf(role); return i < 0 || !item ? '' : item.cells.charAt(i); }
+
+function acProtected_(item, role) { return !!item && !!AC_PROTECTED_[role + '|' + item.key]; }
+
+function isNilai4To8Grade_(grade) {
+  return NILAI_4_TO_8_GRADE_NAMES.indexOf(normalizeGradeName_(grade)) > -1;
+}
+
+function parseConfiguredClockTime_(text) {
+  var m = String(text || '').trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (!m) return null;
+  var hour = Number(m[1]);
+  var minute = m[2] ? Number(m[2]) : 0;
+  var meridiem = m[3].toUpperCase();
+  if (meridiem === 'AM') { if (hour === 12) hour = 0; } else if (hour !== 12) { hour += 12; }
+  return { hour: hour, minute: minute };
+}
+
+function cctStatus_(code) { for (var i = 0; i < CCT_STATUSES_.length; i++) if (CCT_STATUSES_[i].code === code) return CCT_STATUSES_[i]; return null; }
+
+function tccDateLabel_(dateStr) { var p = tccDateParts_(dateStr); return TCC_DAY_NAMES_[p.dow] + ', ' + TCC_MONTHS_[p.m - 1] + ' ' + p.d + ', ' + p.y; }
+
+function tccZoned_(dateStr, minutes) {
+  var p = tccDateParts_(dateStr);
+  var guess = Date.UTC(p.y, p.m - 1, p.d, Math.floor(minutes / 60), minutes % 60);
+  var offMin = function (t) { var o = /([+-])(\d{2}):?(\d{2})/.exec(Utilities.formatDate(new Date(t), APS_TZ, 'XXX')); return o ? (o[1] === '-' ? -1 : 1) * (Number(o[2]) * 60 + Number(o[3])) : 0; };
+  var t = guess - offMin(guess) * 60000;
+  var t2 = guess - offMin(t) * 60000; // re-check across a DST change
+  return new Date(t2);
+}
+
+function tccTzAbbrev_(date) { return /-04:?00/.test(Utilities.formatDate(date, APS_TZ, 'XXX')) ? 'EDT' : 'EST'; }
+
+function tccTimeText_(label) {
+  var m = /^([A-Z]{3})\s+(.+?)\s*-\s*(.+?)(\s+E[SD]T)?$/i.exec(String(label || '').trim());
+  return m ? (TCC_DAY_FULL_[m[1].toUpperCase()] || m[1]) + ' ' + m[2] + '–' + m[3] : String(label || '');
+}
+
+function tccApsIdNumber_(apsId) { var m = /^APS(\d+)$/i.exec(String(apsId || '').trim()); return m ? Number(m[1]) : null; }
+
+function tccAnnouncementTitle_(sess) { return '📢🔀 Class Merge Notice 🔀📢 –  ' + sess.dateLabel; }
+
+function getDashboardEnvironment_() {
+  var value = String(PropertiesService.getScriptProperties().getProperty(APS_ENV_PROPERTY) || '').trim().toUpperCase();
+  // 'TEST' accepted too, for backward compatibility with the old 'APS_ENV' property's value —
+  // this Script Property was renamed, so a deployment still using the old name/value degrades
+  // safely to the LIVE default below rather than silently keeping stale behavior either way.
+  if (value === 'TESTING' || value === 'TEST') return { key: 'TESTING', label: 'TESTING' };
+  return { key: 'LIVE', label: 'LIVE' };
+}
+
+function examQpGenKey_() { return 'examQpGen_v1_' + getDashboardEnvironment_().key; }
+
+function examQpComputeWindow_(classDate, startHm, endHm, releaseMinutes, closeAtStart) {
+  const s = examQpHm_(startHm), e = examQpHm_(endHm);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(classDate || '')) || !s) return null;
+  const start = easternWallTimeToDate_(classDate, s.hour, s.minute);
+  let end = e ? easternWallTimeToDate_(classDate, e.hour, e.minute) : new Date(start.getTime() + 90 * 60000);
+  if (end.getTime() <= start.getTime()) end = new Date(end.getTime() + 24 * 3600000);
+  const release = new Date(start.getTime() - Number(releaseMinutes || 0) * 60000);
+  const close = closeAtStart ? start : end;
+  return { start: start, end: end, release: release, close: close };
+}
+
+function examQpHmText_(t) { return t ? ('0' + t.hour).slice(-2) + ':' + ('0' + t.minute).slice(-2) : ''; }
+
+function examQpDayOf_(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+  return m ? EXAM_QP_DAY_TOKENS_[new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay()] : '';
+}
+
+function examQpHm_(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? { hour: Number(m[1]), minute: Number(m[2]) } : null; }
+
+function scSheet_(create) {
+  var ss = openSpreadsheetByIdWithRetry_(scSpreadsheetId_(), '[SpecialClasses]');
+  var name = scSheetName_(), sh = ss.getSheetByName(name);
+  if (!sh) {
+    if (!create) return { ss: ss, sh: null, map: {}, header: [] };
+    sh = ss.insertSheet(name);
+    if (sh.getMaxColumns() < SC_FIELDS_.length) sh.insertColumnsAfter(sh.getMaxColumns(), SC_FIELDS_.length - sh.getMaxColumns());
+    sh.getRange(1, 1, 1, SC_FIELDS_.length).setValues([SC_FIELDS_.map(function (f) { return f[1]; })]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  var lastCol = Math.max(1, sh.getLastColumn());
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var map = {};
+  header.forEach(function (h, i) {
+    var n = scNorm_(h); if (!n) return;
+    SC_FIELDS_.forEach(function (f) { if (map[f[0]] === undefined && (scNorm_(f[1]) === n || f[2].indexOf(n) > -1)) map[f[0]] = i; });
+  });
+  if (create) {
+    var missing = SC_FIELDS_.filter(function (f) { return map[f[0]] === undefined; });
+    if (missing.length) {
+      var start = header.filter(function (h) { return h; }).length ? header.length : 0; // empty header row → start at column A
+      if (sh.getMaxColumns() < start + missing.length) sh.insertColumnsAfter(sh.getMaxColumns(), start + missing.length - sh.getMaxColumns());
+      sh.getRange(1, start + 1, 1, missing.length).setValues([missing.map(function (f) { return f[1]; })]).setFontWeight('bold');
+      missing.forEach(function (f, i) { map[f[0]] = start + i; header[start + i] = f[1]; });
+      console.log('[SpecialClasses] added missing column(s): ' + missing.map(function (f) { return f[1]; }).join(', '));
+    }
+  }
+  return { ss: ss, sh: sh, map: map, header: header };
+}
+
+function scParseRow_(row, map, tz, rowNum) {
+  var g = function (k) { return map[k] === undefined ? '' : row[map[k]]; };
+  var id = scText_(g('id')).trim(), title = scText_(g('title')).trim();
+  if (!id && !title) return null; // blank line
+  var bad = function (why) { console.warn('[SpecialClasses] row ' + rowNum + ' skipped: ' + why); return null; };
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) return bad('missing / invalid Special Class ID');
+  if (!title) return bad('missing Title');
+  var audience = scCodeOf_(SC_AUDIENCES_, g('audience'));
+  if (!audience) return bad('unknown Audience "' + scText_(g('audience')) + '"');
+  var mode = scCodeOf_(SC_MODES_, g('mode')) || 'OTHER';
+  var rec = { row: rowNum, id: id, title: title.slice(0, 300), description: scText_(g('description')).slice(0, 5000), audience: audience, mode: mode,
+    modeDetails: scText_(g('modeDetails')).trim().slice(0, 200) || (scCodeOf_(SC_MODES_, g('mode')) ? '' : scText_(g('mode')).trim().slice(0, 200)),
+    fees: scText_(g('fees')).trim().slice(0, 200), classDay: scText_(g('classDay')).trim().slice(0, 60),
+    status: /^inactive$/i.test(scText_(g('status')).trim()) ? 'INACTIVE' : 'ACTIVE',
+    order: g('order') === '' || isNaN(Number(g('order'))) ? null : Number(g('order')),
+    registrationMode: /native/i.test(scText_(g('registrationMode'))) ? 'NATIVE_ENROLLMENT' : 'EXTERNAL_LINK',
+    createdAt: scText_(g('createdAt') instanceof Date ? g('createdAt').toISOString() : g('createdAt')), createdBy: scText_(g('createdBy')),
+    updatedAt: scText_(g('updatedAt') instanceof Date ? g('updatedAt').toISOString() : g('updatedAt')), updatedBy: scText_(g('updatedBy')) };
+  ['programStart', 'programEnd', 'enrollStart', 'enrollEnd'].forEach(function (k) { var d = scDate_(g(k)); if (d === null) { console.warn('[SpecialClasses] row ' + rowNum + ': unreadable ' + k + ' ignored'); d = ''; } rec[k] = d; });
+  ['startTime', 'endTime'].forEach(function (k) { var t = scTime_(g(k), tz); if (t === null) { console.warn('[SpecialClasses] row ' + rowNum + ': unreadable ' + k + ' ignored'); t = ''; } rec[k] = t; });
+  var link = scSafeUrl_(scText_(g('link')));
+  if (link === null) { console.warn('[SpecialClasses] row ' + rowNum + ': Registration Link is not a safe http(s) URL — hidden'); link = ''; }
+  rec.link = link;
+  rec.icon = scText_(g('icon')).trim().slice(0, 8);
+  rec.instructor = scText_(g('instructor')).trim().slice(0, 200);
+  var info = scSafeUrl_(scText_(g('infoLink'))); rec.infoLink = info || '';
+  var seats = Number(scText_(g('maxSeats')).trim()); rec.maxSeats = scText_(g('maxSeats')).trim() && seats >= 1 && seats <= 10000 && Math.floor(seats) === seats ? seats : null;
+  rec.classroomId = /^\d{6,20}$/.test(scText_(g('classroomId')).trim()) ? scText_(g('classroomId')).trim() : '';
+  rec.options = scParseOptions_(scText_(g('enrollmentOptions')));
+  rec.classLink = scSafeUrl_(scText_(g('classLink'))) || '';
+  return rec;
+}
+
+function isPermissionDeniedError_(e) {
+  var msg = (e && e.message) ? String(e.message) : String(e);
+  return /you do not have permission|permission denied|requested document|not authorized to access/i.test(msg);
+}
+
+function apsBigGetStored_(key) {
+  var v = null;
+  try { v = apsBigStore_().getProperty(key); } catch (e) { v = null; }
+  if (v === null || v === undefined) { try { v = PropertiesService.getScriptProperties().getProperty(key); } catch (e2) { v = null; } } // not moved yet
+  return v === undefined ? null : v;
+}
+
+function apcDecodeRaw_(raw) { try { var o = JSON.parse(raw); return apcIsC_(o) ? JSON.stringify(apcDecodeObj_(o)) : raw; } catch (e) { return raw; } }
+
+function getGoogleReviewEmailFooter() {
+  var url = htmlEscape_(getGoogleReviewUrl());
+  return '<div style="margin:18px 0 0;padding:14px 16px;background:#fef7e0;border:1px solid #fde293;border-radius:10px;text-align:center;">' +
+    '<div style="font-size:14px;line-height:1.5;color:#202124;margin:0 0 10px;">Avvaiyar Padasalai America would love your feedback.</div>' +
+    '<a href="' + url + '" target="_blank" rel="noopener" style="display:inline-block;background:#ffffff;color:#1a73e8;border:1px solid #1a73e8;text-decoration:none;padding:8px 16px;border-radius:8px;font-weight:700;font-size:14px;">&#11088; Post a Google Review</a></div>';
+}
+
+function saSafeErr_(e) { return String(e && e.message || e || 'send failed').replace(/(Bearer\s+|access_token[=:]\s*|refresh_token[=:]\s*|client_secret[=:]\s*)[^\s,)]+/gi, '$1[hidden]').replace(/ya29\.[\w.-]+/g, '[hidden]').slice(0, 300); }
+
+function ttmRemovalReached_(rec, now) {
+  var today = ttmToday_(now), hour = Number(Utilities.formatDate(now, APS_TZ, 'HH'));
+  return today > rec.Removal_Date || (today === rec.Removal_Date && hour >= ttmRemovalHour_());
+}
+
+function zhProp_(k, dflt) { var v = PropertiesService.getScriptProperties().getProperty(k); return v === null || v === undefined || String(v).trim() === '' ? (dflt === undefined ? '' : dflt) : String(v).trim(); }
+
+function mhgDefaults_() {
+  return { enabled: true, days: 21, categories: ['HW', 'QUZ', 'TRMST'], to: ['grading@avvaiyarpadasalai.org'], cc: ['admin@avvaiyarpadasalai.org'], maxRowsInEmail: 300, keepClearedDays: 180 };
+}
+
+function mhgEmails_(v) {
+  var list = (Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/)).map(normalizeEmail_).filter(Boolean);
+  list.forEach(function (m) { if (!isSyntacticallyValidEmail_(m) || !/@avvaiyarpadasalai\.org$/.test(m)) throw new Error('Recipients must be @avvaiyarpadasalai.org addresses.'); });
+  return list.filter(function (m, i) { return list.indexOf(m) === i; }).slice(0, 10);
+}
+
+function lvIsDate_(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d + 'T12:00:00Z')) && new Date(Date.parse(d + 'T12:00:00Z')).toISOString().slice(0, 10) === d; }
+
+function taMinutes_(t) { // '6:29 PM' / '18:29' → minutes after midnight
+  var m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?$/i.exec(String(t || '').trim()); if (!m) return null;
+  var h = Number(m[1]) % 12, mi = Number(m[2]); if (!m[3]) h = Number(m[1]); else if (m[3].toUpperCase() === 'PM') h += 12;
+  return h * 60 + mi;
+}
+
+function taExpectedFor_(nilai, cfg) {
+  var k = String(nilai || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  return (cfg.expected[k] || cfg.expected.DEFAULT || []).slice();
+}
+
+function taBand_(score, cfg) {
+  if (score === null) return TA_BAND_.INSUFFICIENT;
+  return score >= cfg.bands.exceptional ? TA_BAND_.EXCEPTIONAL : score >= cfg.bands.outstanding ? TA_BAND_.OUTSTANDING : score >= cfg.bands.good ? TA_BAND_.GOOD : TA_BAND_.IMPROVEMENT;
+}
+
+function taHighlights_(t, held, cfg) {
+  var h = [], m = t.metrics;
+  if (held.length && m.completion >= 100) h.push('ALL_CLASSES');
+  if (m.punctuality !== null && m.punctuality >= 100) h.push('ON_TIME');
+  var att = held.filter(function (o) { return o.attendancePct !== null && o.attendancePct !== undefined; });
+  if (att.length && att.every(function (o) { return o.attendancePct >= 85; })) h.push('ATTENDANCE');
+  if (m.engagement !== null && m.engagement >= 100) h.push('POSTED');
+  if (m.grading !== null && m.grading >= 90) h.push('GRADING');
+  if (m.consistency !== null && m.consistency >= 100) h.push('CONSISTENT');
+  if (t.submissionRate !== null && t.submissionRate >= cfg.submissionHighlight) h.push('SUBMISSIONS');
+  return h.slice(0, 4);
+}
+
+function examLessonNames_(prefix, count) {
+  const out = [];
+  for (let i = 1; i <= count; i++) out.push(prefix + i);
+  return out;
+}
+
+function taMdY_(ymd) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || '')); return m ? m[2] + '/' + m[3] + '/' + m[1] : String(ymd || ''); }
+
+function getOrCreateGradeTimeChangeSheet_() {
+  var ss = getWorkbook_();
+  var sheet = ss.getSheetByName(GRADE_TIME_CHANGE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(GRADE_TIME_CHANGE_SHEET_NAME);
+    sheet.getRange(1, 1, 1, GTR_COLUMNS.length).setValues([GTR_COLUMNS]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function gtrRowToObject_(rowValues) {
+  var obj = {};
+  GTR_FIELD_KEYS.forEach(function (key, i) {
+    obj[key] = rowValues[i] !== undefined && rowValues[i] !== null ? rowValues[i] : '';
+  });
+  return obj;
+}
+
+function lvRoleLabel_(role, email, courses) {
+  if (role === SUPERADMIN_ROLE) return 'Super Admin';
+  if (isAdminRole_(role)) return 'Admin';
+  if (role === 'headmaster') return 'Head Master';
+  if (role === 'student') return 'Student';
+  if (role === VCFO_AMCHSTS_BOD_ROLE) return 'BOD / On-Call Coordinator';
+  if (role === 'teacher') return courses.some(function (c) { return courseHasSupportEmail_(c, email); }) ? 'Teacher (VP / HM of a class)' : 'Teacher';
+  return role ? role.charAt(0).toUpperCase() + role.slice(1) : 'User';
+}
+
+function teacherDisplayName_(name) {
+  var n = String(name || '');
+  var c = n.replace(/\s*[-–—|:]?\s*[(\[]?\s*\b(TTS|TCS)\b\s*[)\]]?\s*$/i, '').trim();
+  return c || n;
+}
+
+function adsSchedule_(name) { var p = String(name || '').split('|'); return p.length >= 2 ? p[1].trim() : ''; }
+
+function lvFmt_(ymd) { return ttmFmtDate_(ymd); }
+
+function ttmFmtTs_(ts) { return ts ? srmFmt_(ts) || String(ts) : ''; }
+
+function amAccessFlag_(role, email, courses) {
+  try {
+    var cfg = amConfig_(), allowed = apsTabAllowed_(role, 'assignMon');
+    if (isAdminRole_(role)) return allowed;
+    if (!cfg.enabled || role === AUTHORIZED_ROLE) return false;
+    if (allowed) return true;
+    var e = normalizeEmail_(email);
+    return role === 'teacher' && (courses || []).some(function (c) { return courseHasSupportEmail_(c, e); });
+  } catch (err) { return false; }
+}
+
+function amSanitize_(raw) {
+  var d = amDefaults_(), c = raw && typeof raw === 'object' ? raw : {}, out = {};
+  out.enabled = c.enabled === undefined ? d.enabled : c.enabled === true;
+  ['studentEmails', 'teacherActionEmails', 'teacherWeeklyEmails', 'adminWeeklyEmails'].forEach(function (k) { out[k] = c[k] === true; });
+  out.stages = {}; AM_STAGES_.forEach(function (s) { out.stages[s] = !c.stages || c.stages[s] === undefined ? d.stages[s] : c.stages[s] === true; });
+  Object.keys(AM_NUM_LIMITS_).forEach(function (k) {
+    var n = Number(c[k]), lim = AM_NUM_LIMITS_[k];
+    out[k] = c[k] !== undefined && c[k] !== '' && isFinite(n) && Math.floor(n) === n && n >= lim[0] && n <= lim[1] ? n : d[k];
+  });
+  if (!(out.r24Hours < out.r48Hours)) { out.r48Hours = d.r48Hours; out.r24Hours = d.r24Hours; }
+  if (!(out.finalHours < out.r24Hours)) out.finalHours = Math.min(d.finalHours, out.r24Hours - 1) || 1;
+  var url = String(c.trainingUrl || '').trim();
+  out.trainingUrl = /^https:\/\/[^\s"'<>\\]+$/i.test(url) ? url.slice(0, 500) : '';
+  var seen = {};
+  var types = Array.isArray(c.types) && c.types.length ? c.types : d.types;
+  out.types = types.slice(0, 20).map(function (t) {
+    var code = String(t && t.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+    if (!code || seen[code]) return null; seen[code] = true;
+    var pats = (Array.isArray(t.patterns) ? t.patterns : String(t.patterns || '').split(/[\s,]+/)).map(function (p) { return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20); }).filter(function (p) { return p.length >= 2; });
+    if (!pats.length) return null;
+    return { code: code, label: String(t.label || code).replace(/[<>]/g, '').trim().slice(0, 40) || code, patterns: pats.slice(0, 8), monitor: t.monitor !== false, missing: t.missing !== false, grading: t.grading !== false };
+  }).filter(Boolean);
+  if (!out.types.length) out.types = d.types;
+  return out;
+}
+
+function amWindow_(opts, cfg, now) {
+  now = now || new Date();
+  var from = amDayStart_(opts && opts.from), to = amDayEnd_(opts && opts.to);
+  if (!from) from = rosterTs_(new Date(now.getTime() - cfg.lookbackDays * 86400000)).slice(0, 10) + ' 00:00:00';
+  if (!to) to = rosterTs_(new Date(now.getTime() + cfg.aheadDays * 86400000)).slice(0, 10) + ' 23:59:59';
+  if (to < from) { var x = from; from = to.slice(0, 10) + ' 00:00:00'; to = x.slice(0, 10) + ' 23:59:59'; }
+  return { from: from, to: to };
+}
+
+function amOverrides_() {
+  if (AM_MEMO_.ov) return AM_MEMO_.ov;
+  var ov = { exAssign: {}, exStudent: {}, type: {}, reviewed: {}, notes: {}, rows: [] };
+  amOvRows_().forEach(function (r) {
+    ov.rows.push(r);
+    if (r.Active !== 'TRUE') return;
+    var aw = r.Course_ID + '|' + r.CourseWork_ID, st = aw + '|' + normalizeEmail_(r.Student_Email);
+    if (r.Kind === 'EXCLUDE_ASSIGNMENT') ov.exAssign[aw] = r;
+    else if (r.Kind === 'EXCLUDE_STUDENT') ov.exStudent[st] = r;
+    else if (r.Kind === 'SET_TYPE') ov.type[aw] = r.Type;
+    else if (r.Kind === 'REVIEWED') ov.reviewed[st] = r;
+    else if (r.Kind === 'NOTE') (ov.notes[st] = ov.notes[st] || []).push({ at: r.Created_At, by: r.Created_By, text: r.Reason });
+  });
+  AM_MEMO_.ov = ov;
+  return ov;
+}
+
+function rosterDataset_() {
+  var gen = String(rosterProp_('ROSTER_DATA_GEN', '0'));
+  if (ROSTER_MEMO_.ds && ROSTER_MEMO_.gen === gen) return ROSTER_MEMO_.ds;
+  var cache = CacheService.getScriptCache();
+  var base = 'rosterDs_' + gen + '_';
+  try {
+    var n = Number(cache.get(base + 'n') || 0);
+    if (n > 0) {
+      var parts = [];
+      for (var i = 0; i < n; i++) { var p = cache.get(base + i); if (p === null || p === undefined) { parts = null; break; } parts.push(p); }
+      if (parts) { ROSTER_MEMO_.ds = JSON.parse(parts.join('')); ROSTER_MEMO_.gen = gen; return ROSTER_MEMO_.ds; }
+    }
+  } catch (e) { /* cache miss / corrupt -> rebuild */ }
+  var ds = { classrooms: [], teachers: [], students: [] };
+  var C = rosterLoadTable_(ROSTER_CONFIG.SHEET_CLASSROOMS, ROSTER_CLASSROOM_HEADER, null);
+  C.rows.forEach(function (r) {
+    var g = function (k) { return rosterGet_(C, r, k) || ''; };
+    if (!g('Course_ID')) return;
+    ds.classrooms.push({ id: g('Course_ID'), name: g('Course_Name'), state: g('Course_State'), status: g('Status') || ROSTER_STATUS.ACTIVE, section: g('Section'), desc: g('Description'),
+      room: g('Room'), created: g('Creation_Time'), updated: g('Update_Time'), ay: g('Academic_Year'), nilai: g('Nilai'), sec: g('Section_Code'), day: g('Class_Day'),
+      start: g('Start_Time'), end: g('End_Time'), tz: g('Time_Zone'), tc: Number(g('Teacher_Count') || 0), sc: Number(g('Student_Count') || 0), ls: g('Last_Synced'), err: g('Last_Error') });
+  });
+  var T = rosterLoadTable_(ROSTER_CONFIG.SHEET_TEACHERS, ROSTER_TEACHER_HEADER, null);
+  T.rows.forEach(function (r) {
+    var g = function (k) { return rosterGet_(T, r, k) || ''; };
+    if (!g('Course_ID')) return;
+    ds.teachers.push({ c: g('Course_ID'), u: g('Teacher_User_ID'), n: g('Teacher_Name'), e: g('Teacher_Email'), a: g('APSID'), r: g('Teacher_Role'), s: g('Membership_State') || ROSTER_STATUS.OTHER,
+      sup: g('Support_Account') === 'TRUE', ls: g('Last_Synced'), since: g('Inactive_Since') });
+  });
+  var S = rosterLoadTable_(ROSTER_CONFIG.SHEET_STUDENTS, ROSTER_STUDENT_HEADER, null);
+  S.rows.forEach(function (r) {
+    var g = function (k) { return rosterGet_(S, r, k) || ''; };
+    if (!g('Course_ID')) return;
+    ds.students.push({ c: g('Course_ID'), u: g('Student_User_ID'), n: g('Student_Name'), e: g('Student_Email'), a: g('APSID'), s: g('Membership_State') || ROSTER_STATUS.OTHER, ls: g('Last_Synced'), since: g('Inactive_Since') });
+  });
+  try {
+    var text = JSON.stringify(ds), put = {}, k = 0;
+    for (var off = 0; off < text.length; off += ROSTER_CONFIG.CACHE_CHUNK) put[base + (k++)] = text.slice(off, off + ROSTER_CONFIG.CACHE_CHUNK);
+    put[base + 'n'] = String(k);
+    if (cache.putAll) cache.putAll(put, ROSTER_CONFIG.CACHE_SECONDS); else Object.keys(put).forEach(function (key) { cache.put(key, put[key], ROSTER_CONFIG.CACHE_SECONDS); });
+  } catch (e) { console.warn('[Roster] cache put failed: ' + (e && e.message)); }
+  ROSTER_MEMO_.ds = ds; ROSTER_MEMO_.gen = gen;
+  return ds;
+}
+
+function gradesForCourses_(courseIds) {
+  var gen = String(rosterProp_('GRADES_DATA_GEN', '0'));
+  var out = {};
+  if (GRADES_MEMO_.ds && GRADES_MEMO_.gen === gen) { courseIds.forEach(function (id) { out[id] = GRADES_MEMO_.ds[id] || { w: [], s: [] }; }); return out; }
+  var cache = CacheService.getScriptCache(), prefix = 'grades_' + gen + '_';
+  var getAll = function (keys) {
+    if (!keys.length) return {};
+    try { return cache.getAll ? cache.getAll(keys) : keys.reduce(function (o, k) { var v = cache.get(k); if (v !== null && v !== undefined) o[k] = v; return o; }, {}); } catch (e) { return {}; }
+  };
+  // Each classroom is stored as prefix+id = part count, then prefix+id+'_'+i = JSON parts (CacheService values <= 100 KB).
+  var metas = getAll(courseIds.map(function (id) { return prefix + id; }).concat([prefix + 'built']));
+  if (metas[prefix + 'built'] && courseIds.every(function (id) { return metas[prefix + id]; })) {
+    var partKeys = [];
+    courseIds.forEach(function (id) { for (var i = 0; i < Number(metas[prefix + id]); i++) partKeys.push(prefix + id + '_' + i); });
+    var parts = getAll(partKeys);
+    if (partKeys.every(function (k) { return parts[k] !== undefined && parts[k] !== null; })) {
+      courseIds.forEach(function (id) { var t = ''; for (var i = 0; i < Number(metas[prefix + id]); i++) t += parts[prefix + id + '_' + i]; out[id] = JSON.parse(t); });
+      return out;
+    }
+  }
+  var all = {};
+  var W = rosterLoadTable_(GRADES_CONFIG.SHEET_WORK, GRADES_WORK_HEADER, null);
+  W.rows.forEach(function (r) {
+    var g = function (k) { return rosterGet_(W, r, k) || ''; };
+    if (!g('Course_ID') || g('Status') === 'REMOVED') return;
+    (all[g('Course_ID')] = all[g('Course_ID')] || { w: [], s: [] }).w.push({ id: g('CourseWork_ID'), t: g('Title'), type: g('Work_Type'), max: g('Max_Points'), ad: g('Assigned_Date'), due: g('Due_Date'), lsn: g('Lesson_No'), lk: g('Link') || '' });
+  });
+  var S = rosterLoadTable_(GRADES_CONFIG.SHEET_SUBS, GRADES_SUB_HEADER, null);
+  S.rows.forEach(function (r) {
+    var g = function (k) { return rosterGet_(S, r, k) || ''; };
+    var e = all[g('Course_ID')];
+    if (!e) return;
+    e.s.push({ w: g('CourseWork_ID'), u: g('Student_User_ID'), e: g('Student_Email'), st: g('State'), late: g('Late') === 'TRUE', g: g('Assigned_Grade'), dg: g('Draft_Grade'), ti: g('Turn_In_Date'), gd: g('Graded_Date'), rd: g('Returned_Date') });
+  });
+  try {
+    var put = {};
+    Object.keys(all).forEach(function (id) {
+      var v = JSON.stringify(all[id]), n = 0;
+      for (var off = 0; off < v.length; off += ROSTER_CONFIG.CACHE_CHUNK) put[prefix + id + '_' + (n++)] = v.slice(off, off + ROSTER_CONFIG.CACHE_CHUNK);
+      put[prefix + id] = String(n || 1); if (!n) put[prefix + id + '_0'] = v;
+    });
+    // Classrooms without any captured assignment are cached as empty so they never force a sheet read.
+    courseIds.forEach(function (id) { if (!all[id]) { put[prefix + id] = '1'; put[prefix + id + '_0'] = '{"w":[],"s":[]}'; } });
+    put[prefix + 'built'] = '1';
+    if (cache.putAll) cache.putAll(put, ROSTER_CONFIG.CACHE_SECONDS); else Object.keys(put).forEach(function (k) { cache.put(k, put[k], ROSTER_CONFIG.CACHE_SECONDS); });
+  } catch (e) { console.warn('[Grading] cache put failed: ' + (e && e.message)); }
+  GRADES_MEMO_.ds = all; GRADES_MEMO_.gen = gen;
+  courseIds.forEach(function (id) { out[id] = all[id] || { w: [], s: [] }; });
+  return out;
+}
+
+function amCounts_() { return { assigned: 0, submitted: 0, graded: 0, returned: 0, ungraded: 0, ungradedOverdue: 0, missing: 0, notStarted: 0, turnedIn: 0, excluded: 0 }; }
+
+function amClassify_(title, cfg) {
+  var t = String(title || '').trim().toUpperCase();
+  if (!t) return '';
+  var types = (cfg || amConfig_()).types;
+  for (var i = 0; i < types.length; i++) {
+    for (var j = 0; j < types[i].patterns.length; j++) {
+      var p = types[i].patterns[j];
+      if (t.indexOf(p) === 0 && !/[A-Z]/.test(t.charAt(p.length))) return types[i].code;
+    }
+  }
+  return '';
+}
+
+function amTypeOf_(code, cfg) { var ts = (cfg || amConfig_()).types; for (var i = 0; i < ts.length; i++) if (ts[i].code === code) return ts[i]; return null; }
+
+function amDueLabel_(ts) {
+  var ms = amTsMs_(ts);
+  if (ms === null) return 'No due date';
+  var d = new Date(ms), dow = new Date(Utilities.formatDate(d, APS_TZ, 'yyyy-MM-dd') + 'T12:00:00Z').getUTCDay();
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow] + ' ' + Utilities.formatDate(d, APS_TZ, 'MMM d, yyyy h:mm a') + ' EST';
+}
+
+function amStatus_(sub, work, type, nowTs, excluded) {
+  if (excluded) return 'EXCLUDED';
+  var st = sub ? String(sub.st || '') : '', graded = !!sub && sub.g !== '' && sub.g !== null && sub.g !== undefined;
+  var pastDue = !!work.due && work.due < nowTs, points = work.max !== '' && work.max !== null && work.max !== undefined && Number(work.max) > 0;
+  if (st === 'RETURNED') return 'RETURNED';
+  if (st === 'TURNED_IN') return graded ? 'GRADED' : (type.grading && points ? 'UNGRADED' : 'TURNED_IN'); // no points (e.g. an ungraded QUZ) → turned in = done
+  // Not turned in. A real grade without a turn-in (typical for ATT: "100 · Not turned in") is GRADED; an assigned 0 on
+  // overdue work stays MISSING, exactly as the Classroom Grades tab shows "0 · Missing". Draft grades are never grades.
+  if (graded && !(Number(sub.g) === 0 && pastDue && type.missing)) return 'GRADED';
+  if (type.missing && pastDue) return 'MISSING';
+  return 'NOT_STARTED';
+}
+
+function amTsMs_(ts) {
+  var m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(String(ts || ''));
+  if (!m) return null;
+  return easternWallTimeToDate_(m[1], Number(m[2] || 0), Number(m[3] || 0)).getTime() + Number(m[4] || 0) * 1000;
+}
+
+function amAdd_(c, status, overdue) {
+  if (status === 'EXCLUDED') { c.excluded++; return; }
+  c.assigned++;
+  if (status === 'MISSING') c.missing++;
+  else if (status === 'NOT_STARTED') c.notStarted++;
+  else {
+    c.submitted++;
+    if (status === 'GRADED') c.graded++;
+    else if (status === 'RETURNED') { c.graded++; c.returned++; }
+    else if (status === 'UNGRADED') { c.ungraded++; if (overdue) c.ungradedOverdue++; }
+    else if (status === 'TURNED_IN') c.turnedIn++;
+  }
+}
+
+function adsApsId_(email) { var a = extractAPSID_(email); return a === 'NA' ? 'APSXXX' : a; }
+
+function amRates_(c) {
+  c.submissionRate = amPct_(c.submitted, c.submitted + c.missing); // of the work that is due (or already handed in)
+  c.gradingRate = amPct_(c.graded, c.graded + c.ungraded);
+  return c;
+}
+
+function amPct_(a, b) { return b ? Math.round(a / b * 1000) / 10 : null; }
+
+function amEscalate_(m, cfg, nowMs) {
+  var byClass = {}, teacherBacklog = {};
+  m.classes.forEach(function (c) { byClass[c.id] = c; teacherBacklog[c.teacherEmail || c.id] = (teacherBacklog[c.teacherEmail || c.id] || 0) + c.counts.ungradedOverdue; });
+  var missBy = {}; m.items.forEach(function (i) { if (i.status === 'MISSING') missBy[i.c + '|' + i.email] = (missBy[i.c + '|' + i.email] || 0) + 1; });
+  m.items.forEach(function (i) {
+    var c = byClass[i.c] || {}, lvl = 0, why = '';
+    if (i.status === 'MISSING') {
+      lvl = 1; why = 'Missing — student reminded';
+      if (i.hoursPastDue >= cfg.missingAfterHours) { lvl = 2; why = 'Missing ' + Math.floor(i.hoursPastDue / 24) + ' day(s) — teacher follow-up'; }
+      if (missBy[i.c + '|' + i.email] >= cfg.repeatMissing || c.health === 'RED') { lvl = 3; why = missBy[i.c + '|' + i.email] >= cfg.repeatMissing ? 'Repeated missing work (' + missBy[i.c + '|' + i.email] + ') — VP / HM' : 'Class needs action — VP / HM'; }
+      if (i.hoursPastDue >= cfg.adminAfterDays * 24) { lvl = 4; why = 'Unresolved ' + Math.floor(i.hoursPastDue / 24) + ' days after the due date — Admin'; }
+    } else if (i.status === 'UNGRADED') {
+      lvl = i.overdue ? 2 : 0; why = i.overdue ? 'Not graded ' + i.daysSinceTurnIn + ' day(s) after turn-in — teacher' : 'Awaiting grading (within ' + cfg.gradingGraceDays + ' days)';
+      if (i.overdue && (teacherBacklog[c.teacherEmail || c.id] >= cfg.vpHmUngradedBacklog || c.health === 'RED')) { lvl = 3; why = 'Teacher grading backlog — VP / HM'; }
+      if (i.overdue && i.daysSinceTurnIn >= cfg.adminAfterDays + cfg.gradingGraceDays) { lvl = 4; why = 'Ungraded ' + i.daysSinceTurnIn + ' days — Admin'; }
+    } else { lvl = 0; why = 'Due soon'; }
+    i.level = i.reviewed ? 0 : lvl; i.levelWhy = i.reviewed ? 'Reviewed by ' + i.reviewed.by : why;
+  });
+  m.items.sort(function (a, b) { return b.level - a.level || String(a.due).localeCompare(String(b.due)) || naturalCompareJs_(a.name, b.name); });
+}
+
+function resolveViewerBadgeName_(viewer, courses) {
+  if (isAdminOrHm_(viewer.role)) {
+    var profileName = getGoogleProfileName_(viewer.email);
+    if (profileName) return profileName;
+    var roleLabel = viewer.role.charAt(0).toUpperCase() + viewer.role.slice(1);
+    return roleLabel + ' · ' + localPartOfEmail_(viewer.email);
+  }
+  return findDisplayName_(courses, viewer.email);
+}
+
+function canViewMonitoringFilters_(role) { return canViewAllDashboardFilters_(role); }
+
+function canViewMonitoringTotals_(role) { return canViewAllDashboardFilters_(role); }
+
+function examinationAccessForRole_(role) {
+  if (isAdminRole_(role)) return 'READ_WRITE';
+  if (role === VCFO_AMCHSTS_BOD_ROLE) return 'READ_ONLY';
+  if ((role === 'headmaster' || role === 'teacher' || role === 'student') && examQpStudentTeacherAccessEnabled_()) return 'QUESTION_PAPER';
+  return '';
+}
+
+function rosterAccessForRole_(role) {
+  if (!rosterEnabled_()) return '';
+  if (isAdminRole_(role)) return 'ADMIN';
+  if (role === 'headmaster') return 'HM';
+  if (isReadOnlyRole_(role)) return 'BOD';
+  if (role === 'teacher') return 'TEACHER';
+  if (role === 'student') return 'STUDENT';
+  return '';
+}
+
+function apsRoleFor_(viewer, courses) {
+  var role = String(viewer.role || '');
+  if (isAdminRole_(role)) return 'ADMIN';
+  if (role === 'headmaster') return 'HM';
+  if (role !== 'teacher') return role.toUpperCase();
+  var best = 'TEACHER', e = normalizeEmail_(viewer.email);
+  (courses || []).forEach(function (c) {
+    (c.classSupport || []).forEach(function (s) {
+      if (s.email !== e || s.member !== true) return;
+      var p = classRolesPrimary_(s.roles);
+      if (CLASS_ROLE_RANK_[p] > CLASS_ROLE_RANK_[best]) best = p;
+    });
+  });
+  return best;
+}
+
+function acEffectiveForRole_(role) {
+  var out = {};
+  if (AC_ROLES_.indexOf(role) < 0) return out;
+  var ov = acOverrides_(), r = ov[role] || {};
+  AC_CATALOG_.forEach(function (item) {
+    if (!acSwitchable_(item, role)) return; // r75: A cells count too (Super Admin can switch them); protected pair never
+    if (r[item.key] === false || (acCell_(item, role) === 'N' && r[item.key] !== true)) out[item.key] = false; // r79: N cells stay off until switched on
+  });
+  AC_CATALOG_.forEach(function (item) { if (item.parent && out[item.parent] === false && !acProtected_(item, role)) out[item.key] = false; });
+  return out;
+}
+
+function getAllowedTimingsForGrade_(grade) {
+  var timings = APS_CLASS_TIMINGS.ALL_GRADES.slice();
+  if (isNilai4To8Grade_(grade)) timings = timings.concat(APS_CLASS_TIMINGS.NILAI_4_TO_8);
+  return timings;
+}
+
+function scheduleMatchesTimingOption_(schedule, option) {
+  if (!schedule || !schedule.start || !schedule.end) return false;
+  var dayToken = String(option.day || '').toUpperCase();
+  if (!CLASS_SCHEDULE_DAY_TOKENS.hasOwnProperty(dayToken)) return false;
+  if (schedule.dayOfWeek !== CLASS_SCHEDULE_DAY_TOKENS[dayToken]) return false;
+  var optStart = parseConfiguredClockTime_(option.start);
+  var optEnd = parseConfiguredClockTime_(option.end);
+  if (!optStart || !optEnd) return false;
+  return schedule.start.hour === optStart.hour && schedule.start.minute === optStart.minute &&
+    schedule.end.hour === optEnd.hour && schedule.end.minute === optEnd.minute;
+}
+
+function timingOptionLabel_(option) {
+  return option.day + ' ' + option.start + ' - ' + option.end + ' ' + APS_TIMEZONE_LABEL;
+}
+
+function cctAvailability_(row) {
+  if (!row) return { code: 'none', label: 'No class teacher' };
+  if (row.status === AVAILABILITY_STATUS.CONFIRMED) return { code: 'confirmed', label: 'Available' };
+  if (row.status === AVAILABILITY_STATUS.NOT_AVAILABLE) return { code: 'not_available', label: 'Not Available', alternative: AVAILABILITY_ALTERNATIVE_LABELS[row.alternative] || '' };
+  return { code: 'pending', label: 'Not Set' };
+}
+
+function cctPublicRecord_(rec) {
+  if (!rec || !rec.status) return null;
+  var st = cctStatus_(rec.status);
+  return { status: rec.status, statusLabel: st ? st.label : rec.status, group: st ? st.group : '', action: rec.action, updatedAt: rec.updatedAt, updatedBy: rec.updatedBy, updatedByRole: rec.updatedByRole };
+}
+
+function parseAPSClassroomName(courseName) {
+  var p = examQpParseClassName_(courseName);
+  var ay = /^AY(\d{2})-(\d{2})$/.exec(p.academicYear || '');
+  return {
+    academicYear: ay ? '20' + ay[1] + '-20' + ay[2] : '',
+    nilai: p.grade || '', section: p.section || '', day: p.day || '',
+    startTime: p.startLabel || '', endTime: p.endLabel || '', timezone: p.startLabel ? (p.timeZone || 'EST') : ''
+  };
+}
+
+function tccMinutes_(label) {
+  var m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(String(label || '').trim());
+  if (!m) return -1;
+  var h = Number(m[1]) % 12 + (m[3].toUpperCase() === 'PM' ? 12 : 0);
+  return h * 60 + Number(m[2]);
+}
+
+function tkClassChain_(course, courses) {
+  var out = { primary: [], hm: [], vp: [] };
+  if (!course) return out;
+  var nameOf = function (e) {
+    var t = (course.teachers || []).filter(function (p) { return normalizeEmail_(p.email) === e; })[0];
+    return t && t.name ? (typeof teacherDisplayName_ === 'function' ? teacherDisplayName_(t.name) : t.name) : tkNameFor_(e, courses);
+  };
+  (course.classSupport || []).forEach(function (s) {
+    var e = normalizeEmail_(s.email); if (!e) return;
+    (s.roles || []).forEach(function (r) {
+      var bucket = r === 'PRIMARY_TEACHER' ? out.primary : r === 'HM' ? out.hm : r === 'VP' ? out.vp : null;
+      if (bucket && !bucket.some(function (x) { return x.email === e; })) bucket.push({ email: e, name: nameOf(e) });
+    });
+  });
+  return out;
+}
+
+function tccDateParts_(dateStr) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!m) return null;
+  var y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  var dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  return { y: y, m: mo, d: d, dow: dt.getUTCDay() };
+}
+
+function tccSession_(sched, dateStr, now) {
+  var p = tccDateParts_(dateStr);
+  if (!p) return { ok: false, reason: 'Pick a valid session date.' };
+  if (p.dow !== sched.dayIndex) return { ok: false, reason: tccDateLabel_(dateStr) + ' is not a ' + TCC_DAY_NAMES_[sched.dayIndex] + ' — this class meets on ' + TCC_DAY_NAMES_[sched.dayIndex] + 's.' };
+  var start = tccZoned_(dateStr, sched.startMin), end = tccZoned_(dateStr, sched.endMin);
+  if (now && end.getTime() <= now.getTime()) return { ok: false, reason: 'That session has already ended — pick an upcoming date.' };
+  if (now && start.getTime() - now.getTime() > TCC_MAX_DAYS_AHEAD_ * 86400000) return { ok: false, reason: 'Pick a date within the next ' + TCC_MAX_DAYS_AHEAD_ + ' days.' };
+  var tz = tccTzAbbrev_(start);
+  return { ok: true, date: dateStr, dateLabel: tccDateLabel_(dateStr), start: start, end: end, tz: tz,
+    timeLabel: sched.startLabel + ' – ' + sched.endLabel + ' Eastern Time (' + tz + ')', plainTime: sched.startLabel + ' to ' + sched.endLabel + ' Eastern Time' };
+}
+
+function tccPublicRecord_(r) {
+  var fmt = function (iso) { var d = new Date(iso); return isNaN(d.getTime()) ? '' : Utilities.formatDate(d, APS_TZ, 'MM/dd/yyyy h:mm a') + ' ' + tccTzAbbrev_(d); };
+  var sessionEnded = Date.now() >= new Date(r.Session_End_ISO).getTime(), cleanupDue = Date.now() >= new Date(r.Cleanup_After_ISO).getTime();
+  var canRetry = (!sessionEnded && (r.Announcement_Status === 'FAILED' || r.Student_Email_Status === 'FAILED' || r.Staff_Email_Status === 'FAILED')) ||
+    (cleanupDue && r.Announcement_Status === 'POSTED' && (r.Cleanup_Status === 'CLEANUP_FAILED' || r.Cleanup_Status === 'CLEANUP_REQUIRES_REVIEW' || r.Cleanup_Status === 'CLEANUP_PENDING'));
+  return { mergeId: r.Merge_ID, createdAt: fmt(r.Created_At), createdBy: r.Created_By, role: r.Requesting_Role, date: r.Session_Date, dateLabel: tccDateParts_(r.Session_Date) ? tccDateLabel_(r.Session_Date) : r.Session_Date,
+    time: r.Session_Start + ' – ' + r.Session_End + ' ' + (/(EDT|EST)/.exec(r.Timezone) || [''])[0], origName: r.Original_Course_Name, origTeacher: r.Original_Teacher, destName: r.Destination_Course_Name,
+    destTeacher: r.Destination_Teacher, meetUrl: r.Meet_URL, announcement: r.Announcement_Status, studentEmail: r.Student_Email_Status, staffEmail: r.Staff_Email_Status, cleanup: r.Cleanup_Status,
+    cleanupAfter: fmt(r.Cleanup_After_ISO), lastError: r.Last_Error, retries: Number(r.Retry_Count) || 0, lastRetry: fmt(r.Last_Retry_At), notes: r.Notes, canRetry: canRetry,
+    retryLabel: canRetry ? (cleanupDue ? 'Retry cleanup' : r.Announcement_Status === 'FAILED' ? 'Retry' : 'Retry email') : '' };
+}
+
+function apsMailMode_(name) {
+  var pr = apsMailProfile_(name), p = PropertiesService.getScriptProperties();
+  if (pr.saKey && p.getProperty(pr.saKey)) return 'SERVICE_ACCOUNT';
+  if (p.getProperty(pr.refreshKey) && p.getProperty(pr.idKey) && p.getProperty(pr.secretKey)) return 'REFRESH_TOKEN';
+  if (pr.fallbackKey && String(p.getProperty(pr.fallbackKey) || '').toLowerCase() === 'true') return 'MAILAPP_FALLBACK';
+  return 'NOT_CONFIGURED';
+}
+
+function tccEmailHtml_(plan, forStaff) {
+  var esc = htmlEscape_, s = plan.session;
+  var rows = [['Your class', plan.orig.name], ['Merged with (this session)', plan.dest.name], ['Coverage teacher', plan.destinationTeacher ? plan.destinationTeacher.name : '—'], ['When', s.dateLabel + ', ' + s.timeLabel]];
+  if (forStaff) rows = [['Original class', plan.orig.name], ['Original teacher (unavailable)', plan.originalTeacher.name], ['Coverage class', plan.dest.name],
+    ['Coverage teacher', plan.destinationTeacher ? plan.destinationTeacher.name : '—'], ['When', s.dateLabel + ', ' + s.timeLabel],
+    ['Students joining', plan.studentCount + ' from ' + plan.orig.name.split(' |')[0] + ' (about ' + (plan.studentCount + plan.destStudentCount) + ' in the call)'], ['Arranged by', plan.requestedBy]];
+  var table = '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;table-layout:fixed;border:1px solid #e0e0e0;font-size:14px;">' +
+    rows.map(function (r, i) { var bg = i % 2 ? '#ffffff' : '#f8f9fa'; return '<tr><td style="padding:8px 10px;background:' + bg + ';color:#5f6368;width:38%;vertical-align:top;">' + esc(r[0]) + '</td><td style="padding:8px 10px;background:' + bg + ';font-weight:600;vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">' + esc(r[1]) + '</td></tr>'; }).join('') + '</table>';
+  var intro = forStaff
+    ? '<p style="font-size:15px;line-height:1.55;margin:0 0 12px;">Dear Teachers and Leaders,</p><p style="font-size:15px;line-height:1.55;">Temporary class coverage has been arranged because <b>' + esc(plan.originalTeacher.name) + '</b> is not available. For <b>this session only</b>, the students of <b>' + esc(plan.orig.name) + '</b> will join <b>' + esc(plan.dest.name) + '</b>. Nothing else changes — rosters, Meet links and future classes stay the same. The students have been notified, and an announcement was posted in the original Google Classroom (removed automatically after the class).</p>'
+    : '<p style="font-size:15px;line-height:1.55;margin:0 0 12px;">Dear Student,</p><p style="font-size:15px;line-height:1.55;">Your teacher, <b>' + esc(plan.originalTeacher.name) + '</b>, is not available for today\'s class. Your class scheduled for <b>' + esc(s.dateLabel) + '</b> has been temporarily merged with another class <b>for this session only</b>.</p>';
+  var body = '<div style="border-left:4px solid #e8710a;padding:4px 0 4px 12px;margin:0 0 14px;"><div style="font-size:18px;font-weight:700;line-height:1.35;color:#202124;">' + (forStaff ? 'Temporary Class Coverage' : 'Class Merge Notice') + '</div>' +
+    '<div style="font-size:16px;font-weight:700;color:#1a56c4;margin-top:4px;">' + esc(s.dateLabel) + ' · ' + esc(s.timeLabel) + '</div></div>' + intro + table +
+    '<div style="margin:18px 0;text-align:center;"><a href="' + esc(plan.meet.url) + '" style="display:inline-block;background:#188038;color:#ffffff;text-decoration:none;padding:13px 22px;border-radius:8px;font-weight:700;font-size:16px;">Join Merged Class – Google Meet</a>' +
+    '<div style="font-size:12px;color:#5f6368;margin-top:6px;word-break:break-all;">' + esc(plan.meet.url) + '</div></div>' +
+    '<div style="background:#fef7e0;border:1px solid #f9d77e;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.5;color:#3c2c00;"><b>Important:</b> use this Google Meet link only for the class on ' + esc(s.dateLabel) + ', from ' + esc(s.plainTime) + '. ' +
+    (forStaff ? 'Students submit homework and attendance in their original Google Classroom as usual; the dashboard credits their attendance to their own class.' : 'Please submit your homework and attendance in your <b>original</b> Google Classroom as usual.') + '</div>' +
+    '<p style="margin:16px 0 0;font-size:14px;line-height:1.5;">Thank you for your cooperation!<br><br>Thanks,<br>APS Tech Support Team<br>Avvaiyar Padasalai</p>';
+  return apsEmailShell_(forStaff ? 'Temporary Class Coverage' : 'Class Merge Notice', body, { preheader: (forStaff ? 'Coverage arranged: ' : 'Class merged: ') + plan.orig.name.split(' |')[0] + ' → ' + plan.dest.name.split(' |')[0] + ' · ' + s.dateLabel });
+}
+
+function tccIsLive_(r) { return r.Announcement_Status !== 'FAILED' && r.Announcement_Status !== 'CANCELLED' && r.Announcement_Status !== ''; }
+
+function tccMeetFor_(course, maps) {
+  var id = String(course.id), ok = function (u) { return /^https:\/\/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3}|lookup\/[a-z0-9_-]{4,64})$/i.test(String(u || '')); };
+  if (ok(maps.mapped[id])) return { url: maps.mapped[id], source: 'ADMIN_MAPPED', verified: 'YES', label: 'Admin mapping' };
+  if (ok(course.meetLinkInClassroom)) return { url: course.meetLinkInClassroom, source: 'CLASSROOM', verified: 'YES', label: 'Class description' };
+  if (ok((maps.auto || {})[id])) return { url: maps.auto[id], source: 'CLASSROOM_STREAM', verified: 'CONFIRM', label: 'Class stream — confirm before use' };
+  if (ok((maps.detected || {})[id])) return { url: '', source: 'AUTO_DETECTED', verified: 'NO', label: 'Only a Meet detected from past class logs — add it in Attendance → Course ↔ Meet Link Mapping' };
+  return { url: '', source: '', verified: 'NO', label: 'No Google Meet link — add it in Attendance → Course ↔ Meet Link Mapping' };
+}
+
+function tccDestContext_(courses, dateStr, now) {
+  var weekId = attWeekIdForDateStr_(dateStr), cur = getCurrentWeekId_(now || new Date());
+  var dx = { weekId: weekId, current: weekId === cur, weekLabel: getWeekLabel_(weekId), card: {}, cta: {}, primaryCount: {}, availError: false };
+  try { dx.card = readTeacherAvailabilityMap_(); } catch (e) { dx.availError = true; }
+  try { dx.cta = ctaReadSelections_(weekId); } catch (e2) { dx.availError = true; }
+  courses.forEach(function (c) { (c.classSupport || []).forEach(function (s) { if ((s.roles || []).indexOf('PRIMARY_TEACHER') > -1) { var e = normalizeEmail_(s.email); dx.primaryCount[e] = (dx.primaryCount[e] || 0) + 1; } }); });
+  return dx;
+}
+
+function tccDecorateDest_(d, c, t, ds, hostRows, dx) {
+  var email = t ? normalizeEmail_(t.email) : '', apsId = email ? extractAPSID_(email) : 'NA';
+  d.teacherApsId = apsId && apsId !== 'NA' ? apsId : '';
+  // availability for the session's class week (never older weeks; never inferred from the schedule)
+  var av = { weekId: dx.weekId, weekLabel: dx.weekLabel, current: dx.current, lines: [], state: 'not_submitted', error: dx.availError };
+  var row = dx.card[dx.weekId + '|' + String(c.id)];
+  var slot = TCC_DAY_FULL_[ds.day] + ' ' + ds.startLabel.replace(/\s*(AM|PM)$/i, function (x) { return ds.startLabel.slice(-2) === ds.endLabel.slice(-2) ? '' : x; }) + '–' + ds.endLabel;
+  if (row && row.status === AVAILABILITY_STATUS.CONFIRMED) { av.lines.push({ text: slot, state: 'available', source: 'Class card' }); av.state = 'available'; }
+  else if (row && row.status === AVAILABILITY_STATUS.NOT_AVAILABLE) { av.lines.push({ text: slot, state: 'not_available', source: 'Class card', note: CTA_AVAIL_ALT_LABELS_[row.alternative] || '' }); av.state = 'not_available'; }
+  var sel = email ? dx.cta[email] : null;
+  if (sel && sel.status === AVAILABILITY_STATUS.CONFIRMED) {
+    sel.times.forEach(function (x) { av.lines.push({ text: tccTimeText_(x), state: 'available', source: 'Teacher Availability form' }); });
+    if (av.state === 'not_submitted') av.state = 'available';
+  } else if (sel && sel.status === AVAILABILITY_STATUS.NOT_AVAILABLE) {
+    av.lines.push({ text: 'This week', state: 'not_available', source: 'Teacher Availability form' });
+    if (av.state === 'not_submitted') av.state = 'not_available';
+  }
+  d.availability = av;
+  // APS teacher: only what the dashboard knows reliably — an APSID in an APS email AND Primary Teacher (Course Description) of an active AY class.
+  var n = email ? (dx.primaryCount[email] || 0) : 0;
+  d.apsTeacher = d.teacherApsId && n ? { level: 'existing', classes: n } : { level: 'unknown', classes: n };
+  d.hosting = hostRows.map(function (r) {
+    var p = tccDateParts_(r.Session_Date);
+    return { source: String(r.Original_Course_Name || '').split(' |')[0].trim(), date: p ? ('0' + p.m).slice(-2) + '/' + ('0' + p.d).slice(-2) + '/' + p.y : r.Session_Date, mergeId: r.Merge_ID };
+  });
+}
+
+function tccDestRank_(a, b) {
+  var av = function (d) { var s = d.availability && d.availability.state; return s === 'available' ? 0 : s === 'not_available' ? 2 : 1; };
+  var mv = function (d) { return d.verified === 'YES' ? 0 : d.verified === 'CONFIRM' ? 1 : 2; };
+  return (a.selectable ? 0 : 1) - (b.selectable ? 0 : 1) || mv(a) - mv(b) || av(a) - av(b) ||
+    ((a.apsTeacher && a.apsTeacher.level === 'existing') ? 0 : 1) - ((b.apsTeacher && b.apsTeacher.level === 'existing') ? 0 : 1) ||
+    (a.alreadyHosting || 0) - (b.alreadyHosting || 0) || a.students - b.students || naturalCompareJs_(a.name, b.name);
+}
+
+function tccMarkRecommended_(dests) {
+  var pool = (dests || []).filter(function (d) {
+    return d.selectable && d.availability && !d.availability.error && d.availability.state === 'available' && d.apsTeacher && d.apsTeacher.level === 'existing' && tccApsIdNumber_(d.teacherApsId) !== null;
+  });
+  var best = null;
+  pool.forEach(function (d) { if (!best || tccApsIdNumber_(d.teacherApsId) < tccApsIdNumber_(best.teacherApsId)) best = d; });
+  (dests || []).forEach(function (d) { d.recommended = d === best; if (d === best) d.recommendWhy = pool.length === 1 ? 'only' : 'lowest'; else delete d.recommendWhy; });
+  return best;
+}
+
+function tccRecipients_(orig, dest, courses) {
+  var a = tkClassChain_(orig, courses), b = tkClassChain_(dest, courses), admin = attMailAdminCc_();
+  var staff = [], seen = {}, warnings = [];
+  var add = function (p, label) { var e = normalizeEmail_(p && p.email); if (!e || seen[e] || e === admin || !isSyntacticallyValidEmail_(e)) return; seen[e] = true; staff.push({ email: e, name: p.name || '', label: label }); };
+  var po = tccPrimary_(orig, courses), pd = tccPrimary_(dest, courses);
+  if (po) add(po, 'Original teacher'); if (pd) add(pd, 'Coverage teacher');
+  [[a, orig], [b, dest]].forEach(function (x) {
+    x[0].vp.forEach(function (p) { add(p, 'VP · ' + x[1].name.split(' |')[0]); });
+    x[0].hm.forEach(function (p) { add(p, 'HM · ' + x[1].name.split(' |')[0]); });
+    if (!x[0].vp.length && !x[0].hm.length) warnings.push('No VP / HM is named in the Room of ' + x[1].name + ' — admin@ (CC) is informed instead.');
+  });
+  var students = [], sseen = {};
+  (orig.students || []).forEach(function (s) { var e = normalizeEmail_(s.email); if (e && !sseen[e] && isSyntacticallyValidEmail_(e) && !isRosterHiddenStaffEmail_(e)) { sseen[e] = true; students.push(e); } });
+  return { staff: staff, students: students, cc: [admin], warnings: warnings, originalTeacher: po, destinationTeacher: pd };
+}
+
+function tccClassMax_() { var n = Math.floor(Number(rosterProp_('TCC_COMBINED_CLASS_WARN', '0'))); return n > 0 ? n : 0; }
+
+function tccAnnouncementText_(plan) {
+  return [tccAnnouncementTitle_(plan.session), '', 'Dear Student,', '',
+    'Your teacher, ' + plan.originalTeacher.name + ', is not available for today\'s class.', '',
+    '🔀 Your class scheduled for ' + plan.session.dateLabel + ', has been temporarily merged  with another class for this week (session) only.', '',
+    'Your Merged Class Google Meet Join Link:', plan.meet.url, '',
+    '🔀 Merged destination class:', plan.dest.name, '',
+    'Important: Please use this Google Meet link only for the class on ' + plan.session.dateLabel + ', from ' + plan.session.plainTime + '.', '',
+    'Please remember to submit your homework and attendance in your original Google Classroom as usual.', '',
+    'Thank you for your cooperation!', '', '📢Thanks,', '📢APS Tech Support Team', '📢Avvaiyar Padasalai'].join('\n');
+}
+
+function tccSubject_(plan) { return '[APS] Temporary Class Coverage – ' + plan.origSched.nilai.replace(/\(.*\)$/, '').trim() + ' – ' + plan.session.dateLabel; }
+
+function examQpConfig_() {
+  const props = PropertiesService.getScriptProperties();
+  const rawMinutes = props.getProperty(EXAM_QP_CONFIG.RELEASE_MINUTES_PROP);
+  const minutesRaw = rawMinutes === null || rawMinutes === '' ? EXAM_QP_CONFIG.DEFAULT_RELEASE_MINUTES : Number(rawMinutes);
+  const releaseMinutes = isFinite(minutesRaw) && minutesRaw >= 0 && minutesRaw <= 1440 ? Math.round(minutesRaw) : EXAM_QP_CONFIG.DEFAULT_RELEASE_MINUTES;
+  const closeRaw = String(props.getProperty(EXAM_QP_CONFIG.CLOSE_AT_START_PROP) || String(EXAM_QP_CONFIG.DEFAULT_CLOSE_AT_CLASS_START)).trim().toLowerCase();
+  const hmRaw = String(props.getProperty(EXAM_QP_CONFIG.HM_CAN_MANAGE_PROP) || 'false').trim().toLowerCase();
+  return { releaseMinutes: releaseMinutes, closeAtClassStart: closeRaw !== 'false', hmCanManage: hmRaw === 'true' };
+}
+
+function examQpSpreadsheet_() {
+  const env = getDashboardEnvironment_().key;
+  const props = PropertiesService.getScriptProperties();
+  const liveId = String(props.getProperty(EXAM_QP_CONFIG.SHEET_ID_PROP_LIVE) || '').trim();
+  let id = liveId;
+  if (env === 'TESTING') {
+    id = String(props.getProperty(EXAM_QP_CONFIG.SHEET_ID_PROP_TEST) || '').trim();
+    if (!id) throw new Error('Exam Question Paper is not configured for TESTING: set Script Property "' + EXAM_QP_CONFIG.SHEET_ID_PROP_TEST + '" to a TEST spreadsheet (the LIVE sheet is never used from a TESTING deployment).');
+    if (liveId && id === liveId) throw new Error('Refusing to write TESTING data: ' + EXAM_QP_CONFIG.SHEET_ID_PROP_TEST + ' points at the LIVE question paper spreadsheet.');
+  } else if (!id) {
+    throw new Error('Exam Question Paper is not configured: set Script Property "' + EXAM_QP_CONFIG.SHEET_ID_PROP_LIVE + '" (see ENV_VARIABLE_LIVE.gs).');
+  }
+  if (!EXAM_QP_MEMO_.ss[id]) EXAM_QP_MEMO_.ss[id] = { id: id, ss: openSpreadsheetByIdWithRetry_(id, '[ExamQP]') };
+  return EXAM_QP_MEMO_.ss[id].ss;
+}
+
+function examQpTs_(d) { return Utilities.formatDate(d || new Date(), APS_TZ, 'yyyy-MM-dd HH:mm:ss'); }
+
+function examQpRecordCacheKey_() { return 'examQpRecords_v2_' + getDashboardEnvironment_().key + '_' + (CacheService.getScriptCache().get(examQpGenKey_()) || '0'); }
+
+function examQpAutoState_(qpSet, strict) {
+  const out = {};
+  try {
+    const ss = examQpSpreadsheet_(), sh = ss.getSheetByName(EXAM_QP_AUTO_.SHEET);
+    if (!sh || sh.getLastRow() < 2) return out;
+    const meta = examQpSheet_(EXAM_QP_AUTO_.SHEET, EXAM_QP_AUTO_HEADER_);
+    meta.sheet.getRange(2, 1, meta.sheet.getLastRow() - 1, meta.width).getValues().forEach(function (row) {
+      const o = examQpObjectFromRow_(meta, row);
+      if (qpSet && !qpSet[o.Question_Paper_ID]) return;
+      const k = o.Question_Paper_ID + '|' + normalizeEmail_(o.Student_Email);
+      const s = out[k] || (out[k] = { sent: false, fails: 0, last: null, sentAt: '' });
+      if (o.Result === 'AUTO_EMAIL_SENT') { s.sent = true; s.sentAt = String(o.Evaluated_Date_Time_EST); }
+      if (o.Result === 'AUTO_EMAIL_FAILED') s.fails++;
+      s.last = o;
+    });
+  } catch (e) { console.warn('[ExamQP auto] log read: ' + (e && e.message)); if (strict) throw e; }
+  return out;
+}
+
+function examQpWindowOf_(r) {
+  return examQpComputeWindow_(r.Class_Date, r.Class_Start_Time, r.Class_End_Time, Number(r.Release_Window_Minutes || 0), examQpBool_(r.Close_At_Class_Start));
+}
+
+function examQpScheduleModeOf_(r) {
+  const m = String(r.Schedule_Mode || '').toUpperCase();
+  if (m === 'CLASS' || m === 'CUSTOM') return m;
+  const p = examQpParseClassName_(r.Class_Name);
+  return p.start && examQpHmText_(p.start) === r.Class_Start_Time && p.day && p.day === examQpDayOf_(r.Class_Date) ? 'CLASS' : 'CUSTOM';
+}
+
+function examQpExamStatus_(r, nowMs) {
+  if (r.Status === EXAM_QP_STATUS.CANCELLED) return EXAM_QP_EXAM_STATUS.CANCELLED;
+  if (!r.Question_Paper_File) return EXAM_QP_EXAM_STATUS.DRAFT;
+  if (r.Status !== EXAM_QP_STATUS.PUBLISHED) return EXAM_QP_EXAM_STATUS.UPLOADED;
+  const w = examQpWindowOf_(r);
+  if (!w) return EXAM_QP_EXAM_STATUS.UPLOADED;
+  if (nowMs < w.release.getTime()) return EXAM_QP_EXAM_STATUS.SCHEDULED;
+  if (nowMs < w.start.getTime()) return EXAM_QP_EXAM_STATUS.AVAILABLE;
+  if (nowMs < w.end.getTime()) return EXAM_QP_EXAM_STATUS.IN_PROGRESS;
+  return EXAM_QP_EXAM_STATUS.COMPLETED;
+}
+
+function examQpLongLabel_(d) { return Utilities.formatDate(d, APS_TZ, 'EEEE, MMMM d, yyyy') + ' – ' + Utilities.formatDate(d, APS_TZ, 'h:mm a') + ' EST'; }
+
+function examQpTimeLabel_(d) { return Utilities.formatDate(d, APS_TZ, 'hh:mm a') + ' EST'; }
+
+function examQpMissingFields_(r) {
+  const missing = [];
+  if (!r.Exam_Title) missing.push('Exam Title');
+  if (!r.Course_ID || !r.Class_Name) missing.push('Class');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(r.Class_Date || '')) missing.push('Exam Date');
+  if (!examQpHm_(r.Class_Start_Time)) missing.push('Class Start Time');
+  if (!examQpHm_(r.Class_End_Time)) missing.push('Class End Time');
+  if (!r.Question_Paper_File) missing.push('Question Paper PDF');
+  return missing;
+}
+
+function examQpTeacherCopyTeachers_(course, courses) {
+  if (!course) return [];
+  const out = [], seen = {};
+  const add = function (email, name) {
+    const e = normalizeEmail_(email);
+    if (!e || seen[e] || isRosterHiddenStaffEmail_(e)) return;
+    seen[e] = true; out.push({ email: e, name: name ? teacherDisplayName_(name) : e });
+  };
+  let p = null; try { p = srmClassTeacher_(course, courses || readAllCoursesFromCache_()); } catch (e) { p = null; }
+  if (p && p.email) add(p.email, p.name);
+  (course.teachers || []).forEach(function (t) { if (t && t.email) add(t.email, t.name); });
+  return out;
+}
+
+function examQpTeacherCopyLeadOk_(r, w) {
+  w = w || examQpWindowOf_(r);
+  const pub = examQpParseTs_(r && r.Published_Date_Time);
+  return !!(w && pub && w.start.getTime() - pub.getTime() >= EXAM_QP_TCOPY_.MIN_PUBLISH_MS);
+}
+
+function getOrCreateReferenceLetterSheet_() {
+  var ss = getWorkbook_();
+  var sheet = ss.getSheetByName(REFERENCE_LETTER_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(REFERENCE_LETTER_SHEET_NAME);
+    sheet.getRange(1, 1, 1, REFERENCE_LETTER_COLUMNS.length).setValues([REFERENCE_LETTER_COLUMNS]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  // Idempotent/cheap — also self-heals a sheet created before this fix, for every FUTURE write to it
+  // (it cannot retroactively change values already stored as a real Date; rlRowToObject_ below handles
+  // reading those back safely).
+  REFERENCE_LETTER_DATE_TIME_COLUMNS_.forEach(function (col) {
+    sheet.getRange(1, col, Math.max(sheet.getMaxRows(), 2), 1).setNumberFormat('@');
+  });
+  return sheet;
+}
+
+function rlRowToObject_(rowValues) {
+  var obj = {};
+  REFERENCE_LETTER_FIELD_KEYS.forEach(function (key, i) {
+    var v = rowValues[i];
+    // Defensive: if Sheets ever stored this cell as a real Date (auto-coerced pre-fix, or a user
+    // pasted/typed a literal date into it by hand), normalize back to an ISO string here so every
+    // downstream consumer — sorting, the PDF template, email bodies — only ever sees a string, never
+    // a Date object with no .localeCompare().
+    if (v instanceof Date) v = v.toISOString();
+    obj[key] = v !== undefined && v !== null ? v : '';
+  });
+  return obj;
+}
+
+function srmPublic_(r) {
+  var canRetryEmail = r.Removal_Status === 'REMOVED' && r.Verification_Status === 'VERIFIED' && r.Email_Status !== 'EMAIL_SENT';
+  return { requestId: r.Request_ID, requestedAt: srmFmt_(r.Requested_At), requestedBy: r.Requested_By, role: r.Requested_By_Role, studentName: r.Student_Name, apsId: r.Student_APSID,
+    studentEmail: r.Student_Email, courseId: r.Course_ID, courseName: r.Course_Name, teacher: r.Class_Teacher, reason: r.Reason, removal: r.Removal_Status, verification: r.Verification_Status,
+    email: r.Email_Status, recipients: r.Email_Recipients, error: r.Error, lastRetry: srmFmt_(r.Last_Retry_At), completedAt: srmFmt_(r.Completed_At), removedAt: srmFmt_(r.Removed_At), canRetryEmail: canRetryEmail };
+}
+
+function adsRows_() {
+  var sh = getWorkbook_().getSheetByName(ADS_SHEET_);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, ADS_HEADER_.length).getValues().map(function (r, i) {
+    var o = { _row: i + 2 }; ADS_HEADER_.forEach(function (h, j) { o[h] = r[j] instanceof Date ? r[j].toISOString() : String(r[j] === null || r[j] === undefined ? '' : r[j]); }); return o;
+  });
+}
+
+function adsPublic_(r) {
+  return { requestId: r.Request_ID, requestedAt: srmFmt_(r.Requested_At), requestedAtIso: r.Requested_At, requestedBy: r.Requested_By, role: r.Requested_By_Role, action: r.Action,
+    studentName: r.Student_Name, apsId: r.Student_APSID, studentEmail: r.Student_Email, existingCount: r.Existing_Classroom_Count, existingNames: r.Existing_Classroom_Names,
+    existingTypes: r.Existing_Classroom_Types, newClassroom: r.New_Classroom_Name, newCourseId: r.New_Course_ID, newType: r.New_Classroom_Type, overrideReason: r.Override_Reason,
+    status: r.Status, verification: r.Verification_Status, sheetUpdate: r.Sheet_Update_Status, emailStatus: r.Email_Status, recipients: r.Email_Recipients, message: r.Result_Message };
+}
+
+function slDays_(o) { return Math.round((new Date(o.End_Date + 'T12:00:00Z') - new Date(o.Start_Date + 'T12:00:00Z')) / 86400000) + 1; }
+
+function scRecords_() {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(SC_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) { /* re-read */ }
+  var t = scSheet_(false), out = [], seen = {};
+  if (t.sh && t.sh.getLastRow() > 1) {
+    var tz = APS_TZ; try { tz = t.ss.getSpreadsheetTimeZone() || APS_TZ; } catch (eTz) { /* default */ }
+    t.sh.getRange(2, 1, t.sh.getLastRow() - 1, Math.max(1, t.header.length)).getValues().forEach(function (r, i) {
+      try {
+        var rec = scParseRow_(r, t.map, tz, i + 2);
+        if (!rec) return;
+        if (seen[rec.id]) { console.warn('[SpecialClasses] row ' + (i + 2) + ' skipped: duplicate ID ' + rec.id); return; }
+        seen[rec.id] = true; out.push(rec);
+      } catch (eRow) { console.warn('[SpecialClasses] row ' + (i + 2) + ' skipped: ' + (eRow && eRow.message)); }
+    });
+  }
+  try { cache.put(SC_CACHE_KEY_, JSON.stringify(out), SC_CACHE_SECONDS_); } catch (e2) { /* too big — fine */ }
+  return out;
+}
+
+function openSpreadsheetByIdWithRetry_(id, logPrefix) {
+  var maxAttempts = 3;
+  var delay = 300; // ms, doubles each retry
+  var lastError = null;
+  for (var i = 0; i < maxAttempts; i++) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      lastError = e;
+      if (isPermissionDeniedError_(e)) {
+        console.error(logPrefix + ' open attempt ' + (i + 1) + ' failed for "' + id + '" with a PERMISSION error (not retrying further): ' + (e && e.message ? e.message : String(e)));
+        break; // retrying a persistent per-account sharing gap wastes the user's time — fail fast
+      }
+      if (i < maxAttempts - 1) {
+        console.error(logPrefix + ' open attempt ' + (i + 1) + '/' + maxAttempts + ' failed for "' + id + '": ' + (e && e.message ? e.message : String(e)));
+        Utilities.sleep(delay);
+        delay *= 2;
+      }
+    }
+  }
+  throw lastError;
+}
+
+function scSpreadsheetId_() { return String(rosterProp_('SPECIAL_CLASSES_SPREADSHEET_ID', SC_SPREADSHEET_ID_DEFAULT_)).trim(); }
+
+function scEnrSheet_(ss, create) {
+  var sh = ss.getSheetByName(SC_ENR_SHEET_);
+  if (!sh && create) {
+    sh = ss.insertSheet(SC_ENR_SHEET_);
+    if (sh.getMaxColumns() < SC_ENR_HEADER_.length) sh.insertColumnsAfter(sh.getMaxColumns(), SC_ENR_HEADER_.length - sh.getMaxColumns());
+    sh.getRange(1, 1, 1, SC_ENR_HEADER_.length).setValues([SC_ENR_HEADER_]).setFontWeight('bold'); sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function scText_(v) { return String(v === null || v === undefined ? '' : v).replace(/^'(?=[=+\-@])/, ''); }
+
+function scState_(p, today) {
+  var st;
+  if (p.programEnd && today > p.programEnd) st = SC_STATES_.COMPLETED;
+  else if (p.enrollStart && today < p.enrollStart) st = SC_STATES_.UPCOMING;
+  else if (p.enrollEnd && today > p.enrollEnd) st = SC_STATES_.CLOSED;
+  else if (p.enrollStart || p.enrollEnd || p.link) st = SC_STATES_.OPEN;
+  else st = SC_STATES_.NONE;
+  var out = { code: st.code, icon: st.icon, label: st.label };
+  if (st.code === 'UPCOMING') out.label = 'Registration Opens ' + scFmtDate_(p.enrollStart);
+  if (st.code === 'OPEN' && p.enrollEnd) out.until = 'Until ' + scFmtDate_(p.enrollEnd);
+  out.running = !!(p.programStart && p.programStart <= today && (!p.programEnd || today <= p.programEnd));
+  return out;
+}
+
+function scLabelOf_(list, code) { for (var i = 0; i < list.length; i++) if (list[i].code === code) return list[i].label; return ''; }
+
+function scRangeLabel_(a, b) { return a && b ? scFmtDate_(a) + ' – ' + scFmtDate_(b) : a ? 'From ' + scFmtDate_(a) : b ? 'Until ' + scFmtDate_(b) : 'To Be Announced'; }
+
+function scTimeMinutes_(label) { return tccMinutes_(label); }
+
+function getGoogleReviewUrl() {
+  var u = String(rosterProp_('APS_GOOGLE_REVIEW_URL', GR_URL_DEFAULT_)).trim();
+  return /^https:\/\/[^\s"'<>\\]+$/i.test(u) ? u : GR_URL_DEFAULT_;
+}
+
+function apsBigGet_(key) { var v = apsBigGetStored_(key); return APC_KEYS_[key] && v ? apcDecodeRaw_(v) : v; }
+
+function grMonth_(d) { return Utilities.formatDate(d || new Date(), APS_TZ, 'yyyy-MM'); }
+
+function taEmailHistory_(weekId) {
+  var rows = taReadTable_(TA_EMAIL_SHEET_, TA_EMAIL_HEADER_);
+  var month = weekId ? taMonthOf_(weekId) : '';
+  return rows.filter(function (r) { return !weekId || r.Period_ID === weekId || (r.Type === 'MONTHLY' && r.Period_ID >= month) || (r.Type === 'ADMIN' && r.Period_ID === weekId); }).reverse().slice(0, 400).map(function (r) {
+    return { key: r.Email_Key, type: r.Type, period: r.Period_ID, periodLabel: r.Period_Label, apsId: r.Teacher_APSID, email: r.Teacher_Email, name: r.Teacher_Name, status: r.Status, mode: r.Mode,
+      attempts: Number(r.Attempts) || 0, sentAt: r.Sent_At, lastAttemptAt: r.Last_Attempt_At, subject: r.Subject, error: r.Error };
+  });
+}
+
+function htmlEscape_(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function taMonthLabelEn_(month) { var m = /^(\d{4})-(\d{2})$/.exec(String(month || '')); return m ? DS_EN_MONTHS_[Number(m[2]) - 1] + ' ' + m[1] : String(month || ''); }
+
+function apsEmailShell_(title, bodyHtml, opts) {
+  opts = opts || {}; // r54: optional { buttonUrl, buttonLabel, preheader } — without opts the output is unchanged; r84: googleReview adds the Google Review footer
+  var buttonUrl = opts.buttonUrl || apsDashboardUrl_();
+  var buttonLabel = opts.buttonLabel || 'ACCESS APS DASHBOARD';
+  var pre = opts.preheader ? '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f6f8fc;opacity:0;">' + htmlEscape_(opts.preheader) + '</div>' : '';
+  return pre + '<div style="font-family:Arial,sans-serif;background:#f6f8fc;padding:24px;color:#202124;">' +
+    '<div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #e0e0e0;border-radius:12px;overflow:hidden;">' +
+    '<div style="padding:18px 22px;border-bottom:1px solid #e0e0e0;display:flex;align-items:center;gap:12px;">' +
+    '<img src="' + APS_SCHOOL_LOGO_URL + '" alt="Avvaiyar Padasalai" style="height:54px;width:54px;object-fit:contain;border-radius:8px;">' +
+    '<div><div style="font-size:18px;font-weight:700;">Avvaiyar Padasalai</div><div style="font-size:12px;color:#5f6368;">Classroom Dashboard</div></div></div>' +
+    '<div style="padding:22px;">' + bodyHtml +
+    '<div style="margin:24px 0;text-align:center;"><a href="' + htmlEscape_(buttonUrl) + '" style="display:inline-block;background:#1a73e8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:700;">' + htmlEscape_(buttonLabel) + '</a></div>' +
+    (opts.googleReview ? getGoogleReviewEmailFooter() : '') +
+    '</div><div style="padding:16px 22px;border-top:1px solid #e0e0e0;font-size:12px;color:#5f6368;line-height:1.5;">' +
+    '<b>Sugadev Velayutham</b> - Director of Technology and Public Relations<br>www.avvaiyarpadasalai.org<br><br>This is an auto-generated email. Please do not respond to this email; we will not monitor this email.</div>' +
+    '</div></div>';
+}
+
+function taSafeErr_(e) { return typeof saSafeErr_ === 'function' ? saSafeErr_(e) : String(e && e.message || e || '').slice(0, 300); }
+
+function taFirstName_(name, email) { var n = teacherDisplayName_(String(name || '')).trim(); return n && !/@/.test(n) ? n : localPartOfEmail_(email); }
+
+function taMonthLabelTa_(month) { var m = /^(\d{4})-(\d{2})$/.exec(String(month || '')); return m ? DS_TA_MONTHS_[Number(m[2]) - 1] + ' ' + m[1] : String(month || ''); }
+
+function taSign_() {
+  return '<p style="font-size:15px;line-height:1.7;margin:18px 0 0;">நன்றியுடன்,<br><b>ஔவையார் பாடசாலை நிர்வாகக் குழு</b><br>Avvaiyar Padasalai Tamil Virtual School</p>';
+}
+
+function taPick_(list, seed) { var h = 0; String(seed).split('').forEach(function (ch) { h = (h * 31 + ch.charCodeAt(0)) >>> 0; }); return list[h % list.length]; }
+
+function classesPrimaryOnlyPrefix_(email) {
+  var e = normalizeEmail_(email);
+  if (!e) return false;
+  if (!CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_) {
+    var raw = PropertiesService.getScriptProperties().getProperty('APS_CLASSES_PRIMARY_ONLY_PREFIXES');
+    raw = raw === null || raw === undefined ? 'tcs_,tts_' : String(raw);
+    CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_ = raw.replace(/[\[\]"']/g, ' ').split(/[,;\s]+/).map(function (p) { return p.trim().toLowerCase(); }).filter(Boolean);
+  }
+  return CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_.some(function (p) { return e.indexOf(p) === 0; });
+}
+
+function ttmTcsList_() {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(TTM_TCS_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (eC) { /* read the sheet */ }
+  var out = [];
+  try {
+    var sh = getWorkbook_().getSheetByName(TTM_TCS_SHEET_);
+    if (sh && sh.getLastRow() >= 2) {
+      var width = Math.max(TTM_TCS_EMAIL_COL_, sh.getLastColumn());
+      var values = sh.getRange(1, 1, sh.getLastRow(), width).getValues();
+      var head = values[0].map(function (h) { return String(h || '').trim().toLowerCase(); });
+      var nameCol = -1;
+      head.forEach(function (h, k) { if (nameCol < 0 && k !== TTM_TCS_EMAIL_COL_ - 1 && /name/.test(h) && !/e-?mail|user ?name/.test(h)) nameCol = k; });
+      var seen = {};
+      values.slice(1).forEach(function (r) {
+        var e = normalizeEmail_(String(r[TTM_TCS_EMAIL_COL_ - 1] || '').replace(/^mailto:/i, ''));
+        if (!e || seen[e] || !isSyntacticallyValidEmail_(e) || APS_ALLOWED_DOMAINS.indexOf(e.split('@')[1]) < 0) return;
+        seen[e] = true;
+        out.push({ email: e, name: nameCol > -1 ? String(r[nameCol] || '').trim() : '' });
+      });
+    }
+  } catch (e) { console.warn('[TempTeacher] ' + TTM_TCS_SHEET_ + ' could not be read: ' + (e && e.message)); }
+  try { cache.put(TTM_TCS_CACHE_KEY_, JSON.stringify(out), 300); } catch (eP) { /* optional */ }
+  return out;
+}
+
+function attNameFromEmail_(email) {
+  var local = String(email || '').split('@')[0].replace(/_aps[a-z0-9]+$/i, '');
+  return local.split(/[._]+/).filter(Boolean).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ') || String(email || '');
+}
+
+function ttmDisplayStatus_(r, now) {
+  if (r.Status === 'ACTIVE' && ttmRemovalReached_(r, now)) return 'REMOVAL_DUE';
+  return r.Status;
+}
+
+function tkParticipantsFor_(all, ticketId) { return all.filter(function (p) { return p.Ticket_ID === ticketId; }); }
+
+function tkSheet_(key) {
+  var def = TK_SHEETS_[key], ss = getWorkbook_();
+  var sh = ss.getSheetByName(def.name);
+  if (!sh) {
+    sh = ss.insertSheet(def.name);
+    try { var mc = sh.getMaxColumns(); if (mc < def.header.length) sh.insertColumnsAfter(mc, def.header.length - mc); } catch (e) { /* new sheets have 26 columns; APS_TICKETS needs 31 */ }
+    try { sh.getRange(1, 1, Math.max(sh.getMaxRows ? sh.getMaxRows() : 1000, 1000), def.header.length).setNumberFormat('@'); } catch (e) { /* plain text best effort */ }
+    sh.getRange(1, 1, 1, def.header.length).setValues([def.header]).setFontWeight('bold');
+    try { sh.setFrozenRows(1); } catch (e) { /* ignore */ }
+  }
+  return sh;
+}
+
+function tkCleanEmails_(list) {
+  var seen = {}, out = [];
+  (list || []).forEach(function (e) { var n = normalizeEmail_(e); if (n && TK_EMAIL_RE_.test(n) && !seen[n]) { seen[n] = true; out.push(n); } });
+  return out;
+}
+
+function classPrimaryNameFromEmail_(email) {
+  var local = String(email || '').split('@')[0].replace(/_aps[a-z0-9]+$/i, '').replace(/^(tts|tcs)[._-]+/i, '');
+  return local.split(/[._-]+/).filter(Boolean).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }).join(' ') || 'Teacher';
+}
+
+function zhSheetId_() { return zhProp_('ZOHO_SYNC_SPREADSHEET_ID', ZOHO_SYNC_SPREADSHEET_ID_DEFAULT_); }
+
+function zhJobRunning_(job) { return !!job && job.status === 'RUNNING' && Date.now() - Number(job.updatedAtMs || 0) < ZH_JOB_STALE_MS_; }
+
+function zhJsonProp_(k, dflt) { try { var v = zhProp_(k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
+
+function tkCourseById_(courses, id) { return (courses || []).filter(function (c) { return String(c.id) === String(id); })[0] || null; }
+
+function zhNorm_(v) { return String(v === null || v === undefined ? '' : v).trim(); }
+
+function zhGradeLabel_(nilai) {
+  return String(nilai || '').trim().toLowerCase().replace(/(^|[\s(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); });
+}
+
+function zhEmail_(v) { return String(v === null || v === undefined ? '' : v).replace(/[\s ​-‍⁠﻿]+/g, '').replace(/^mailto:/i, '').toLowerCase(); }
+
+function mhgSanitize_(raw, strict) {
+  var d = mhgDefaults_(), c = raw && typeof raw === 'object' ? raw : {}, out = {};
+  var fail = function (msg, k) { if (strict) throw new Error(msg); out[k] = d[k]; };
+  out.enabled = c.enabled === undefined ? d.enabled : c.enabled === true;
+  var num = function (k, lo, hi, label) { var n = Number(c[k]); if (c[k] === undefined || c[k] === '') { out[k] = d[k]; return; } if (Math.floor(n) === n && n >= lo && n <= hi) out[k] = n; else fail(label + ' must be a whole number from ' + lo + ' to ' + hi + '.', k); };
+  num('days', 7, 120, 'Days pending'); num('maxRowsInEmail', 50, 1000, 'Rows in the email'); num('keepClearedDays', 30, 730, 'Keep cleared items (days)');
+  var cats = c.categories === undefined ? d.categories : (Array.isArray(c.categories) ? c.categories : String(c.categories).split(/[\s,]+/)).map(function (x) { return String(x).toUpperCase().trim(); }).filter(function (x) { return MHG_CATS_[x]; });
+  if (!cats.length) fail('Choose at least one assignment type.', 'categories'); else out.categories = cats.filter(function (x, i) { return cats.indexOf(x) === i; });
+  ['to', 'cc'].forEach(function (k) {
+    try { out[k] = c[k] === undefined ? d[k] : mhgEmails_(c[k]); } catch (e) { fail(e.message, k); }
+  });
+  if (!out.to || !out.to.length) fail('Enter at least one "To" address.', 'to');
+  return out;
+}
+
+function mhgToday_(now) { return Utilities.formatDate(now || new Date(), MHG_TZ_, 'yyyy-MM-dd'); }
+
+function ccwExcludeRe_() {
+  var s = String(PropertiesService.getScriptProperties().getProperty('CLASS_CONSOLIDATION_EXCLUDE_REGEX') || CCW_EXCLUDE_DEFAULT_);
+  try { return new RegExp(s, 'i'); } catch (e) { return new RegExp(CCW_EXCLUDE_DEFAULT_, 'i'); }
+}
+
+function mhgSafeLink_(u) { u = String(u || ''); return /^https:\/\/classroom\.google\.com\/[^\s"'<>]*$/.test(u) ? u : ''; }
+
+function mhgCode_(title) { var cat = gradesCategory_(title); for (var k in MHG_CATS_) if (MHG_CATS_[k].cat === cat) return k; return ''; }
+
+function mhgDays_(fromYmd, toYmd) { return Math.round((Date.parse(toYmd + 'T12:00:00Z') - Date.parse(fromYmd + 'T12:00:00Z')) / 86400000); }
+
+function mhgMdY_(ymd) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || '')); return m ? m[2] + '/' + m[3] + '/' + m[1] : String(ymd || ''); }
+
+function taInt_(v, lo, hi) { var n = Number(v); return Math.floor(n) === n && n >= lo && n <= hi ? n : null; }
+
+function taToday_(now) { return Utilities.formatDate(now || new Date(), TA_TZ_, 'yyyy-MM-dd'); }
+
+function taDow_(ymd) { return new Date(ymd + 'T12:00:00Z').getUTCDay(); }
+
+function taTeacherLeaveIndex_() {
+  var out = {};
+  try {
+    lvRows_().forEach(function (r) {
+      if (r.Role === 'student' || r.Status !== LV_STATUS_.APPROVED || !lvIsDate_(r.Leave_Start_Date) || !lvIsDate_(r.Leave_End_Date)) return;
+      (out[normalizeEmail_(r.User_Email)] = out[normalizeEmail_(r.User_Email)] || []).push({ start: r.Leave_Start_Date, end: r.Leave_End_Date });
+    });
+  } catch (e) { console.warn('[TeacherAppreciation] teacher leave unavailable: ' + taSafeErr_(e)); }
+  return out;
+}
+
+function isAPSSchoolHoliday(date) { return !!slCovering_(date); }
+
+function taScoreOccurrence_(o, tr, students, c, cfg) {
+  var active = Number(tr.activeMinutes) || 0, call = Number(tr.callMinutes) || 0;
+  var overrideOnly = !!tr.overrideStatus && !active;
+  o.join = tr.firstJoin || '';
+  o.activeMinutes = active;
+  o.completion = overrideOnly ? 100 : Math.min(100, Math.max(active, 0) / (o.minutes * cfg.heldPct / 100) * 100);
+  if (!overrideOnly && !active && call) o.completion = Math.min(100, call / (o.minutes * cfg.heldPct / 100) * 100);
+  var start = taMinutes_(tr.schedStart) !== null ? taMinutes_(tr.schedStart) : c.startMin, join = taMinutes_(tr.firstJoin);
+  if (start !== null && join !== null && !overrideOnly) {
+    var late = join - start; if (late < -720) late += 1440;
+    o.lateMin = Math.max(0, late);
+    o.punctuality = late <= cfg.punctuality.full ? 100 : late <= cfg.punctuality.good ? 80 : late <= cfg.punctuality.fair ? 50 : 0;
+  } else o.punctuality = null;
+  var counted = students.filter(function (r) { return String(r.overrideStatus || r.status || '').toUpperCase() !== 'EXCUSED'; });
+  var inClass = counted.filter(function (r) { var s = String(r.overrideStatus || r.status || '').toUpperCase(); return s === 'PRESENT' || s === 'PARTIAL'; }).length;
+  o.stuTotal = counted.length; o.stuIn = inClass;
+  o.attendance = counted.length ? Math.min(100, (inClass / counted.length) / (cfg.attendanceTarget / 100) * 100) : null;
+  o.attendancePct = counted.length ? inClass / counted.length * 100 : null;
+  o.completion = taRound_(o.completion);
+}
+
+function taDateMs_(s) { var m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(String(s || '')); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) : null; }
+
+function gradesCategory_(title) {
+  var t = String(title || '').trim().toUpperCase();
+  for (var i = 0; i < GRADES_CATEGORY_PREFIXES_.length; i++) if (t.indexOf(GRADES_CATEGORY_PREFIXES_[i][0]) === 0) return GRADES_CATEGORY_PREFIXES_[i][1];
+  return '';
+}
+
+function taScoreTeacher_(t, cls, work, heldWeeks, weeks, gradeFresh, cfg, wk) {
+  var held = t.occ.filter(function (o) { return o.status === TA_CLASS_STATUS_.HELD || o.status === TA_CLASS_STATUS_.COVERING; });
+  var excluded = t.occ.filter(function (o) { return o.status !== TA_CLASS_STATUS_.HELD && o.status !== TA_CLASS_STATUS_.COVERING; });
+  var avg = function (list, key) { // weighted by class minutes; null values are left out
+    var s = 0, w = 0; list.forEach(function (o) { var v = o[key]; if (v === null || v === undefined || isNaN(v)) return; s += v * o.minutes; w += o.minutes; });
+    return w ? s / w : null;
+  };
+  var m = { completion: avg(held, 'completion'), punctuality: avg(held, 'punctuality'), attendance: avg(held, 'attendance'), engagement: null, grading: null, consistency: null };
+  var ownHeld = held.filter(function (o) { return o.status === TA_CLASS_STATUS_.HELD; });
+  var subRates = [];
+  if (gradeFresh) {
+    var eng = [], gN = 0, gOk = 0, early = 0;
+    ownHeld.forEach(function (o) {
+      var w = work[o.courseId]; if (!w) return;
+      var exp = taExpectedFor_(o.nilai, cfg); if (!exp.length) return;
+      var got = exp.reduce(function (a, k) { return a + ((k === 'HW' || k === 'QUZ') && w.exam ? 1 : (w.posted[k] || 0)); }, 0);
+      eng.push({ v: got / exp.length * 100, minutes: o.minutes });
+      subRates = subRates.concat(w.subRates);
+    });
+    if (eng.length) m.engagement = avg(eng.map(function (e) { return { engagement: e.v, minutes: e.minutes }; }), 'engagement');
+    Object.keys(t.classes).forEach(function (id) { var w = work[id]; if (w) { gN += w.gN; gOk += w.gOk; early += w.early; } });
+    if (gN) m.grading = gOk / gN * 100;
+    t.early = early;
+    var hw = Object.keys(heldWeeks);
+    if (hw.length) {
+      var posted = hw.filter(function (w) { return Object.keys(heldWeeks[w]).some(function (id) { return work[id] && work[id].weeksPosted[w]; }); }).length;
+      m.consistency = posted / hw.length * 100;
+    }
+  }
+  var avail = TA_METRICS_.filter(function (k) { return m[k] !== null && m[k] !== undefined && !isNaN(m[k]); });
+  var wsum = avail.reduce(function (a, k) { return a + cfg.weights[k]; }, 0);
+  var score = wsum ? avail.reduce(function (a, k) { return a + m[k] * cfg.weights[k]; }, 0) / wsum : null;
+  var reasons = [];
+  if (!held.length) {
+    var sts = t.occ.map(function (o) { return o.status; }), only = function (list) { return sts.length && sts.every(function (x) { return list.indexOf(x) > -1; }); };
+    reasons.push(!sts.length ? 'No class scheduled this week' : only([TA_CLASS_STATUS_.HOLIDAY, TA_CLASS_STATUS_.CANCELLED]) ? 'No class this week (school leave or cancelled class)'
+      : only([TA_CLASS_STATUS_.LEAVE, TA_CLASS_STATUS_.HOLIDAY, TA_CLASS_STATUS_.CANCELLED]) ? 'On approved leave'
+      : only([TA_CLASS_STATUS_.COVERED, TA_CLASS_STATUS_.LEAVE, TA_CLASS_STATUS_.HOLIDAY, TA_CLASS_STATUS_.CANCELLED]) ? 'Class covered by another teacher' : 'No class held and verified this week');
+  }
+  if (held.length && m.completion === null) reasons.push('Class completion unknown');
+  if (held.length && m.punctuality === null) reasons.push('Teacher join time not available');
+  if (!gradeFresh) reasons.push('Google Classroom data not refreshed recently (grade sync)');
+  var coverage = wsum;
+  if (held.length && coverage < cfg.minCoverage) reasons.push('Only ' + coverage + '% of the scoring weights have data (minimum ' + cfg.minCoverage + '%)');
+  excluded.forEach(function (o) { if (o.status === TA_CLASS_STATUS_.NOT_VERIFIED) reasons.push(o.code + ' ' + taMdY_(o.date) + ': ' + o.reason); });
+  var sufficient = held.length > 0 && m.completion !== null && m.punctuality !== null && coverage >= cfg.minCoverage;
+  var sRound = sufficient ? taRound_(score) : null;
+  var band = sufficient ? taBand_(sRound, cfg) : TA_BAND_.INSUFFICIENT;
+  var subRate = subRates.length ? subRates.reduce(function (a, b) { return a + b; }, 0) / subRates.length * 100 : null;
+  var out = { email: t.email, apsId: getAPSIdFromEmail(t.email), name: t.name || t.email, nilai: Object.keys(t.nilai).sort(naturalCompareJs_).join(', '),
+    classes: Object.keys(t.classes).length ? Object.keys(t.classes).map(function (id) { return t.classes[id]; }).sort(naturalCompareJs_)
+      : t.occ.filter(function (o) { return o.status === TA_CLASS_STATUS_.COVERING; }).map(function (o) { return o.code + ' (covered)'; }),
+    scheduled: t.occ.filter(function (o) { return o.status !== TA_CLASS_STATUS_.HOLIDAY && o.status !== TA_CLASS_STATUS_.CANCELLED; }).length, held: held.length, excluded: excluded.length,
+    metrics: {}, submissionRate: taRound_(subRate), coverage: coverage, score: sRound, band: band, dataStatus: sufficient ? 'SUFFICIENT' : 'INSUFFICIENT', eligible: false, highlights: [],
+    reasons: sufficient ? reasons.filter(function (r) { return !/^No class|unknown|not available|Only |^On approved|^Class covered/.test(r); }) : reasons, gradedBeforeTurnIn: t.early || 0,
+    details: t.occ.map(function (o) { return { c: o.code, d: o.date, s: o.status, comp: o.completion === undefined ? null : o.completion, punc: o.punctuality === undefined ? null : o.punctuality, late: o.lateMin === undefined ? null : o.lateMin,
+      join: o.join || '', att: o.attendancePct === undefined || o.attendancePct === null ? null : taRound_(o.attendancePct), r: o.reason || '' }; }) };
+  TA_METRICS_.forEach(function (k) { out.metrics[k] = taRound_(m[k]); });
+  out.eligible = sufficient && sRound >= cfg.appreciateMin;
+  out.highlights = taHighlights_(out, held, cfg);
+  return out;
+}
+
+function taTs_(d) { return Utilities.formatDate(d || new Date(), TA_TZ_, 'yyyy-MM-dd HH:mm:ss'); }
+
+function getTargetSpreadsheetId_() {
+  return getConfigString_('TARGET_SPREADSHEET_ID', '');
+}
+
+function taViewer_(sessionToken, forMutation) {
+  var s = apsRequireTabForToken_(sessionToken, 'teacherMgmt.appreciation');
+  var admin = isAdminRole_(s.role), bod = s.role === VCFO_AMCHSTS_BOD_ROLE;
+  if (!admin && !bod) throw new Error('Weekly Teacher Appreciation is available to Admin / Super Admin (BOD read-only).');
+  if (forMutation) {
+    if (!admin) throw new Error('Read-only access: only Admin / Super Admin can change Teacher Appreciation.');
+    requireDashboardMutationPermission_({ email: s.email, role: s.role }, 'change Teacher Appreciation');
+  }
+  return { email: s.email, role: s.role, canEdit: admin };
+}
+
+function taReadTable_(name, header) {
+  var ss = getWorkbook_(), sh = ss.getSheetByName(name);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, header.length).getValues().map(function (r, i) {
+    var o = { _row: i + 2 };
+    header.forEach(function (h, j) { var x = r[j]; o[h] = x instanceof Date || Object.prototype.toString.call(x) === '[object Date]' ? Utilities.formatDate(x, TA_TZ_, 'yyyy-MM-dd HH:mm:ss') : String(x === null || x === undefined ? '' : x).replace(/^'(?=[=+\-@])/, ''); });
+    return o;
+  }).filter(function (o) { return o[header[0]]; });
+}
+
+function taRowToTeacher_(r) {
+  var n = function (v) { return v === '' || v === undefined || v === null || isNaN(Number(v)) ? null : Number(v); };
+  var det = []; try { det = JSON.parse(r.Details || '[]'); } catch (e) { det = []; }
+  return { email: r.Teacher_Email, apsId: r.Teacher_APSID, name: r.Teacher_Name, nilai: r.Nilai, classes: r.Classes ? r.Classes.split(', ') : [], scheduled: n(r.Classes_Scheduled), held: n(r.Classes_Held),
+    excluded: n(r.Classes_Excluded), metrics: { completion: n(r.Completion), punctuality: n(r.Punctuality), attendance: n(r.Student_Attendance), engagement: n(r.Engagement), grading: n(r.Grading), consistency: n(r.Consistency) },
+    submissionRate: n(r.Submission_Rate), coverage: n(r.Coverage_Pct), score: n(r.Score), band: r.Band, dataStatus: r.Data_Status, eligible: r.Eligible === 'YES', highlights: r.Highlights ? r.Highlights.split(',') : [],
+    reasons: r.Reasons ? r.Reasons.split(' | ') : [], details: det, weekId: r.Week_ID, evaluatedAt: r.Evaluated_At, configVersion: r.Config_Version };
+}
+
+function taWeekBounds_(weekId) {
+  var m = /^WK-(\d{4}-\d{2}-\d{2})$/.exec(String(weekId || ''));
+  if (!m) throw new Error('Invalid week.');
+  return { weekId: weekId, friday: m[1], start: dsShift_(m[1], -4), end: dsShift_(m[1], 2) };
+}
+
+function taWeekLabel_(weekId) { var b = taWeekBounds_(weekId); return taMdY_(b.start) + ' – ' + taMdY_(b.end); }
+
+function acRequireAdmin_(sessionToken) {
+  var s = requireValidSession_(sessionToken);
+  if (!isAdminRole_(s.role)) throw new Error('Only Admin / Super Admin can use Admin Control.');
+  if (!apsTabAllowed_(s.role, 'adminControl.access')) throw new Error(AC_OFF_MSG_); // r75: Super Admin can switch it off for Admin
+  return s;
+}
+
+function readAllGtrRequests_() {
+  var sheet = getOrCreateGradeTimeChangeSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var values = sheet.getRange(2, 1, lastRow - 1, GTR_COLUMNS.length).getValues();
+  var out = [];
+  for (var i = 0; i < values.length; i++) {
+    if (!values[i][0]) continue; // skip a blank row
+    var obj = gtrRowToObject_(values[i]);
+    obj._row = i + 2;
+    out.push(obj);
+  }
+  return out;
+}
+
+function appendEstLabel_(label) {
+  var text = String(label || '').trim();
+  if (!text) return '';
+  return /\bEST\b/i.test(text) ? text : text + ' ' + APS_TIMEZONE_LABEL;
+}
+
+function getOrCreateAssignmentAuditSheet_() {
+  var ss = getWorkbook_();
+  var sheet = ss.getSheetByName(ASSIGN_CLASSROOM_AUDIT_SHEET_NAME);
+  if (sheet) {
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 11) {
+      sheet.insertColumnsAfter(lastCol, 11 - lastCol);
+      sheet.getRange(1, lastCol + 1, 1, 1).setValue('Reason');
+      sheet.getRange(2, lastCol + 1, Math.max(1, sheet.getLastRow() - 1), 1).setValue('');
+      lastCol = 11;
+    }
+    if (lastCol < 12) { // r112: Re-Map grade transfer result (older rows stay empty)
+      if (sheet.getMaxColumns() < 12) sheet.insertColumnsAfter(sheet.getMaxColumns(), 12 - sheet.getMaxColumns());
+      sheet.getRange(1, 12).setValue('Grade Transfer').setFontWeight('bold');
+    }
+    return sheet;
+  }
+  sheet = ss.insertSheet(ASSIGN_CLASSROOM_AUDIT_SHEET_NAME);
+  sheet.getRange(1,1,1,12).setValues([['Timestamp','Admin Email','Student Name','Student APS Email','From Classroom','From Timing','To Classroom','To Timing','Student Count After','Action','Reason','Grade Transfer']]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function lvViewer_(sessionToken) {
+  var s = apsRequireTabForToken_(sessionToken, 'applyLeave');
+  var email = normalizeEmail_(s.email);
+  if (!email) throw new Error('Please sign in again.');
+  var courses = readAllCoursesFromCache_();
+  var v = { email: email, role: s.role, courses: courses, isAdmin: isAdminRole_(s.role) };
+  v.roleLabel = lvRoleLabel_(s.role, email, courses);
+  var nm = findDisplayName_(courses, email);
+  v.name = nm && nm !== email ? (s.role === 'student' ? nm : teacherDisplayName_(nm) || nm) : ((isAdminOrHm_(s.role) && getGoogleProfileName_(email)) || localPartOfEmail_(email));
+  return v;
+}
+
+function lvRows_() {
+  var sh = getWorkbook_().getSheetByName(LV_SHEET_);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, LV_HEADER_.length).getValues().map(function (r, i) {
+    var o = { _row: i + 2 };
+    LV_HEADER_.forEach(function (h, j) { var x = r[j]; o[h] = x instanceof Date ? Utilities.formatDate(x, APS_TZ, /Date$/.test(h) ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss') : String(x === null || x === undefined ? '' : x); });
+    return o;
+  });
+}
+
+function lvAddDays_(ymd, n) { return new Date(Date.parse(ymd + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10); }
+
+function lvMaxPastDays_() { var n = Number(rosterProp_('APS_LEAVE_MAX_PAST_DAYS', '14')); return n >= 0 && n <= 120 ? Math.floor(n) : 14; }
+
+function lvMaxSpanDays_() { var n = Number(rosterProp_('APS_LEAVE_MAX_DAYS', '90')); return n >= 1 && n <= 366 ? Math.floor(n) : 90; }
+
+function lvClasses_(email, role, courses) {
+  return courses.filter(function (c) {
+    if (!courseNameMatches_(c.name)) return false;
+    if (role === 'student') return courseHasStudentEmail_(c, email);
+    if (role === 'teacher') return userHasCourseAccess_(email, c); // classes they teach or support (VP / HM)
+    return (c.classSupport || []).some(function (x) { return normalizeEmail_(x.email) === email; }); // Admin / HM / BOD: only classes that NAME them (Description / Room), never every class they co-teach
+  }).sort(function (a, b) { return naturalCompareJs_(a.name, b.name); });
+}
+
+function lvClassLine_(c) {
+  var s = adsSchedule_(c.name), short = String(c.name || '').split(' |')[0].trim();
+  return short + (s ? ' – ' + s : '');
+}
+
+function lvPublic_(r, full) {
+  var o = { id: r.Leave_ID, start: r.Leave_Start_Date, end: r.Leave_End_Date, startLabel: lvFmt_(r.Leave_Start_Date), endLabel: lvFmt_(r.Leave_End_Date), reason: r.Reason, status: r.Status,
+    submitted: ttmFmtTs_(r.Submitted_DateTime), role: r.Role,
+    attendance: r.Role === 'student' ? (r.Status === LV_STATUS_.APPROVED ? 'Excused – 70%' : '—') : 'Not applicable (staff leave)',
+    classes: r.Affected_Classes ? r.Affected_Classes.split('\n') : [] };
+  if (full) { o.name = r.User_Name; o.email = r.User_Email; o.apsId = r.APSID; o.roleLabel = ({ student: 'Student', teacher: 'Teacher', headmaster: 'Head Master', admin: 'Admin', superadmin: 'Super Admin', authorized: 'Authorized' })[r.Role] || (r.Role === VCFO_AMCHSTS_BOD_ROLE ? 'BOD / On-Call Coordinator' : r.Role); o.notification = r.Notification_Status; o.notificationDetail = r.Notification_Detail;
+    var subAt = examQpParseTs_(String(r.Submitted_DateTime || '')); o.canResend = r.Notification_Status !== 'SENT' && (r.Notification_Status !== 'PENDING' || !subAt || Date.now() - subAt.getTime() > 10 * 60000); // r100: a PENDING older than 10 min (interrupted run) can be resent
+    o.override = r.Attendance_Override_Status; o.comments = r.Comments; o.submittedBy = r.Submitted_By; }
+  return o;
+}
+
+function canSendTeacherAppreciation_(role) { return isAdminOrHm_(role); }
+
+function appreciationTeacherCourses_(session) {
+  var email = normalizeEmail_(session.email);
+  var leader = canSendTeacherAppreciation_(session.role); // r42: Admin / Super Admin / Head Master see EVERY AY26-27 class
+  var courses = readAllCoursesFromCache_().filter(function (c) {
+    return courseNameMatches_(c.name) && (!c.courseState || c.courseState === 'ACTIVE') && (leader || userHasCourseAccess_(email, c));
+  });
+  if (session.role !== 'teacher' && !courses.length) throw new Error(APPRECIATION_MSG_.notTeacher);
+  return courses;
+}
+
+function amViewer_(sessionToken, needAdmin) {
+  var s = requireValidSession_(sessionToken);
+  var v = { email: normalizeEmail_(s.email), role: s.role, admin: isAdminRole_(s.role) };
+  if (needAdmin) {
+    if (!v.admin) throw new Error('You do not have permission to perform this action.');
+    if (!apsTabAllowed_(s.role, 'assignMon')) throw new Error(AC_OFF_MSG_);
+    return v;
+  }
+  var cfg = amConfig_(), courses = readAllCoursesFromCache_();
+  if (!amAccessFlag_(s.role, v.email, courses)) {
+    if (!cfg.enabled && !v.admin) throw new Error(AM_OFF_MSG_);
+    throw new Error(AC_OFF_MSG_);
+  }
+  v.courses = courses;
+  if (v.admin || s.role === 'headmaster' || s.role === VCFO_AMCHSTS_BOD_ROLE) { v.all = true; return v; }
+  v.ids = {};
+  if (s.role === 'student') { v.student = true; courses.forEach(function (c) { if (courseHasStudentEmail_(c, v.email)) v.ids[String(c.id)] = true; }); return v; }
+  if (s.role === 'teacher') { courses.forEach(function (c) { if (userHasCourseAccess_(v.email, c)) v.ids[String(c.id)] = true; }); return v; }
+  throw new Error('You do not have permission to perform this action.');
+}
+
+function amConfig_() {
+  if (AM_MEMO_.cfg) return AM_MEMO_.cfg;
+  var raw = null;
+  try { raw = JSON.parse(PropertiesService.getScriptProperties().getProperty(AM_CONFIG_PROP_) || 'null'); } catch (e) { raw = null; }
+  AM_MEMO_.cfg = amSanitize_(raw);
+  return AM_MEMO_.cfg;
+}
+
+function amBuild_(cfg, ids, opts) {
+  opts = opts || {};
+  var now = opts.now || new Date(), nowMs = now.getTime(), nowTs = rosterTs_(now), win = amWindow_(opts, cfg, now);
+  var ov = amOverrides_(), rds = rosterDataset_(), courses = opts.courses || readAllCoursesFromCache_();
+  var cById = {}; courses.forEach(function (c) { cById[String(c.id)] = c; });
+  var classes = rds.classrooms.filter(function (c) { return c.status === ROSTER_STATUS.ACTIVE && courseNameMatches_(c.name) && (!ids || ids[c.id]); });
+  var cids = classes.map(function (c) { return c.id; });
+  var grades = gradesForCourses_(cids);
+  var stuBy = {}; rds.students.forEach(function (s) { if (s.s === ROSTER_STATUS.ACTIVE) stuBy[s.c + '|' + s.u] = s; });
+  var graceMs = cfg.gradingGraceDays * 86400000, onlyEmail = opts.studentEmail ? normalizeEmail_(opts.studentEmail) : '';
+  var out = { window: win, classes: [], items: [], totals: amCounts_(), nowTs: nowTs };
+  classes.forEach(function (rc) {
+    var cid = rc.id, cc = cById[cid] || {}, t = cc.id ? srmClassTeacher_(cc, courses) : null;
+    var g = grades[cid] || { w: [], s: [] };
+    var cls = { id: cid, name: rc.name, nilai: rc.nilai || extractNilaiFromCourseName_(rc.name), sec: rc.sec || '', day: rc.day || '', time: rc.start ? rc.start + (rc.end ? ' – ' + rc.end : '') + ' EST' : adsSchedule_(rc.name),
+      teacher: t ? t.name : '', teacherEmail: t ? t.email : '', link: /^https:\/\/classroom\.google\.com\//.test(String(cc.link || '')) ? cc.link : '', counts: amCounts_(), assignments: [], students: {} };
+    var subsBy = {}; g.s.forEach(function (x) { (subsBy[x.w] = subsBy[x.w] || []).push(x); });
+    g.w.forEach(function (w) {
+      var aw = cid + '|' + w.id;
+      var code = ov.type[aw] !== undefined ? ov.type[aw] : amClassify_(w.t, cfg), type = code ? amTypeOf_(code, cfg) : null;
+      if (!type || !type.monitor) return; // UNCLASSIFIED / type not monitored
+      var inWin = w.due ? (w.due >= win.from && w.due <= win.to) : (w.ad && w.ad.slice(0, 10) + ' 00:00:00' >= win.from && w.ad <= win.to);
+      if (!inWin) return;
+      var subs = subsBy[w.id] || [];
+      if (!subs.length) return; // no submission records yet (not synced) — never guess who is assigned
+      var aEx = !!ov.exAssign[aw];
+      var a = { id: w.id, title: String(w.t || ''), type: code, due: w.due || '', dueLabel: w.due ? amDueLabel_(w.due) : 'No due date', max: w.max, excluded: aEx, counts: amCounts_() };
+      subs.forEach(function (x) {
+        var stu = stuBy[cid + '|' + x.u]; if (!stu) return; // only ACTIVE roster students
+        var em = normalizeEmail_(stu.e || x.e); if (!em || isRosterHiddenStaffEmail_(em)) return;
+        if (onlyEmail && em !== onlyEmail) return;
+        var key = aw + '|' + em, exS = ov.exStudent[key];
+        var status = amStatus_(x, w, type, nowTs, aEx || !!exS);
+        var tiMs = amTsMs_(x.ti) || amTsMs_(w.due), overdue = status === 'UNGRADED' && tiMs !== null && nowMs - tiMs > graceMs;
+        amAdd_(a.counts, status, overdue); amAdd_(cls.counts, status, overdue); amAdd_(out.totals, status, overdue);
+        var sr = cls.students[em] || (cls.students[em] = { email: em, name: stu.n || localPartOfEmail_(em), apsId: stu.a || adsApsId_(em), missing: 0, ungraded: 0, cells: {} });
+        if (status === 'MISSING') sr.missing++; if (status === 'UNGRADED') sr.ungraded++;
+        if (opts.withMatrix) sr.cells[w.id] = status;
+        if (status === 'MISSING' || status === 'UNGRADED' || (status === 'NOT_STARTED' && w.due && amTsMs_(w.due) - nowMs <= cfg.r48Hours * 3600000)) {
+          var dueMs = amTsMs_(w.due);
+          out.items.push({ key: key, c: cid, cls: rc.name, w: w.id, title: a.title, type: code, due: w.due || '', dueLabel: a.dueLabel, email: em, name: sr.name, apsId: sr.apsId,
+            status: status, overdue: overdue, turnIn: x.ti || '', hoursPastDue: dueMs === null ? null : Math.round((nowMs - dueMs) / 3600000), daysSinceTurnIn: status === 'UNGRADED' && tiMs !== null ? Math.floor((nowMs - tiMs) / 86400000) : null,
+            reviewed: ov.reviewed[key] ? { by: ov.reviewed[key].Created_By, at: ov.reviewed[key].Created_At, note: ov.reviewed[key].Reason } : null, notes: ov.notes[key] || [], userId: x.u });
+        }
+      });
+      amRates_(a.counts);
+      var issues = a.counts.missing + a.counts.ungraded;
+      a.health = a.excluded ? 'EXCLUDED' : !issues ? 'GREEN' : (a.counts.assigned && issues / a.counts.assigned * 100 >= cfg.assignmentRedPct ? 'RED' : 'YELLOW');
+      cls.assignments.push(a);
+    });
+    var studs = Object.keys(cls.students).map(function (k) { return cls.students[k]; });
+    cls.repeatStudents = studs.filter(function (s) { return s.missing >= cfg.repeatMissing; }).length;
+    amRates_(cls.counts);
+    var c = cls.counts, missPct = amPct_(c.missing, c.submitted + c.missing) || 0;
+    cls.health = !cls.assignments.length ? 'NONE' : (missPct >= cfg.classRedMissingPct || c.ungradedOverdue >= cfg.classRedUngraded || cls.repeatStudents >= cfg.classRedRepeatStudents) ? 'RED' : (c.missing || c.ungradedOverdue) ? 'YELLOW' : 'GREEN';
+    cls.assignments.sort(function (x, y) { return String(x.due || '9').localeCompare(String(y.due || '9')) || naturalCompareJs_(x.title, y.title); });
+    cls.studentList = studs.sort(function (x, y) { return naturalCompareJs_(x.name, y.name); });
+    delete cls.students;
+    out.classes.push(cls);
+  });
+  amEscalate_(out, cfg, nowMs);
+  amRates_(out.totals);
+  return out;
+}
+
+function amSummary_(m, teachers) {
+  var s = { classes: m.classes.length, monitored: 0, green: 0, yellow: 0, red: 0, assignments: 0, repeatStudents: 0, teachersAttention: 0 };
+  m.classes.forEach(function (c) { if (c.health !== 'NONE') s.monitored++; if (c.health === 'GREEN') s.green++; if (c.health === 'YELLOW') s.yellow++; if (c.health === 'RED') s.red++; s.assignments += c.assignments.length; s.repeatStudents += c.repeatStudents; });
+  s.teachersAttention = (teachers || []).filter(function (t) { return t.attention !== 'GREEN'; }).length;
+  s.escalated = { student: 0, teacher: 0, vpHm: 0, admin: 0 };
+  m.items.forEach(function (i) { if (i.level === 1) s.escalated.student++; if (i.level === 2) s.escalated.teacher++; if (i.level === 3) s.escalated.vpHm++; if (i.level === 4) s.escalated.admin++; });
+  return s;
+}
+
+function amTeachers_(m, cfg) {
+  var by = {};
+  m.classes.forEach(function (c) {
+    var k = c.teacherEmail || ('class:' + c.id);
+    var t = by[k] || (by[k] = { name: c.teacher || '(no Primary Teacher in the Course Description)', email: c.teacherEmail, classes: [], counts: amCounts_(), assignments: 0 });
+    t.classes.push({ id: c.id, name: c.name, health: c.health });
+    t.assignments += c.assignments.length;
+    Object.keys(t.counts).forEach(function (x) { t.counts[x] += c.counts[x] || 0; });
+  });
+  return Object.keys(by).map(function (k) {
+    var t = by[k]; amRates_(t.counts);
+    t.attention = t.counts.ungradedOverdue >= cfg.vpHmUngradedBacklog ? 'RED' : t.counts.ungradedOverdue || t.counts.missing ? 'YELLOW' : 'GREEN';
+    return t;
+  }).sort(function (a, b) { return b.counts.ungradedOverdue - a.counts.ungradedOverdue || naturalCompareJs_(a.name, b.name); });
+}
+
+function rosterAcademicYear_() {
+  var ay = String(rosterProp_('APS_CLASSROOM_ROSTER_ACADEMIC_YEAR', '')).trim();
+  var m = /^(\d{4})\s*-\s*(\d{4})$/.exec(ay);
+  if (m) return { label: m[1] + '-' + m[2], suffix: 'AY' + m[1].slice(2) + '-' + m[2].slice(2) };
+  var s = /^AY(\d{2})-(\d{2})$/i.exec(String(COURSE_NAME_SUFFIX || '').trim());
+  return s ? { label: '20' + s[1] + '-20' + s[2], suffix: String(COURSE_NAME_SUFFIX).trim().toUpperCase() } : { label: '', suffix: String(COURSE_NAME_SUFFIX || '') };
+}
+
+function rosterLabel_(d) { return Utilities.formatDate(d || new Date(), APS_TZ, 'MM/dd/yyyy hh:mm a') + ' EST'; }
+
+function gradesLastSync_() { try { return JSON.parse(rosterProp_('GRADES_LAST_SYNC_JSON', '') || 'null'); } catch (e) { return null; } }
+
+function amHistoryFor_(v, limit) {
+  var sh = getWorkbook_().getSheetByName(AM_LOG_SHEET_);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var n = sh.getLastRow() - 1, take = Math.min(n, 3000);
+  return sh.getRange(n - take + 2, 1, take, AM_LOG_HEADER_.length).getValues().map(function (r) { var o = {}; AM_LOG_HEADER_.forEach(function (h, j) { o[h] = String(r[j] === null || r[j] === undefined ? '' : r[j]); }); return o; })
+    .filter(function (r) { return v.all || (v.student ? normalizeEmail_(r.Student_Email) === v.email : !!v.ids[r.Course_ID]); })
+    .reverse().slice(0, limit || 300)
+    .map(function (r) { return { at: r.Logged_At, channel: r.Channel, stage: r.Stage, courseId: r.Course_ID, cls: r.Class_Name, title: r.Assignment, recipient: v.student ? '' : r.Recipient, student: r.Student_Email, apsId: r.Student_APSID, result: r.Result, details: r.Details, by: r.Triggered_By }; });
+}
+
+function buildAuthenticatedUserPayload_(viewer, courses) {
+  var name = resolveViewerBadgeName_({ role: viewer.role, email: viewer.email }, courses);
+  return {
+    authenticated: true,
+    email: viewer.email,
+    name: name,
+    apsId: extractAPSID_(viewer.email),
+    role: viewer.role,
+    permissions: getDashboardRolePermission_(viewer.role),
+    canViewMonitoringFilters: canViewMonitoringFilters_(viewer.role),
+    canViewMonitoringTotals: canViewMonitoringTotals_(viewer.role),
+    examinationAccess: examinationAccessForRole_(viewer.role),
+    gradingAccess: rosterAccessForRole_(viewer.role), // Examination > Grading (Classroom Roster) gate — see CLASSROOM ROSTER / GRADING MODULE
+    apsRole: apsRoleFor_(viewer, courses), // ADMIN / HM / VP / TEACHER / … — display + Class Support label (see CLASS SUPPORT module)
+    roleLabel: isOnCallCoordinatorEmail_(viewer.email) ? ON_CALL_COORDINATOR_LABEL_ : '', // r54: display only
+    tabAccess: acEffectiveForRole_(viewer.role), // r56: { key: false } for tabs an admin turned off for this role (Admin Control → Access Control)
+    coverageAccess: tccCanUse_(viewer.role, viewer.email, courses), // r58: Classes → Temporary Class Coverage (Admin / Super Admin / HM / class VP-HM)
+    coverageTrackingAccess: tccCanUse_(viewer.role, viewer.email, courses), // r70: Classes → Class Coverage Tracking (same people; server re-checks every call)
+    tempTeacherAccess: ttmCanUse_(viewer.role, viewer.email) // r89: Classes → Temp Teacher (server re-checks every call)
+  };
+}
+
+function requireSuperAdminViewer_(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  if (session.role !== SUPERADMIN_ROLE) throw new Error('Only the Super Admin account can manage dashboard roles and permissions.');
+  if (!apsTabAllowed_(session.role, 'adminControl.userRoles')) throw new Error(AC_OFF_MSG_); // r75: Super Admin can switch User Roles off (Access Control stays on)
+  var courses = readAllCoursesFromCache_();
+  return { courses: courses, viewer: { email: session.email, role: session.role } };
+}
+
+function parseClassroomTitle_(rawName) {
+  if (!rawName) return null;
+  var parts = String(rawName).split('|');
+  var gradeSectionPart = (parts[0] || '').trim();
+  var academicYear = parts.length >= 3 ? parts[2].trim() : '';
+
+  var dashIdx = gradeSectionPart.indexOf(' - ');
+  if (dashIdx === -1) dashIdx = gradeSectionPart.indexOf('-');
+  if (dashIdx === -1) return null;
+
+  var grade = gradeSectionPart.slice(0, dashIdx).trim();
+  var section = gradeSectionPart.slice(dashIdx + 1).replace(/^-/, '').trim();
+  if (!grade) return null;
+
+  return { grade: grade, section: section, academicYear: academicYear };
+}
+
+function isTimingChangeWindowOpen_() {
+  var deadline = easternWallTimeToDate_(APS_CLASS_TIMINGS.TIMING_CHANGE_DEADLINE, 23, 59);
+  return new Date().getTime() <= deadline.getTime();
+}
+
+function deriveApsId_(email) {
+  var local = localPartOfEmail_(email || '');
+  var lastUnderscore = local.lastIndexOf('_');
+  if (lastUnderscore === -1 || lastUnderscore === local.length - 1) return '';
+  return local.slice(lastUnderscore + 1).toUpperCase();
+}
+
+function findTimingChangeCandidates_(currentCourse, allCourses) {
+  var parsedCurrent = parseClassroomTitle_(currentCourse.name);
+  if (!parsedCurrent) return [];
+  var currentSchedule = parseCourseSchedule_(currentCourse.name);
+  var currentGradeNorm = normalizeGradeName_(parsedCurrent.grade);
+  var allowedTimings = getAllowedTimingsForGrade_(parsedCurrent.grade);
+
+  var candidates = [];
+  allowedTimings.forEach(function (option) {
+    if (currentSchedule && scheduleMatchesTimingOption_(currentSchedule, option)) return; // exclude the student's own current timing
+
+    var match = null;
+    for (var i = 0; i < allCourses.length; i++) {
+      var course = allCourses[i];
+      if (course.id === currentCourse.id) continue;
+      var parsed = parseClassroomTitle_(course.name);
+      if (!parsed || normalizeGradeName_(parsed.grade) !== currentGradeNorm) continue;
+      if (scheduleMatchesTimingOption_(parseCourseSchedule_(course.name), option)) { match = course; break; }
+    }
+    if (match) {
+      candidates.push({
+        courseId: match.id,
+        grade: parsedCurrent.grade,
+        timingLabel: timingOptionLabel_(option),
+        studentCount: match.studentCount,
+        hasCapacity: match.studentCount < APS_CLASS_TIMINGS.MAX_STUDENTS
+      });
+    }
+  });
+  return candidates;
+}
+
+function getAllKnownGrades_(allCourses) {
+  var seen = {};
+  var grades = [];
+  allCourses.forEach(function (course) {
+    var parsed = parseClassroomTitle_(course.name);
+    if (!parsed) return;
+    var norm = normalizeGradeName_(parsed.grade);
+    if (!seen[norm]) { seen[norm] = true; grades.push(parsed.grade.trim()); }
+  });
+  // Grade Change picker: MUNMAZHALAI is always first; all remaining grades A-Z.
+  grades.sort(function (a, b) {
+    var an = normalizeGradeName_(a).replace(/\s+/g, '');
+    var bn = normalizeGradeName_(b).replace(/\s+/g, '');
+    var aMun = an === 'MUNMAZHALAI';
+    var bMun = bn === 'MUNMAZHALAI';
+    if (aMun && !bMun) return -1;
+    if (bMun && !aMun) return 1;
+    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+  });
+  return grades;
+}
+
+function normalizeGradeName_(grade) {
+  return String(grade || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+function hasActiveGtrRequest_(studentEmail) {
+  var normalized = normalizeEmail_(studentEmail);
+  return readAllGtrRequests_().some(function (r) {
+    return normalizeEmail_(r.studentEmail) === normalized && GTR_ACTIVE_STATUSES.indexOf(r.requestStatus) > -1;
+  });
+}
+
+function isInEmailList_(email, list) {
+  var normalized = normalizeEmail_(email);
+  if (!normalized) return false;
+  return list.some(function (e) { return normalizeEmail_(e) === normalized; });
+}
+
+function cctViewer_(sessionToken, forMutation) {
+  var s = apsRequireTabForToken_(sessionToken, 'classes.coverageTracking');
+  var v = { email: normalizeEmail_(s.email), role: s.role, all: isAdminOrHm_(s.role) };
+  var courses = readAllCoursesFromCache_();
+  if (!v.all) {
+    if (s.role !== 'teacher' || !tccCanUse_(s.role, v.email, courses)) throw new Error('Only Admin, Super Admin, Head Master or a class VP / HM can use Class Coverage Tracking.');
+    v.supported = {};
+    courses.forEach(function (c) { if (courseHasSupportEmail_(c, v.email)) v.supported[String(c.id)] = true; });
+  }
+  v.roleLabel = isAdminRole_(s.role) ? (s.role === SUPERADMIN_ROLE ? 'Super Admin' : 'Admin') : s.role === 'headmaster' ? 'Head Master' : 'Class VP / HM';
+  if (forMutation) requireDashboardMutationPermission_({ email: v.email, role: v.role }, 'update Class Coverage Tracking');
+  v.courses = courses.filter(function (c) { return courseNameMatches_(c.name) && (v.all || v.supported[String(c.id)]); });
+  v.courses.sort(function (a, b) { return naturalCompareJs_(a.name, b.name); });
+  return v;
+}
+
+function cctWeeks_(now) {
+  var cur = getCurrentWeekId_(now || new Date()), m = /^WK-(\d{4})-(\d{2})-(\d{2})$/.exec(cur), out = [];
+  var base = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  for (var k = CCT_WEEKS_AHEAD_; k >= -CCT_WEEKS_BACK_; k--) {
+    var d = new Date(base + k * 7 * 86400000);
+    var id = 'WK-' + d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+    out.push({ id: id, label: getWeekLabel_(id) + (k === 0 ? ' (this class week)' : k > 0 ? ' (upcoming)' : ''), current: k === 0 });
+  }
+  return out;
+}
+
+function cctReadRecords_(weekId) {
+  var sh = ctaSheet_(CCT_SHEET_, CCT_HEADER_), last = sh.getLastRow(), out = {};
+  if (last < 2) return out;
+  sh.getRange(2, 1, last - 1, CCT_HEADER_.length).getValues().forEach(function (r, i) {
+    if (weekId && String(r[1]) !== weekId) return;
+    out[String(r[1]) + '|' + String(r[2])] = { rowNum: i + 2, recordId: String(r[0]), weekId: String(r[1]), courseId: String(r[2]), status: String(r[7] || ''),
+      action: String(r[9] || '').replace(/^'(?=[=+\-@])/, ''), updatedAt: String(r[10] || ''), updatedBy: String(r[11] || ''), updatedByRole: String(r[12] || '') };
+  });
+  return out;
+}
+
+function cctAuditCounts_(weekId) {
+  var sh = ctaSheet_(CCT_AUDIT_SHEET_, CCT_AUDIT_HEADER_), last = sh.getLastRow(), out = {};
+  if (last < 2) return out;
+  sh.getRange(2, 3, last - 1, 2).getValues().forEach(function (r) { if (String(r[0]) === weekId) out[String(r[1])] = (out[String(r[1])] || 0) + 1; });
+  return out;
+}
+
+function cctRowFor_(c, availRow, rec, histCount) {
+  var sched = tccSchedule_(c), t = primaryTeacherOf_(c);
+  return {
+    courseId: String(c.id), className: String(c.name || ''), shortName: String(c.name || '').split(' |')[0].trim(),
+    schedule: sched.ok ? sched.day + ' ' + sched.startLabel + ' – ' + sched.endLabel + ' EST' : '',
+    teacherName: t ? teacherDisplayName_(t.name || '') : '', teacherEmail: t ? normalizeEmail_(t.email) : '',
+    availability: cctAvailability_(availRow), record: cctPublicRecord_(rec), historyCount: histCount || 0
+  };
+}
+
+function getOrCreateMeetLinkMapSheet_() {
+  var ss = getAttendanceWorkbook_();
+  var sheet = ss.getSheetByName(ATTENDANCE_MEET_LINK_MAP_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(ATTENDANCE_MEET_LINK_MAP_SHEET_NAME);
+    sheet.getRange(1, 1, 1, 5).setValues([['Course ID', 'Course Name', 'Meet Code', 'Updated At', 'Updated By']]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function tccViewer_(sessionToken, forMutation) {
+  var s = apsRequireTabForToken_(sessionToken, 'classes.coverage');
+  var v = { email: normalizeEmail_(s.email), role: s.role, all: isAdminOrHm_(s.role), roleLabel: '' };
+  var courses = readAllCoursesFromCache_();
+  if (!v.all) {
+    if (s.role !== 'teacher' || !tccCanUse_(s.role, v.email, courses)) throw new Error('Only Admin, Super Admin, Head Master or a class VP / HM can arrange Temporary Class Coverage.');
+    v.supported = {};
+    courses.forEach(function (c) { if (courseHasSupportEmail_(c, v.email)) v.supported[String(c.id)] = true; });
+  }
+  v.roleLabel = isAdminRole_(s.role) ? (s.role === SUPERADMIN_ROLE ? 'Super Admin' : 'Admin') : s.role === 'headmaster' ? 'Head Master' : 'Class VP / HM';
+  if (forMutation) requireDashboardMutationPermission_({ email: v.email, role: v.role }, 'arrange Temporary Class Coverage');
+  v.courses = courses;
+  return v;
+}
+
+function tccCanUseOriginal_(v, courseId) { return v.all || !!(v.supported && v.supported[String(courseId)]); }
+
+function tccSchedule_(course) {
+  var name = String(course && course.name || '');
+  if (!courseNameMatches_(name)) return { ok: false, reason: 'not an ' + COURSE_NAME_SUFFIX + ' class' };
+  var p = parseAPSClassroomName(name);
+  var start = tccMinutes_(p.startTime), end = tccMinutes_(p.endTime);
+  if (!p.nilai || !p.section || TCC_DAY_INDEX_[p.day] === undefined || start < 0 || end <= start) return { ok: false, reason: 'the class name has no readable Nilai / day / time' };
+  return { ok: true, nilai: String(p.nilai).toUpperCase(), section: p.section, day: p.day, dayIndex: TCC_DAY_INDEX_[p.day], startLabel: p.startTime, endLabel: p.endTime, startMin: start, endMin: end };
+}
+
+function tccPrimary_(course, courses) {
+  var chain = tkClassChain_(course, courses);
+  if (chain.primary.length) return chain.primary[0];
+  var visible = (course.teachers || []).filter(function (t) { return t && t.email && !isRosterHiddenStaffEmail_(t.email) && !attIsOnCallEmail_(t.email); });
+  if (visible.length === 1) return { email: normalizeEmail_(visible[0].email), name: teacherDisplayName_(visible[0].name || '') };
+  return null;
+}
+
+function tccUpcomingDates_(sched, now, n) {
+  var today = Utilities.formatDate(now, APS_TZ, 'yyyy-MM-dd'), out = [];
+  for (var i = 0; i < 70 && out.length < n; i++) {
+    var p = tccDateParts_(today), d = new Date(Date.UTC(p.y, p.m - 1, p.d + i));
+    var ds = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+    if (d.getUTCDay() === sched.dayIndex && tccSession_(sched, ds, now).ok) out.push(ds);
+  }
+  return out;
+}
+
+function tccHistory_(v) {
+  return tccRows_().filter(function (r) { return tccCanUseOriginal_(v, r.Original_Course_ID); })
+    .sort(function (a, b) { return a.Session_Date < b.Session_Date ? 1 : a.Session_Date > b.Session_Date ? -1 : (a.Created_At < b.Created_At ? 1 : -1); })
+    .slice(0, 200).map(tccPublicRecord_);
+}
+
+function attMailConfigured_() { return apsMailMode_('ATTENDANCE') !== 'NOT_CONFIGURED'; }
+
+function tccPublicPlan_(plan, withHtml) {
+  var out = { ok: plan.ok, errors: plan.errors, warnings: plan.warnings, orig: plan.orig || null, dest: plan.dest || null, destinations: plan.destinations || [],
+    session: plan.session && plan.session.ok ? { date: plan.session.date, dateLabel: plan.session.dateLabel, timeLabel: plan.session.timeLabel, tz: plan.session.tz } : null,
+    originalTeacher: plan.originalTeacher || null, destinationTeacher: plan.destinationTeacher || null, studentCount: plan.studentCount || 0, destStudentCount: plan.destStudentCount || 0,
+    meet: plan.meet || null, recipients: plan.recipients || null, announcement: plan.announcement || '', subject: plan.subject || '', destHosting: plan.destHosting || 0,
+    noAvailableTeacher: !!plan.noAvailableTeacher,
+    cleanupLabel: plan.session && plan.session.ok ? 'Deleted automatically after ' + plan.origSched.endLabel + ' + ' + tccGraceMinutes_() + ' min' : '' };
+  if (withHtml && plan.ok) { out.studentEmailHtml = tccEmailHtml_(plan, false); out.staffEmailHtml = tccEmailHtml_(plan, true); }
+  return out;
+}
+
+function tccPlan_(v, origId, destId, dateStr, now, opts) {
+  opts = opts || {};
+  var courses = v.courses, byId = {};
+  courses.forEach(function (c) { byId[String(c.id)] = c; });
+  var plan = { ok: false, errors: [], warnings: [] };
+  var orig = byId[String(origId || '')];
+  if (!orig) { plan.errors.push('Pick the original class.'); return plan; }
+  if (!tccCanUseOriginal_(v, orig.id)) { plan.errors.push('You can arrange coverage only for classes where you are VP / HM.'); return plan; }
+  var os = tccSchedule_(orig);
+  if (!os.ok) { plan.errors.push(orig.name + ': ' + os.reason + '.'); return plan; }
+  plan.orig = { id: String(orig.id), name: orig.name }; plan.origSched = os;
+  var sess = tccSession_(os, dateStr, now);
+  if (!sess.ok) { plan.errors.push(sess.reason); return plan; }
+  plan.session = sess;
+  plan.originalTeacher = tccPrimary_(orig, courses);
+  if (!plan.originalTeacher || !plan.originalTeacher.name) plan.errors.push('The original class has no Primary Teacher — name the teacher in its Google Classroom Course Description, then Force Sync.');
+  plan.studentCount = (orig.students || []).length;
+  var allRows = tccRows_(); // r77: read the merge sheet ONCE per plan (it was re-read twice for every candidate class)
+  var existing = allRows.filter(function (r) { return tccIsLive_(r) && r.Session_Date === dateStr && (r.Original_Course_ID === String(orig.id) || r.Destination_Course_ID === String(orig.id)); });
+  existing.forEach(function (r) {
+    if (r.Original_Course_ID === String(orig.id)) plan.errors.push('Coverage for this class on ' + sess.dateLabel + ' is already arranged (' + r.Merge_ID + ') — see Merge History.');
+    else plan.errors.push(orig.name + ' is already hosting another class on ' + sess.dateLabel + ' (' + r.Merge_ID + ').');
+  });
+  // destinations
+  var maps = classMeetLinkMaps_();
+  var origMeet = tccMeetFor_(orig, maps).url;
+  var dx = tccDestContext_(courses, dateStr, now); // r77: decision-support data, loaded once (availability, APSID, primary-teacher counts)
+  plan.destinations = courses.filter(function (c) { return String(c.id) !== String(orig.id); }).map(function (c) {
+    var ds = tccSchedule_(c);
+    if (!ds.ok || ds.nilai !== os.nilai || ds.dayIndex !== os.dayIndex || ds.startMin !== os.startMin || ds.endMin !== os.endMin) return null;
+    var meet = tccMeetFor_(c, maps), reason = '';
+    if (meet.verified === 'NO') reason = meet.label;
+    else if (meet.url === origMeet) reason = 'Uses the same Google Meet as the original class.';
+    var busy = allRows.filter(function (r) { return tccIsLive_(r) && r.Session_Date === dateStr && r.Original_Course_ID === String(c.id); })[0];
+    if (busy) reason = 'Its own teacher is unavailable that day (' + busy.Merge_ID + ').';
+    var hostRows = allRows.filter(function (r) { return tccIsLive_(r) && r.Session_Date === dateStr && r.Destination_Course_ID === String(c.id); });
+    var hosting = hostRows.length;
+    var t = tccPrimary_(c, courses);
+    var d = { id: String(c.id), name: c.name, teacher: t ? t.name : '', students: (c.students || []).length, meetUrl: meet.verified === 'NO' ? '' : meet.url,
+      meetSource: meet.source, meetLabel: meet.label, verified: meet.verified, selectable: !reason, reason: reason, alreadyHosting: hosting };
+    try { tccDecorateDest_(d, c, t, ds, hostRows, dx); } catch (eDx) { d.availability = { error: true }; console.warn('[Coverage] destination details: ' + (eDx && eDx.message)); } // never blocks the workflow
+    return d;
+  }).filter(Boolean);
+  plan.destinations.sort(tccDestRank_); // r77: ranking only — the user still chooses
+  plan.noAvailableTeacher = tccMarkRecommended_(plan.destinations) === null && plan.destinations.some(function (d) { return d.selectable; }); // r78: at most ONE recommendation
+  if (!plan.destinations.length) plan.errors.push('No other class has the same Nilai (' + os.nilai + '), day (' + os.day + ') and time (' + os.startLabel + ' – ' + os.endLabel + ').');
+  if (destId) {
+    var dEntry = plan.destinations.filter(function (d) { return d.id === String(destId); })[0];
+    var dest = byId[String(destId)];
+    if (!dEntry || !dest) plan.errors.push('The coverage class must have the same Nilai, day and time as the original class.');
+    else if (!dEntry.selectable) plan.errors.push(dest.name + ': ' + dEntry.reason);
+    else if (dEntry.verified === 'CONFIRM' && !opts.confirmStreamLink) plan.errors.push('The coverage class Meet link was found in its class stream — tick the box to confirm it is the right link.');
+    if (dest) {
+      plan.dest = { id: String(dest.id), name: dest.name };
+      plan.destinationTeacher = tccPrimary_(dest, courses);
+      plan.destStudentCount = (dest.students || []).length;
+      plan.meet = { url: dEntry ? dEntry.meetUrl : '', source: dEntry ? dEntry.meetSource : '', label: dEntry ? dEntry.meetLabel : '' };
+      var rec = tccRecipients_(orig, dest, courses);
+      plan.recipients = { staff: rec.staff, studentCount: rec.students.length, cc: rec.cc };
+      plan._students = rec.students;
+      rec.warnings.forEach(function (w) { plan.warnings.push(w); });
+      if (!rec.students.length) plan.warnings.push('The original class has no students on its roster — only staff will be emailed.');
+      var max = tccClassMax_();
+      if (max && plan.studentCount + plan.destStudentCount > max) plan.warnings.push('The combined class will have about ' + (plan.studentCount + plan.destStudentCount) + ' students (limit set: ' + max + ').');
+      if (dEntry && dEntry.alreadyHosting) plan.warnings.push(dest.name + ' is already hosting ' + dEntry.alreadyHosting + ' other class(es) that session.');
+      plan.destHosting = dEntry ? dEntry.alreadyHosting || 0 : 0; // r77: Confirm & Apply then needs the extra "I understand" tick
+    }
+  }
+  plan.requestedBy = v.email + ' (' + v.roleLabel + ')';
+  if (!plan.errors.length && plan.dest && plan.meet && plan.meet.url) {
+    plan.ok = true;
+    plan.announcement = tccAnnouncementText_(plan);
+    plan.subject = tccSubject_(plan);
+  }
+  return plan;
+}
+
+function getOrCreateUserRoleSheet_() {
+  var ss = getWorkbook_();
+  var sheet = ss.getSheetByName(USER_ROLE_SHEET_NAME);
+  if (sheet) return sheet;
+  sheet = ss.insertSheet(USER_ROLE_SHEET_NAME);
+  sheet.getRange(1, 1, 1, 5).setValues([['Email', 'Role', 'Active', 'Updated At', 'Updated By']]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function examQpViewer_(sessionToken) {
+  const session = requireValidSession_(sessionToken);
+  const role = session.role;
+  const cfg = examQpConfig_();
+  const access = examinationAccessForRole_(role); // READ_WRITE (Admin/Super Admin), READ_ONLY (BOD), QUESTION_PAPER (HM/Teacher/Student when enabled)
+  if (!access) throw new Error('You are not authorized to access Exam Question Papers.');
+  const isAdmin = access === 'READ_WRITE';
+  const isReadOnly = access === 'READ_ONLY';
+  const isHm = access === 'QUESTION_PAPER' && role === 'headmaster';
+  const v = {
+    email: normalizeEmail_(session.email), role: role, isAdmin: isAdmin, isHm: isHm, isReadOnly: isReadOnly,
+    isTeacher: access === 'QUESTION_PAPER' && role === 'teacher', isStudent: access === 'QUESTION_PAPER' && role === 'student',
+    canMonitorAll: isAdmin || isReadOnly || isHm, canManage: isAdmin || (isHm && cfg.hmCanManage),
+    canExport: isAdmin || isHm, canPreview: isAdmin, cfg: cfg, token: sessionToken
+  };
+  return v;
+}
+
+function examQpSheet_(name, header) {
+  const ss = examQpSpreadsheet_();
+  const memoKey = ss.getId ? ss.getId() + '|' + name : name;
+  if (EXAM_QP_MEMO_.sheets[memoKey]) return EXAM_QP_MEMO_.sheets[memoKey];
+  let sheet = ss.getSheetByName(name);
+  let created = false;
+  if (!sheet) {
+    try {
+      sheet = ss.insertSheet(name);
+      created = true;
+    } catch (e) {
+      sheet = ss.getSheetByName(name);
+      if (!sheet) throw e;
+    }
+  }
+  const maxCols = sheet.getMaxColumns();
+  const lastCol = Math.min(sheet.getLastColumn(), maxCols);
+  const existing = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (v) { return String(v || '').trim(); }) : [];
+  const col = {};
+  existing.forEach(function (h, i) { if (h && col[h] === undefined) col[h] = i; });
+  const missing = header.filter(function (h) { return col[h] === undefined; });
+  if (missing.length) { // first use only — run setupExamQuestionPaperSheets() once at deployment so this never races
+    let next = existing.length;
+    while (next > 0 && !existing[next - 1]) next--;
+    const need = next + missing.length;
+    if (sheet.getMaxColumns() < need) sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+    sheet.getRange(1, next + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+    missing.forEach(function (h, i) { col[h] = next + i; });
+    if (!existing.length) sheet.setFrozenRows(1);
+  }
+  let width = 0;
+  Object.keys(col).forEach(function (k) { width = Math.max(width, col[k] + 1); });
+  // New sheet: text-format every cell once, so appendRow() never turns ids / timestamps into numbers or Dates.
+  if (created && sheet.getMaxRows) sheet.getRange(1, 1, sheet.getMaxRows(), width).setNumberFormat('@');
+  const meta = { sheet: sheet, col: col, width: width };
+  EXAM_QP_MEMO_.sheets[memoKey] = meta;
+  return meta;
+}
+
+function examQpObjectFromRow_(meta, row) {
+  const obj = {};
+  Object.keys(meta.col).forEach(function (k) { const v = row[meta.col[k]]; obj[k] = v === null || v === undefined ? '' : (Object.prototype.toString.call(v) === '[object Date]' ? examQpTs_(v) : String(v)); });
+  return obj;
+}
+
+function examQpReadRecords_(fresh) {
+  const cache = CacheService.getScriptCache();
+  const key = examQpRecordCacheKey_();
+  const hit = fresh ? null : cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* fall through */ } }
+  const meta = examQpSheet_(EXAM_QP_CONFIG.SHEET_PAPERS, EXAM_QP_PAPER_HEADER);
+  const last = meta.sheet.getLastRow();
+  const out = [];
+  if (last >= 2) {
+    meta.sheet.getRange(2, 1, last - 1, meta.width).getValues().forEach(function (row) {
+      const o = examQpObjectFromRow_(meta, row);
+      if (o.Question_Paper_ID) out.push(o);
+    });
+  }
+  try { cache.put(key, JSON.stringify(out), EXAM_QP_CONFIG.RECORD_CACHE_SECONDS); } catch (e) { /* too large to cache — fine */ }
+  return out;
+}
+
+function examQpNormDownloadKey_(v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+function examQpReadEvents_(qpIdSet) {
+  const meta = examQpSheet_(EXAM_QP_CONFIG.SHEET_DOWNLOADS, EXAM_QP_DOWNLOAD_HEADER);
+  const last = meta.sheet.getLastRow();
+  if (last < 2) return [];
+  const out = [];
+  meta.sheet.getRange(2, 1, last - 1, meta.width).getValues().forEach(function (row) {
+    const o = examQpObjectFromRow_(meta, row);
+    if (!qpIdSet || qpIdSet[o.Question_Paper_ID]) out.push(o);
+  });
+  return out;
+}
+
+function examQpLastSentMap_(qpSet) {
+  const out = {};
+  try {
+    const ss = examQpSpreadsheet_(), sh = ss.getSheetByName(EXAM_QP_SEND_SHEET_);
+    if (!sh || sh.getLastRow() < 2) return out;
+    const meta = examQpSheet_(EXAM_QP_SEND_SHEET_, EXAM_QP_SEND_HEADER_);
+    meta.sheet.getRange(2, 1, meta.sheet.getLastRow() - 1, meta.width).getValues().forEach(function (row) {
+      const o = examQpObjectFromRow_(meta, row);
+      if (o.Email_Status !== 'SENT' || (qpSet && !qpSet[o.Question_Paper_ID])) return;
+      const k = o.Question_Paper_ID + '|' + normalizeEmail_(o.Student_Email);
+      if (!out[k] || String(o.Sent_Date_Time_EST) > String(out[k].at)) out[k] = { at: String(o.Sent_Date_Time_EST), by: String(o.Sender_Email) };
+    });
+  } catch (e) { console.warn('[ExamQP] last-sent map: ' + (e && e.message)); }
+  return out;
+}
+
+function examQpAutoStatusMap_(qpSet) {
+  const out = {}, st = examQpAutoState_(qpSet);
+  Object.keys(st).forEach(function (k) {
+    const s = st[k], l = s.last || {};
+    if (s.sent) out[k] = { code: 'SENT', label: 'Auto Email Sent', at: s.sentAt };
+    else if (l.Result === 'AUTO_EMAIL_FAILED') out[k] = { code: 'FAILED', label: 'Auto Email Failed', at: String(l.Evaluated_Date_Time_EST) };
+    else if (l.Reason === EXAM_QP_AUTO_REASON_.UA) out[k] = { code: 'UA', label: 'Unreported Absence – Email Not Sent', at: String(l.Evaluated_Date_Time_EST) };
+    else if (l.Reason === EXAM_QP_AUTO_REASON_.NOT_ONLINE) out[k] = { code: 'NOT_ONLINE', label: 'Not Online – Email Not Sent', at: String(l.Evaluated_Date_Time_EST) };
+    else if (l.Reason === EXAM_QP_AUTO_REASON_.MEET_UNKNOWN) out[k] = { code: 'MEET_UNKNOWN', label: 'Meet Status Unknown – Email Not Sent', at: String(l.Evaluated_Date_Time_EST) }; // r100
+  });
+  return out;
+}
+
+function examQpClientRecord_(r, nowMs) {
+  const w = examQpWindowOf_(r);
+  return {
+    questionPaperId: r.Question_Paper_ID, examId: r.Exam_ID, examTitle: r.Exam_Title, academicYear: r.Academic_Year,
+    grade: r.Grade, className: r.Class_Name, shortClass: String(r.Class_Name || '').split('|')[0].trim(), section: r.Section, day: r.Day,
+    classDate: r.Class_Date, startTime: r.Class_Start_Time, endTime: r.Class_End_Time, timeZone: r.Time_Zone, courseId: r.Course_ID, scheduleMode: examQpScheduleModeOf_(r),
+    teacherName: r.Teacher_Name, teacherApsId: r.Teacher_APSID, fileName: r.Original_File_Name, hasFile: !!r.Question_Paper_File,
+    version: Number(r.Version || 0), releaseMinutes: Number(r.Release_Window_Minutes || 0), closeAtClassStart: examQpBool_(r.Close_At_Class_Start),
+    status: r.Status, locked: examQpBool_(r.Locked), examStatus: examQpExamStatus_(r, nowMs),
+    releaseAt: w ? w.release.getTime() : null, closeAt: w ? w.close.getTime() : null, startAt: w ? w.start.getTime() : null, endAt: w ? w.end.getTime() : null,
+    releaseLabel: w ? examQpLabel_(w.release) : '', closeLabel: w ? examQpLabel_(w.close) : '', startLabel: w ? examQpLabel_(w.start) : '',
+    releaseLongLabel: w ? examQpLongLabel_(w.release) : '',
+    classStartTimeLabel: w ? examQpTimeLabel_(w.start) : '', releaseTimeLabel: w ? examQpTimeLabel_(w.release) : '',
+    publishedBy: r.Published_By, publishedAt: r.Published_Date_Time, replacedBy: r.Replaced_By, replacedAt: r.Replaced_Date_Time,
+    replacementReason: r.Replacement_Reason, cancelReason: r.Cancel_Reason, createdBy: r.Created_By, createdAt: r.Created_Date_Time,
+    updatedBy: r.Updated_By, updatedAt: r.Updated_Date_Time, pageCount: r.Page_Count, missing: examQpMissingFields_(r),
+    autoEmailEnabled: examQpBool_(r.Auto_Email_Enabled), autoEmailMinutes: Number(r.Auto_Email_Minutes) || EXAM_QP_AUTO_.DEFAULT_MINUTES // r99
+  };
+}
+
+function examQpStaffPaperBlock_(r, nowMs) {
+  if (!r) return EXAM_QP_MESSAGES_.QUESTION_PAPER_NOT_FOUND;
+  if (r.Status === EXAM_QP_STATUS.CANCELLED) return EXAM_QP_MESSAGES_.QUESTION_PAPER_CANCELLED;
+  if (r.Status !== EXAM_QP_STATUS.PUBLISHED) return 'This question paper is not published yet.';
+  if (!r.Question_Paper_File) return 'This question paper has no PDF yet.';
+  if (examQpBool_(r.Locked)) return 'This question paper is locked. Please ask the Admin to unlock it.';
+  const w = examQpWindowOf_(r);
+  if (!w) return EXAM_QP_MESSAGES_.INVALID_EXAM;
+  if (nowMs < w.release.getTime()) return 'Available from ' + examQpLabel_(w.release) + ' — the same time as for students.';
+  return '';
+}
+
+function examQpTeacherCopyAccess_(v, r, course, courses) {
+  if (!v || !r) return { ok: false, message: EXAM_QP_TCOPY_MSG_.UNAUTHORIZED, reason: 'No session or paper.' };
+  if (v.isAdmin) return { ok: true, label: v.role === SUPERADMIN_ROLE ? 'Super Admin' : 'Admin' };
+  if (!(v.isTeacher || v.isHm)) return { ok: false, message: EXAM_QP_TCOPY_MSG_.UNAUTHORIZED, reason: 'Role ' + (v.role || 'unknown') + ' cannot use the Teacher Copy.' };
+  const me = normalizeEmail_(v.email);
+  if (examQpTeacherCopyTeachers_(course, courses).some(function (t) { return t.email === me; })) return { ok: true, label: 'Teacher' };
+  return { ok: false, message: EXAM_QP_TCOPY_MSG_.NOT_ASSIGNED, reason: 'Not an assigned teacher of this class.' };
+}
+
+function examQpTeacherCopyBlock_(r, nowMs) {
+  if (!r) return EXAM_QP_MESSAGES_.QUESTION_PAPER_NOT_FOUND;
+  if (r.Status === EXAM_QP_STATUS.CANCELLED) return EXAM_QP_TCOPY_MSG_.CANCELLED;
+  if (r.Status !== EXAM_QP_STATUS.PUBLISHED) return EXAM_QP_TCOPY_MSG_.NOT_PUBLISHED;
+  if (!r.Question_Paper_File) return 'This question paper has no PDF yet.';
+  if (examQpBool_(r.Locked)) return 'This question paper is locked. Please ask the Admin to unlock it.';
+  const w = examQpWindowOf_(r);
+  if (!w) return EXAM_QP_MESSAGES_.INVALID_EXAM;
+  if (!examQpTeacherCopyLeadOk_(r, w)) return EXAM_QP_TCOPY_MSG_.NOT_24H;
+  const open = w.start.getTime() - EXAM_QP_TCOPY_.OPEN_BEFORE_MS;
+  if (nowMs < open) return 'Teacher Copy will be available from ' + examQpLabel_(new Date(open)) + ' (60 minutes before the exam).';
+  return '';
+}
+
+function examQpBool_(v) { return v === true || String(v).trim().toLowerCase() === 'true'; }
+
+function examQpLabel_(d) { return Utilities.formatDate(d, APS_TZ, 'MM/dd/yyyy hh:mm a') + ' EST'; }
+
+function examQpParseTs_(s) {
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(s || '').trim());
+  if (!m) return null;
+  const d = easternWallTimeToDate_(m[1], Number(m[2]), Number(m[3]));
+  return new Date(d.getTime() + Number(m[4] || 0) * 1000);
+}
+
+function examQpSuspicious_(events, byKey) {
+  const out = [];
+  const per = {};
+  events.forEach(function (e) {
+    const email = normalizeEmail_(e.Student_Email || e.Authenticated_User_Email);
+    const k = e.Question_Paper_ID + '|' + email;
+    const p = per[k] = per[k] || { apsFail: 0, early: 0, late: 0, cross: 0, mismatch: 0, e: e };
+    if (e.Download_Status === 'INVALID_APSID') p.apsFail++;
+    if (e.Download_Status === 'NOT_YET_AVAILABLE') p.early++;
+    if (e.Download_Status === 'DOWNLOAD_WINDOW_CLOSED') p.late++;
+    if (/INVALID_CLASS|INVALID_STUDENT|QUESTION_PAPER_NOT_FOUND/.test(e.Download_Status)) p.cross++;
+    if (e.Download_Status === 'UNAUTHORIZED' || /mismatch/i.test(e.Reason)) p.mismatch++;
+  });
+  Object.keys(per).forEach(function (k) {
+    const p = per[k], e = p.e;
+    const base = { questionPaperId: e.Question_Paper_ID, className: e.Class_Name, examTitle: e.Exam_Title, studentName: e.Student_Full_Name, apsId: e.APSID, email: e.Student_Email || e.Authenticated_User_Email };
+    if (p.apsFail >= 2) out.push(Object.assign({ type: 'MULTIPLE_INVALID_APSID', detail: p.apsFail + ' failed APSID attempts', severity: 'HIGH' }, base));
+    else if (p.apsFail === 1) out.push(Object.assign({ type: 'INVALID_APSID', detail: 'APSID did not match the account', severity: 'MEDIUM' }, base));
+    if (p.cross) out.push(Object.assign({ type: 'OTHER_CLASS_OR_UNKNOWN_PAPER', detail: p.cross + ' attempt(s) at a paper not assigned to this student', severity: 'HIGH' }, base));
+    if (p.mismatch) out.push(Object.assign({ type: 'ACCOUNT_OR_DATA_MISMATCH', detail: p.mismatch + ' request(s) with tampered or mismatched data', severity: 'HIGH' }, base));
+    if (p.early) out.push(Object.assign({ type: 'BEFORE_RELEASE', detail: p.early + ' attempt(s) before release', severity: 'LOW' }, base));
+    if (p.late) out.push(Object.assign({ type: 'AFTER_CLOSE', detail: p.late + ' attempt(s) after the window closed', severity: 'LOW' }, base));
+    const a = byKey[k];
+    if (a && a.completedTimes.length > 1) {
+      const times = a.completedTimes.map(function (t) { const d = examQpParseTs_(t); return d ? d.getTime() : 0; }).sort();
+      let quick = false;
+      for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] <= EXAM_QP_CONFIG.REPEAT_WINDOW_MINUTES * 60000) quick = true;
+      out.push(Object.assign({ type: quick ? 'REPEATED_DOWNLOADS_SHORT_PERIOD' : 'REPEATED_DOWNLOADS', detail: a.count + ' downloads' + (quick ? ' within ' + EXAM_QP_CONFIG.REPEAT_WINDOW_MINUTES + ' minutes' : ''), severity: quick ? 'MEDIUM' : 'LOW' }, base));
+    }
+  });
+  const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  return out.sort(function (a, b) { return rank[a.severity] - rank[b.severity]; });
+}
+
+function examQpRequireManage_(v) {
+  if (!v.canManage) throw new Error('Only Admin can manage exam question papers.');
+  requireDashboardMutationPermission_({ email: v.email, role: v.role }, 'manage exam question papers');
+}
+
+function examQpFindRecord_(qpId, fresh) { return examQpReadRecords_(fresh).filter(function (r) { return r.Question_Paper_ID === qpId; })[0] || null; }
+
+function examRequireAccess_(sessionToken, forMutation) {
+  const session = requireValidSession_(sessionToken);
+  const viewer = { email: session.email, role: session.role };
+  const access = examinationAccessForRole_(viewer.role);
+  if (access !== 'READ_WRITE' && access !== 'READ_ONLY') throw new Error('Only Admin / Super Admin (read-write) and VCFO/AMCHATS BOD (read-only) can use the Examination tab.');
+  if (forMutation) {
+    if (access !== 'READ_WRITE') throw new Error('Read-only access: this account cannot publish Examination content.');
+    requireDashboardMutationPermission_(viewer, 'publish Examination content');
+  }
+  return viewer;
+}
+
+function getOrCreateExaminationAuditSheet_() {
+  const ss = getWorkbook_();
+  let sheet = ss.getSheetByName(EXAMINATION_CONFIG.AUDIT_SHEET_NAME);
+  if (!sheet) {
+    try { sheet = ss.insertSheet(EXAMINATION_CONFIG.AUDIT_SHEET_NAME); } catch (e) {
+      sheet = ss.getSheetByName(EXAMINATION_CONFIG.AUDIT_SHEET_NAME); // another request created it first
+      if (!sheet) throw e;
+      return sheet;
+    }
+    ensureSheetHeader_(sheet, EXAMINATION_AUDIT_HEADER);
+    sheet.getRange(1, 1, 1, EXAMINATION_AUDIT_HEADER.length).setValues([EXAMINATION_AUDIT_HEADER]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    // Whole columns text-formatted once, so ids / "2026-10-15 19:00" never auto-convert to numbers or Dates.
+    sheet.getRange(1, 1, sheet.getMaxRows(), EXAMINATION_AUDIT_HEADER.length).setNumberFormat('@');
+  }
+  ensureSheetHeader_(sheet, EXAMINATION_AUDIT_HEADER);
+  return sheet;
+}
+
+function findGradeChangeCandidates_(targetGrade, allCourses) {
+  var targetGradeNorm = normalizeGradeName_(targetGrade);
+  var allowedTimings = getAllowedTimingsForGrade_(targetGrade);
+
+  var candidates = [];
+  allowedTimings.forEach(function (option) {
+    var match = null;
+    for (var i = 0; i < allCourses.length; i++) {
+      var course = allCourses[i];
+      var parsed = parseClassroomTitle_(course.name);
+      if (!parsed || normalizeGradeName_(parsed.grade) !== targetGradeNorm) continue;
+      if (scheduleMatchesTimingOption_(parseCourseSchedule_(course.name), option)) { match = course; break; }
+    }
+    if (match) {
+      candidates.push({
+        courseId: match.id,
+        grade: targetGrade,
+        timingLabel: timingOptionLabel_(option),
+        studentCount: match.studentCount,
+        hasCapacity: match.studentCount < APS_CLASS_TIMINGS.MAX_STUDENTS
+      });
+    }
+  });
+  return candidates;
+}
+
+function readAllReferenceLetterRequests_() {
+  var sheet = getOrCreateReferenceLetterSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var values = sheet.getRange(2, 1, lastRow - 1, REFERENCE_LETTER_COLUMNS.length).getValues();
+  var out = [];
+  for (var i = 0; i < values.length; i++) {
+    if (!values[i][0]) continue; // skip a blank row
+    var obj = rlRowToObject_(values[i]);
+    obj._row = i + 2;
+    out.push(obj);
+  }
+  return out;
+}
+
+function srmViewer_(sessionToken, forRemoval) {
+  var s = apsRequireTabForToken_(sessionToken, 'assignClassroom.remove');
+  var v = { email: normalizeEmail_(s.email), role: s.role, canRemove: isAdminRole_(s.role) };
+  if (!v.canRemove && s.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin / Super Admin can remove students from a Google Classroom.');
+  if (forRemoval) {
+    if (!v.canRemove) throw new Error('Read-only access: this account cannot remove students.');
+    requireDashboardMutationPermission_({ email: v.email, role: v.role }, 'remove a student from a Google Classroom');
+  }
+  return v;
+}
+
+function srmAudit_() { return srmRows_().sort(function (a, b) { return a.Requested_At < b.Requested_At ? 1 : -1; }).slice(0, 300).map(srmPublic_); }
+
+function adsAudit_(rows) { return (rows || adsRows_()).slice().sort(function (a, b) { return a.Requested_At < b.Requested_At ? 1 : -1; }).slice(0, 300).map(adsPublic_); }
+
+function courseNameMatches_(name) {
+  if (!COURSE_NAME_SUFFIX) return true;
+  if (!name) return false;
+  var trimmed = name.trim().toLowerCase();
+  var suffix = COURSE_NAME_SUFFIX.trim().toLowerCase();
+  return trimmed.slice(-suffix.length) === suffix;
+}
+
+function srmRows_() {
+  var sh = getWorkbook_().getSheetByName(SRM_SHEET_);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, SRM_HEADER_.length).getValues().map(function (r, i) {
+    var o = { _row: i + 2 }; SRM_HEADER_.forEach(function (h, j) { o[h] = r[j] instanceof Date ? r[j].toISOString() : String(r[j] === null || r[j] === undefined ? '' : r[j]); }); return o;
+  });
+}
+
+function srmClassTeacher_(course, courses) {
+  var p = typeof tccPrimary_ === 'function' ? tccPrimary_(course, courses) : null;
+  if (p && p.name) return p;
+  var t = (course.teachers || []).filter(function (x) { return x && x.email && !isRosterHiddenStaffEmail_(x.email); })[0];
+  return t ? { email: normalizeEmail_(t.email), name: teacherDisplayName_(t.name || '') } : null;
+}
+
+function slAdmin_(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'adminControl.schoolLeave');
+  var s = requireValidSession_(sessionToken);
+  if (!isAdminRole_(s.role)) throw new Error('Only an Admin or Super Admin can manage school leave.');
+  return { email: normalizeEmail_(s.email), role: s.role };
+}
+
+function slPublic_(o, today) {
+  return { leaveId: o.Leave_ID, title: o.Leave_Title, startDate: o.Start_Date, endDate: o.End_Date, days: slDays_(o), reason: o.Reason, leaveType: o.Leave_Type, status: o.Status,
+    createdBy: o.Created_By, createdAt: o.Created_At, updatedBy: o.Updated_By, updatedAt: o.Updated_At, approvedBy: o.Approved_By, approvedAt: o.Approved_At,
+    notificationStatus: o.Notification_Status || 'NOT_SENT', notificationSentAt: o.Notification_Sent_At, version: Number(o.Change_Version) || 1, notifiedVersion: Number(o.Notified_Version) || 0,
+    phase: o.Status !== SL_STATUS_.APPROVED ? '' : o.End_Date < today ? 'PAST' : o.Start_Date > today ? 'UPCOMING' : 'ACTIVE' };
+}
+
+function slLists_() { return getConfigList_('SCHOOL_LEAVE_EMAIL_LISTS', SL_LISTS_DEFAULT_).map(normalizeEmail_).filter(isSyntacticallyValidEmail_); }
+
+function slProfile_() { var p = String(PropertiesService.getScriptProperties().getProperty('SCHOOL_LEAVE_EMAIL_PROFILE') || 'ATTENDANCE').trim().toUpperCase(); return p === 'TICKETS' ? 'TICKETS' : 'ATTENDANCE'; }
+
+function scRequireAdmin_(sessionToken) {
+  var s = apsRequireTabForToken_(sessionToken, 'specialClasses');
+  if (!isAdminRole_(s.role)) throw new Error('Only Admin / Super Admin can manage Special Classes.');
+  return s;
+}
+
+function scLoad_() {
+  try { return scRecords_(); } catch (e) { console.error('[SpecialClasses] read failed: ' + (e && e.message)); throw new Error(SC_UNAVAILABLE_MSG_); }
+}
+
+function scEnrollments_() {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(SC_ENR_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) { /* re-read */ }
+  var ss = openSpreadsheetByIdWithRetry_(scSpreadsheetId_(), '[SpecialClasses]'), sh = scEnrSheet_(ss, false), out = [];
+  if (sh && sh.getLastRow() > 1) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, SC_ENR_HEADER_.length).getValues().forEach(function (r, i) {
+      var id = scText_(r[0]).trim(), cid = scText_(r[1]).trim(), email = normalizeEmail_(scText_(r[2]));
+      if (!id || !cid || !email) return;
+      out.push({ row: i + 2, id: id, classId: cid, email: email, apsId: scText_(r[3]), name: scText_(r[4]), role: scText_(r[5]), option: scText_(r[6]), classroomId: scText_(r[7]),
+        status: SC_ENR_STATUSES_.indexOf(scText_(r[8]).toUpperCase()) > -1 ? scText_(r[8]).toUpperCase() : 'ENROLLED',
+        payment: SC_PAY_STATUSES_.indexOf(scText_(r[9]).toUpperCase()) > -1 ? scText_(r[9]).toUpperCase() : 'NOT_REQUIRED',
+        date: r[10] instanceof Date ? r[10].toISOString() : scText_(r[10]), source: scText_(r[11]), mapping: scText_(r[15]) || 'NOT_MAPPED' });
+    });
+  }
+  try { cache.put(SC_ENR_CACHE_KEY_, JSON.stringify(out), SC_CACHE_SECONDS_); } catch (e2) { /* fine */ }
+  return out;
+}
+
+function scToday_(now) { return Utilities.formatDate(now || new Date(), APS_TZ, 'yyyy-MM-dd'); }
+
+function scSettings_() {
+  return { showCompleted: String(rosterProp_(SC_SETTINGS_PROPS_.showCompleted, 'false')).toLowerCase() === 'true',
+    intro: String(rosterProp_(SC_SETTINGS_PROPS_.intro, '') || '').slice(0, 1000), emptyText: String(rosterProp_(SC_SETTINGS_PROPS_.emptyText, '') || '').slice(0, 300) };
+}
+
+function scAudienceAllows_(audience, role) {
+  var teacherLike = role === 'teacher' || role === 'headmaster'; // a class VP / HM signs in as 'teacher'; org-wide HM counts as teaching staff
+  if (audience === 'STUDENTS_ONLY') return role === 'student';
+  if (audience === 'TEACHERS_ONLY') return teacherLike;
+  if (audience === 'STUDENTS_AND_TEACHERS') return role === 'student' || teacherLike;
+  return audience === 'ALL';
+}
+
+function scPublic_(p, today, withLink) {
+  var st = scState_(p, today);
+  var out = { id: p.id, title: p.title, description: p.description, audience: p.audience, audienceLabel: scLabelOf_(SC_AUDIENCES_, p.audience),
+    mode: p.mode, modeLabel: scLabelOf_(SC_MODES_, p.mode), modeDetails: p.mode === 'OTHER' ? p.modeDetails : '', fees: p.fees, classDay: p.classDay,
+    programStart: p.programStart, programEnd: p.programEnd, enrollStart: p.enrollStart, enrollEnd: p.enrollEnd,
+    programLabel: scRangeLabel_(p.programStart, p.programEnd), enrollLabel: scRangeLabel_(p.enrollStart, p.enrollEnd),
+    timeLabel: p.startTime ? (p.classDay ? p.classDay + ' ' : '') + p.startTime + (p.endTime ? ' – ' + p.endTime : '') + ' ET' : 'To Be Announced',
+    state: st, registrationMode: p.registrationMode, order: p.order, status: p.status,
+    icon: p.icon || '🎓', instructor: p.instructor || '', infoLink: p.infoLink || '', maxSeats: p.maxSeats,
+    options: (p.options || []).map(function (o) { return { label: o.label, seats: o.seats }; }) }; // Classroom IDs stay server / Admin side
+  if (withLink && st.code === 'OPEN' && p.link && p.registrationMode === 'EXTERNAL_LINK') out.registerUrl = p.link; // never sent for programs the viewer cannot register for
+  return out;
+}
+
+function scSort_(a, b) {
+  var ra = SC_STATE_RANK_[a.state.code] + (a.state.code === 'CLOSED' && !a.state.running ? 1 : 0), rb = SC_STATE_RANK_[b.state.code] + (b.state.code === 'CLOSED' && !b.state.running ? 1 : 0);
+  return ra - rb || String(a.programStart || '9999').localeCompare(String(b.programStart || '9999')) ||
+    (a.order === null ? 99999 : a.order) - (b.order === null ? 99999 : b.order) || String(a.title).localeCompare(String(b.title));
+}
+
+function scMyPrograms_(email, today) {
+  email = normalizeEmail_(email);
+  var mineEnr = scEnrollments_().filter(function (e) { return e.email === email && e.status !== 'CANCELLED'; });
+  if (!mineEnr.length) return [];
+  var byId = {}; scLoad_().forEach(function (p) { byId[p.id] = p; });
+  return mineEnr.map(function (e) {
+    var p = byId[e.classId]; if (!p) return null;
+    var o = scPublic_(p, today, false);
+    o.phase = p.programEnd && today > p.programEnd ? 'PAST' : (p.programStart && today < p.programStart ? 'UPCOMING' : (p.programStart ? 'CURRENT' : 'UPCOMING'));
+    o.enrollment = { status: e.status, payment: e.payment, option: e.option, date: e.date ? Utilities.formatDate(new Date(e.date), APS_TZ, 'MMM d, yyyy') : '' };
+    if (e.status === 'ENROLLED' && o.phase !== 'PAST' && p.classLink) o.classLink = p.classLink; // join link: enrolled people only
+    return o;
+  }).filter(Boolean).sort(function (a, b) { var r = { CURRENT: 0, UPCOMING: 1, PAST: 2 }; return r[a.phase] - r[b.phase] || String(a.programStart || '9999').localeCompare(String(b.programStart || '9999')) * (a.phase === 'PAST' ? -1 : 1); });
+}
+
+function scFmtDate_(d) { var p = tccDateParts_(d); return p ? SC_MONTHS_[p.m - 1] + ' ' + p.d + ', ' + p.y : ''; }
+
+function scTo24_(label) { var m = scTimeMinutes_(label); return m < 0 ? '' : ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2); }
+
+function scClassroomName_(id) {
+  if (!id) return '';
+  if (!scClassroomName_.memo) { scClassroomName_.memo = {}; try { readAllCoursesFromCache_().forEach(function (c) { scClassroomName_.memo[String(c.id)] = String(c.name || ''); }); } catch (e) { /* optional */ } }
+  return scClassroomName_.memo[String(id)] || '';
+}
+
+function scSheetName_() { return String(rosterProp_('SPECIAL_CLASSES_SHEET_NAME', SC_SHEET_DEFAULT_)).trim() || SC_SHEET_DEFAULT_; }
+
+function grPromptState_(email, role) {
+  var out = { show: false, url: getGoogleReviewUrl(), message: GR_MESSAGE_, student: role === 'student' };
+  if (role !== 'student' || !email) return out;
+  out.show = apsBigGet_(GR_PROMPT_PROP_PREFIX_ + normalizeEmail_(email)) !== grMonth_();
+  return out;
+}
+
+function taStoredWeek_(weekId) {
+  var rows = taReadTable_(TA_SCORES_SHEET_, TA_SCORES_HEADER_).filter(function (r) { return r.Week_ID === weekId; }).map(taRowToTeacher_);
+  var wk = taWeekBounds_(weekId), counts = { active: rows.length, scored: 0, eligible: 0 };
+  Object.keys(TA_BAND_).forEach(function (k) { counts[TA_BAND_[k]] = 0; });
+  rows.forEach(function (t) { counts[t.band] = (counts[t.band] || 0) + 1; if (t.dataStatus === 'SUFFICIENT') counts.scored++; if (t.eligible) counts.eligible++; });
+  rows.sort(function (a, b) { return (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score) || String(a.name).localeCompare(String(b.name)); });
+  var run = taReadTable_(TA_RUNS_SHEET_, TA_RUNS_HEADER_).filter(function (r) { return r.Week_ID === weekId && r.Phase === 'EVALUATE'; }).pop();
+  var sum = {}; try { sum = JSON.parse(run && run.Summary || '{}'); } catch (e) { sum = {}; }
+  counts.classesHeld = sum.classesHeld; counts.classesScheduled = sum.classesScheduled; counts.classesNotVerified = sum.notVerified; counts.studentAttendancePct = sum.studentAttendancePct;
+  counts.itemsPosted = sum.itemsPosted; counts.gradedOnTime = sum.gradedOnTime; counts.gradedTotal = sum.gradedTotal; counts.gradedBeforeTurnIn = sum.gradedBeforeTurnIn;
+  return { weekId: weekId, start: wk.start, end: wk.end, label: taWeekLabel_(weekId), teachers: rows, counts: counts, gradeSync: sum.gradeSync || {}, stored: true, configVersion: rows[0] ? rows[0].configVersion : '' };
+}
+
+function taAdminReport_(ev, del, mode, monthly, month) {
+  var c = ev.counts || {}, preview = mode !== 'LIVE', label = taWeekLabel_(ev.weekId), log = taEmailHistory_(ev.weekId);
+  var e = htmlEscape_, cell = function (v) { return '<td style="padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top;">' + v + '</td>'; };
+  var th = function (list) { return '<tr>' + list.map(function (h) { return '<th style="text-align:left;padding:5px 8px;background:#f1f3f4;font-size:12px;">' + e(h) + '</th>'; }).join('') + '</tr>'; };
+  var table = function (head, rows) { return rows.length ? '<table style="border-collapse:collapse;width:100%;font-size:13px;margin:6px 0 14px;">' + th(head) + rows.join('') + '</table>' : '<p style="color:#5f6368;font-size:13px;margin:4px 0 14px;">None.</p>'; };
+  var fmt = function (v) { return v === null || v === undefined || v === '' ? '—' : e(String(v)); };
+  var teachers = ev.teachers || [];
+  var top = teachers.filter(function (t) { return t.band === TA_BAND_.EXCEPTIONAL || t.band === TA_BAND_.OUTSTANDING; });
+  var support = teachers.filter(function (t) { return t.band === TA_BAND_.IMPROVEMENT; });
+  var insufficient = teachers.filter(function (t) { return t.band === TA_BAND_.INSUFFICIENT; });
+  var scored = teachers.filter(function (t) { return t.dataStatus === 'SUFFICIENT'; });
+  var weekly = log.filter(function (r) { return r.type === 'WEEKLY' && r.period === ev.weekId; });
+  var failed = log.filter(function (r) { return r.status === 'FAILED' && r.type !== 'ADMIN'; });
+  var lowest = function (t) { return TA_METRICS_.filter(function (k) { return t.metrics[k] !== null; }).sort(function (a, b) { return t.metrics[a] - t.metrics[b]; }).slice(0, 2).map(function (k) { return TA_METRIC_LABELS_[k] + ' ' + t.metrics[k]; }).join(', '); };
+  var kv = [['Reporting week', label + ' (Monday–Sunday)'], ['Mode', preview ? 'PREVIEW — emails to teachers are OFF; nothing was sent to teachers' : 'LIVE'],
+    ['Total active teachers', c.active], ['Teachers evaluated (verified data)', c.scored], ['Exceptional (' + '≥ ' + taConfig_().bands.exceptional + ')', c.EXCEPTIONAL], ['Outstanding', c.OUTSTANDING], ['Good', c.GOOD],
+    ['Support check-in suggested', c.IMPROVEMENT_OPPORTUNITY], ['Insufficient data (not scored)', c.INSUFFICIENT_DATA], ['Eligible for weekly appreciation', c.eligible],
+    ['Classes completed (held / scheduled)', fmt(c.classesHeld) + ' / ' + fmt(c.classesScheduled) + (c.classesNotVerified ? ' · ' + c.classesNotVerified + ' not verified' : '')],
+    ['Student attendance (held classes)', c.studentAttendancePct === null || c.studentAttendancePct === undefined ? '—' : c.studentAttendancePct + '%'],
+    ['Google Classroom', (c.itemsPosted !== undefined ? c.itemsPosted + ' lesson items posted · ' : '') + (c.gradedTotal ? Math.round(c.gradedOnTime / c.gradedTotal * 100) + '% of turned-in work graded within the grading window' : 'grading: no turned-in work in the window') +
+      (c.gradedBeforeTurnIn ? ' · ' + c.gradedBeforeTurnIn + ' item(s) graded before the student turned in' : '') + ' · last grade sync ' + fmt(ev.gradeSync && ev.gradeSync.label)],
+    [preview ? 'Appreciation emails that WOULD be sent' : 'Appreciation emails sent', preview ? (del.previewed || 0) : weekly.filter(function (r) { return r.status === 'SENT'; }).length + (monthly.length ? ' weekly + ' + log.filter(function (r) { return r.type === 'MONTHLY' && r.period === month && r.status === 'SENT'; }).length + ' monthly' : '')],
+    ['Failed email attempts', failed.length]];
+  var html = '<div style="font-size:14px;line-height:1.5;">' +
+    (preview ? '<div style="background:#fff7e0;border:1px solid #f9ab00;border-radius:8px;padding:10px 12px;margin-bottom:12px;"><b>PREVIEW.</b> Teacher emails are switched OFF, so no teacher received an email. Review the scores and the sample email below, adjust the weights or thresholds in <b>👩‍🏫 Volunteer/Teacher Management → Weekly Teacher Appreciation → Configuration & Scoring Settings</b> if needed, and switch emails ON when ready.</div>' : '') +
+    '<h3 style="margin:0 0 8px;font-size:16px;">Weekly Teacher Appreciation — ' + e(label) + '</h3>' +
+    '<table style="border-collapse:collapse;font-size:13px;margin-bottom:14px;">' + kv.map(function (r) { return '<tr><td style="padding:3px 10px 3px 0;color:#5f6368;">' + e(r[0]) + '</td><td style="padding:3px 0;"><b>' + (typeof r[1] === 'number' ? r[1] : (r[1] === undefined ? '—' : r[1])) + '</b></td></tr>'; }).join('') + '</table>' +
+    '<h4 style="margin:10px 0 4px;">🌟 Exceptional and Outstanding teachers</h4>' +
+    table(['Teacher', 'APSID', 'Classes', 'Score', 'Band', 'Highlights', 'Email'], top.map(function (t) {
+      var lr = weekly.filter(function (r) { return r.email === t.email; })[0];
+      return '<tr>' + cell(e(t.name)) + cell(e(t.apsId)) + cell(e(t.classes.join(', '))) + cell('<b>' + fmt(t.score) + '</b>') + cell(e(TA_BAND_LABEL_[t.band])) + cell(e(t.highlights.map(function (h) { return TA_HIGHLIGHT_EN_[h]; }).join('; '))) + cell(e(lr ? lr.status : (t.eligible ? '—' : 'not eligible'))) + '</tr>';
+    })) +
+    (monthly.length ? '<h4 style="margin:10px 0 4px;">🏆 Consistently outstanding — ' + e(taMonthLabelEn_(month)) + '</h4>' + table(['Teacher', 'APSID', 'Weeks outstanding / scored', 'Average score'], monthly.map(function (m) {
+      return '<tr>' + cell(e(m.name)) + cell(e(m.apsId)) + cell(m.qualifiedWeeks + ' / ' + m.scoredWeeks) + cell(fmt(m.average)) + '</tr>';
+    })) : '') +
+    '<h4 style="margin:10px 0 4px;">📊 Teacher performance scores</h4>' +
+    table(['Teacher', 'Classes', 'Held', 'Completion', 'Punctuality', 'Attendance', 'Engagement', 'Grading', 'Consistency', 'Score', 'Band'], scored.map(function (t) {
+      var m = t.metrics;
+      return '<tr>' + cell(e(t.name)) + cell(e(t.classes.join(', '))) + cell(t.held + '/' + t.scheduled) + cell(fmt(m.completion)) + cell(fmt(m.punctuality)) + cell(fmt(m.attendance)) + cell(fmt(m.engagement)) + cell(fmt(m.grading)) + cell(fmt(m.consistency)) + cell('<b>' + fmt(t.score) + '</b>') + cell(e(TA_BAND_LABEL_[t.band])) + '</tr>';
+    })) +
+    '<h4 style="margin:10px 0 4px;">🤝 Support check-in suggested (admin only — never shown to teachers)</h4>' +
+    table(['Teacher', 'Classes', 'Score', 'Lowest areas'], support.map(function (t) { return '<tr>' + cell(e(t.name)) + cell(e(t.classes.join(', '))) + cell(fmt(t.score)) + cell(e(lowest(t))) + '</tr>'; })) +
+    '<h4 style="margin:10px 0 4px;">❔ Teachers with insufficient data (not scored, not penalised)</h4>' +
+    table(['Teacher', 'Classes', 'Reason'], insufficient.map(function (t) { return '<tr>' + cell(e(t.name)) + cell(e(t.classes.join(', '))) + cell(e(t.reasons.join('; ') || '—')) + '</tr>'; })) +
+    (failed.length ? '<h4 style="margin:10px 0 4px;">⚠️ Failed email attempts</h4>' + table(['Teacher', 'Type', 'Attempts', 'Error'], failed.map(function (r) { return '<tr>' + cell(e(r.name)) + cell(e(r.type)) + cell(r.attempts) + cell(e(r.error)) + '</tr>'; })) : '');
+  var sample = top.filter(function (t) { return t.eligible; })[0];
+  if (preview && sample) html += '<h4 style="margin:14px 0 4px;">✉️ Sample teacher email (Tamil) — ' + e(sample.name) + '</h4><div style="border:1px dashed #bbb;border-radius:8px;padding:12px;">' + taWeeklyEmail_(sample, ev.weekId).bodyHtml + '</div>';
+  html += '<p style="color:#5f6368;font-size:12px;margin-top:14px;">Scores use verified data only: classes on school leave, approved teacher leave, cancelled or covered classes are excluded, and missing data is never scored as zero. Student non-submission never lowers a teacher’s score. Full calculations: APS Dashboard → 👩‍🏫 Volunteer/Teacher Management.</p></div>';
+  var subject = (preview ? '[PREVIEW] ' : '') + 'APS – Weekly Teacher Appreciation Report | ' + label;
+  var text = subject + '\n\nActive teachers: ' + c.active + '\nEvaluated: ' + c.scored + '\nExceptional: ' + c.EXCEPTIONAL + ' · Outstanding: ' + c.OUTSTANDING + ' · Good: ' + c.GOOD + ' · Support check-in: ' + c.IMPROVEMENT_OPPORTUNITY +
+    ' · Insufficient data: ' + c.INSUFFICIENT_DATA + '\nEligible for appreciation: ' + c.eligible + (preview ? '\n\nPREVIEW: teacher emails are OFF — nothing was sent to teachers.' : '') + '\n\nOpen the APS Dashboard → Volunteer/Teacher Management for the full report.';
+  return { subject: subject, html: apsEmailShell_(subject, html, {}), text: text, bodyHtml: html };
+}
+
+function taEmailsOn_() { return String(PropertiesService.getScriptProperties().getProperty(TA_EMAILS_PROP_) || 'off').toLowerCase() === 'on'; }
+
+function taMonthly_(month, cfg, rows) {
+  rows = rows || taReadTable_(TA_SCORES_SHEET_, TA_SCORES_HEADER_).map(taRowToTeacher_);
+  var by = {};
+  rows.forEach(function (r) { if (taMonthOf_(r.weekId) !== month) return; (by[r.email] = by[r.email] || []).push(r); });
+  var out = [];
+  Object.keys(by).forEach(function (e) {
+    var list = by[e], scored = list.filter(function (r) { return r.dataStatus === 'SUFFICIENT' && r.score !== null; });
+    var qualified = scored.filter(function (r) { return r.eligible; });
+    if (scored.length < cfg.monthlyMinWeeks || qualified.length / scored.length * 100 < cfg.monthlyQualPct || scored.some(function (r) { return r.score < cfg.bands.good; })) return;
+    var freq = {}; qualified.forEach(function (r) { r.highlights.forEach(function (h) { freq[h] = (freq[h] || 0) + 1; }); });
+    var last = list.slice().sort(function (a, b) { return String(a.weekId).localeCompare(String(b.weekId)); }).pop();
+    out.push({ email: e, apsId: last.apsId, name: last.name, classes: last.classes, month: month, scoredWeeks: scored.length, qualifiedWeeks: qualified.length,
+      average: taRound_(scored.reduce(function (a, r) { return a + r.score; }, 0) / scored.length),
+      highlights: Object.keys(freq).sort(function (a, b) { return freq[b] - freq[a]; }).slice(0, 4) });
+  });
+  return out.sort(function (a, b) { return b.average - a.average || String(a.name).localeCompare(String(b.name)); });
+}
+
+function taMonthOf_(weekId) { return String(weekId || '').slice(3, 10); }
+
+function taConfig_() {
+  var cfg = taClone_(TA_DEFAULTS_), version = '0';
+  try {
+    taReadTable_(TA_CONFIG_SHEET_, TA_CONFIG_HEADER_).forEach(function (r) {
+      if (r.Setting === 'version') { version = r.Value; return; }
+      if (!Object.prototype.hasOwnProperty.call(TA_DEFAULTS_, r.Setting)) return;
+      try { cfg[r.Setting] = JSON.parse(r.Value); } catch (e) { /* keep the default for a damaged value */ }
+    });
+  } catch (e) { console.warn('[TeacherAppreciation] config unavailable, defaults used: ' + taSafeErr_(e)); }
+  var ok = taValidateConfig_(cfg); // a damaged sheet never breaks the run: fall back to the defaults
+  if (!ok.ok) { console.warn('[TeacherAppreciation] invalid config (' + ok.error + '), defaults used'); cfg = taClone_(TA_DEFAULTS_); }
+  cfg.version = version;
+  return cfg;
+}
+
+function taMonthlyEmail_(m, weeklyWeekId) {
+  var name = taFirstName_(m.name, m.email), monthTa = taMonthLabelTa_(m.month);
+  var hl = (m.highlights || []).map(function (h) { return TA_HIGHLIGHT_TA_[h] ? TA_HIGHLIGHT_TA_[h].replace(/^இந்த வாரம் /, '') : ''; }).filter(Boolean);
+  var subject = 'APS – தொடர்ந்து சிறப்பான பணிக்கான மாதப் பாராட்டு! (' + monthTa + ')';
+  var weekLine = weeklyWeekId ? 'கடந்த வாரத்திலும் (' + taWeekLabel_(weeklyWeekId) + ') நீங்கள் சிறப்பாகப் பணியாற்றினீர்கள்.' : '';
+  var html = '<div lang="ta" style="font-size:15px;line-height:1.7;">' +
+    '<p style="margin:0 0 10px;">அன்புள்ள <b>' + htmlEscape_(name) + '</b> அவர்களுக்கு,</p><p style="margin:0 0 10px;">வணக்கம்!</p>' +
+    '<p style="margin:0 0 12px;"><b>' + htmlEscape_(monthTa) + '</b> மாதம் முழுவதும் நீங்கள் தொடர்ந்து சிறப்பான பணியை ஆற்றியுள்ளீர்கள். இந்த மாதத்தில் உங்கள் வகுப்புகள் நடந்த ' + m.scoredWeeks +
+    ' வாரங்களில் ' + m.qualifiedWeeks + ' வாரங்கள் நீங்கள் சிறந்த ஆசிரியராகத் திகழ்ந்தீர்கள். உங்கள் தொடர்ச்சியான அர்ப்பணிப்புக்கு ஔவையார் பாடசாலையின் சிறப்புப் பாராட்டுகள்!</p>' +
+    (hl.length ? '<p style="margin:12px 0 6px;"><b>இந்த மாதத்தின் சிறப்புகள்:</b></p><ul style="margin:0 0 12px;padding-left:22px;">' + hl.map(function (x) { return '<li>' + htmlEscape_(x) + '</li>'; }).join('') + '</ul>' : '') +
+    (weekLine ? '<p style="margin:0 0 12px;">' + htmlEscape_(weekLine) + '</p>' : '') +
+    '<p style="margin:0;">உங்கள் அர்ப்பணிப்பும் தொடர்ச்சியான உழைப்பும் ஔவையார் பாடசாலைக்குப் பெருமை சேர்க்கின்றன. மனமார்ந்த நன்றி!</p>' + taSign_() + '</div>';
+  var text = 'அன்புள்ள ' + name + ' அவர்களுக்கு,\n\nவணக்கம்!\n\n' + monthTa + ' மாதம் முழுவதும் நீங்கள் தொடர்ந்து சிறப்பான பணியை ஆற்றியுள்ளீர்கள். இந்த மாதத்தில் உங்கள் வகுப்புகள் நடந்த ' + m.scoredWeeks + ' வாரங்களில் ' +
+    m.qualifiedWeeks + ' வாரங்கள் நீங்கள் சிறந்த ஆசிரியராகத் திகழ்ந்தீர்கள்.\n\n' + (hl.length ? 'இந்த மாதத்தின் சிறப்புகள்:\n' + hl.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') +
+    (weekLine ? weekLine + '\n\n' : '') + 'உங்கள் அர்ப்பணிப்பும் தொடர்ச்சியான உழைப்பும் ஔவையார் பாடசாலைக்குப் பெருமை சேர்க்கின்றன. மனமார்ந்த நன்றி!\n\nநன்றியுடன்,\nஔவையார் பாடசாலை நிர்வாகக் குழு\nAvvaiyar Padasalai Tamil Virtual School';
+  return { subject: subject, html: apsEmailShell_(subject, html, { preheader: 'ஔவையார் பாடசாலையின் மாதப் பாராட்டு — ' + monthTa }), text: text, bodyHtml: html };
+}
+
+function taWeeklyEmail_(t, weekId) {
+  var name = taFirstName_(t.name, t.email), label = taWeekLabel_(weekId), seed = (t.apsId || t.email) + '|' + weekId;
+  var hl = (t.highlights || []).map(function (h) { return TA_HIGHLIGHT_TA_[h]; }).filter(Boolean);
+  if (!hl.length) hl = ['இந்த வாரம் உங்கள் வகுப்புகளை மிகச் சிறப்பாக நடத்தினீர்கள்.'];
+  var opening = taPick_(TA_OPENINGS_TA_, seed), closing = taPick_(TA_CLOSINGS_TA_, seed + 'c');
+  var subject = 'APS – உங்கள் அர்ப்பணிப்புக்கு எங்கள் பாராட்டுகள்! (' + label + ')';
+  var html = '<div lang="ta" style="font-size:15px;line-height:1.7;">' +
+    '<p style="margin:0 0 10px;">அன்புள்ள <b>' + htmlEscape_(name) + '</b> அவர்களுக்கு,</p><p style="margin:0 0 10px;">வணக்கம்!</p>' +
+    '<p style="margin:0 0 12px;">' + htmlEscape_(opening) + '</p>' +
+    '<p style="margin:0 0 6px;"><b>பாராட்டுக் காலம்:</b> ' + htmlEscape_(label) + ' (திங்கள் – ஞாயிறு)</p>' +
+    '<p style="margin:12px 0 6px;"><b>இந்த வாரத்தின் சிறப்புகள்:</b></p><ul style="margin:0 0 12px;padding-left:22px;">' + hl.map(function (x) { return '<li>' + htmlEscape_(x) + '</li>'; }).join('') + '</ul>' +
+    '<p style="margin:0;">' + htmlEscape_(closing) + '</p>' + taSign_() + '</div>';
+  var text = 'அன்புள்ள ' + name + ' அவர்களுக்கு,\n\nவணக்கம்!\n\n' + opening + '\n\nபாராட்டுக் காலம்: ' + label + ' (திங்கள் – ஞாயிறு)\n\nஇந்த வாரத்தின் சிறப்புகள்:\n' +
+    hl.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' + closing + '\n\nநன்றியுடன்,\nஔவையார் பாடசாலை நிர்வாகக் குழு\nAvvaiyar Padasalai Tamil Virtual School';
+  return { subject: subject, html: apsEmailShell_(subject, html, { preheader: 'ஔவையார் பாடசாலையின் வாராந்திரப் பாராட்டு — ' + label }), text: text, bodyHtml: html };
+}
+
+function taRound_(n) { return n === null || n === undefined || isNaN(n) ? null : Math.round(n * 10) / 10; }
+
+function ttmViewer_(sessionToken, forMutation) {
+  var s = apsRequireTabForToken_(sessionToken, 'classes.tempTeacher');
+  var role = s.role, email = normalizeEmail_(s.email);
+  var coord = ttmIsCoordinator_(role, email); // r98: On-Call Coordinator (BOD role, read-only elsewhere) manages Temp Teachers for every class
+  var v = { email: email, role: role, all: isAdminRole_(role) || role === 'headmaster' || coord, coordinator: coord };
+  if (!v.all && role !== 'teacher') throw new Error(TTM_MSG_.noPerm);
+  if (forMutation && !coord) requireDashboardMutationPermission_({ email: email, role: role }, 'assign a temporary teacher');
+  var courses = readAllCoursesFromCache_();
+  v.courses = courses;
+  v.classes = courses.filter(function (c) { return courseNameMatches_(c.name) && (v.all || userHasCourseAccess_(email, c)); });
+  if (!v.all) { // r100: a temporary teacher is a Classroom teacher of the class they cover — that must never let them manage its assignments
+    var covering = {};
+    v.rows = ttmRows_(); // reused by getTempTeacherData (one sheet read per request)
+    v.rows.forEach(function (r) { if (TTM_OPEN_[r.Status] && normalizeEmail_(r.Temp_Teacher_Email) === email) covering[r.Classroom_ID] = true; });
+    v.classes = v.classes.filter(function (c) { return !covering[String(c.id)] || courseHasSupportEmail_(c, email) || ((srmClassTeacher_(c, courses) || {}).email || '').toLowerCase() === email; });
+  }
+  v.ids = {}; v.classes.forEach(function (c) { v.ids[String(c.id)] = true; });
+  v.vp = role === 'teacher' && courses.some(function (c) { return courseHasSupportEmail_(c, email); });
+  v.anyEmail = v.all || v.vp; // r98: Admin / HM / On-Call Coordinator / VP may type any valid APS email (VP: own classes only)
+  v.roleLabel = isAdminRole_(role) ? (role === SUPERADMIN_ROLE ? 'Super Admin' : 'Admin') : role === 'headmaster' ? 'HM' : coord ? ON_CALL_COORDINATOR_LABEL_ : (v.vp ? 'VP / HM (class)' : 'Teacher');
+  v.name = findDisplayName_(courses, email) || (typeof getGoogleProfileName_ === 'function' && isAdminOrHm_(role) ? getGoogleProfileName_(email) : '') || localPartOfEmail_(email);
+  return v;
+}
+
+function ttmTeachers_(courses) {
+  var by = {}, member = {}, names = {}, apsIds = {};
+  courses.forEach(function (c) {
+    if (!courseNameMatches_(c.name)) return;
+    var cls = { id: String(c.id), name: String(c.name || '').split(' |')[0], schedule: adsSchedule_(c.name) };
+    var note = function (e, n) { e = normalizeEmail_(e); if (!e) return; var m = member[e] || (member[e] = []); if (!m.some(function (x) { return x.id === cls.id; })) m.push(cls); if (n && !names[e]) names[e] = n; };
+    (c.teachers || []).forEach(function (t) { note(t.email, t.name); });
+    (c.rosterTeacherEmails || []).forEach(function (e) { note(e, ''); });
+    (c.onCallRoster || []).forEach(function (t) { note(t.email, t.name); });
+  });
+  try { rosterDataset_().teachers.forEach(function (t) { var e = normalizeEmail_(t.e); if (!e) return; if (t.n && !names[e]) names[e] = t.n; if (t.a) apsIds[e] = t.a; }); } catch (e) { /* roster optional */ }
+  var add = function (email, name, extra) {
+    var e = normalizeEmail_(email); if (!e || APS_ALLOWED_DOMAINS.indexOf(e.split('@')[1]) < 0) return null;
+    var t = by[e] || (by[e] = { email: e, name: '', apsId: adsApsId_(e), onCall: attIsOnCallEmail_(e) || classesPrimaryOnlyPrefix_(e), classes: (member[e] || []).slice(), tcsList: false, primary: false });
+    var nm = name || names[e]; if (!t.name && nm) t.name = teacherDisplayName_(nm) || nm;
+    if (t.apsId === 'APSXXX' && apsIds[e]) t.apsId = apsIds[e];
+    Object.keys(extra || {}).forEach(function (k) { t[k] = extra[k]; });
+    return t;
+  };
+  ttmTcsList_().forEach(function (x, k) { add(x.email, x.name, { tcsList: true, tcsOrder: k, onCall: true }); });
+  courses.forEach(function (c) {
+    if (!courseNameMatches_(c.name)) return;
+    var p = srmClassTeacher_(c, courses);
+    if (p && p.email && !isRosterHiddenStaffEmail_(p.email)) add(p.email, p.name, { primary: true });
+  });
+  Object.keys(by).forEach(function (k) { if (!by[k].name) by[k].name = attNameFromEmail_(k); });
+  return by;
+}
+
+function ttmPublic_(r, now, canAct) {
+  var st = ttmDisplayStatus_(r, now || new Date());
+  return { id: r.Assignment_ID, courseId: r.Classroom_ID, classroom: r.Classroom_Name, section: r.Section, primaryName: r.Primary_Teacher_Name, primaryEmail: r.Primary_Teacher_Email,
+    teacherName: r.Temp_Teacher_Name, apsId: r.Temp_Teacher_APSID, teacherEmail: r.Temp_Teacher_Email, start: r.Start_Date, removal: r.Removal_Date, startLabel: ttmFmtDate_(r.Start_Date), removalLabel: ttmFmtDate_(r.Removal_Date),
+    reason: r.Reason, status: st, failedStage: r.Failed_Stage, createdBy: r.Created_By, createdByEmail: r.Created_By_Email, createdByRole: r.Created_By_Role, created: ttmFmtTs_(r.Created_Timestamp),
+    added: ttmFmtTs_(r.Added_Timestamp), removed: ttmFmtTs_(r.Removed_Timestamp), removedBy: r.Removed_By, lastProcess: ttmFmtTs_(r.Last_Process_Timestamp), lastProcessStatus: r.Last_Process_Status,
+    lastError: canAct ? r.Last_Error : (r.Last_Error ? 'See the APS Admin.' : ''), addEmail: r.Add_Email_Sent, removalEmail: r.Removal_Email_Sent, cancelledBy: r.Cancelled_By, cancelled: ttmFmtTs_(r.Cancelled_Timestamp),
+    canCancel: !!canAct && (r.Status === 'SCHEDULED' || (r.Status === 'FAILED' && r.Failed_Stage === 'ADD')),
+    canRemove: !!canAct && (r.Status === 'ACTIVE' || (r.Status === 'FAILED' && r.Failed_Stage === 'REMOVE')) };
+}
+
+function ttmRemovalHour_() { var h = Number(rosterProp_('TEMP_TEACHER_REMOVAL_HOUR', '23')); return h >= 0 && h <= 23 && Math.floor(h) === h ? h : 23; }
+
+function ttmHourLabel_(h) { return ((h % 12) || 12) + ' ' + (h < 12 ? 'AM' : 'PM'); }
+
+function ttmClassInfo_(c, courses) {
+  var p = srmClassTeacher_(c, courses), chain = tkClassChain_(c, courses);
+  return { courseId: String(c.id), name: String(c.name || ''), section: c.section || '', primary: p ? { name: p.name, email: p.email } : null,
+    hm: chain.hm.map(function (x) { return x.name || x.email; }), vp: chain.vp.map(function (x) { return x.name || x.email; }), students: (c.students || []).length, status: 'ACTIVE',
+    schedule: adsSchedule_(c.name), link: /^https:\/\/classroom\.google\.com\//.test(String(c.link || '')) ? c.link : '' };
+}
+
+function tkViewer_(sessionToken) {
+  var s = requireValidSession_(sessionToken);
+  var v = { email: normalizeEmail_(s.email), role: s.role };
+  if (!v.email || v.role === 'none') throw new Error('Access denied.');
+  return v;
+}
+
+function tkLoad_(v, ticketId) {
+  var tickets = tkRead_('tickets');
+  var t = tickets.filter(function (x) { return x.Ticket_ID === ticketId || x.Ticket_Number === ticketId; })[0];
+  if (!t) throw new Error('Ticket not found.');
+  var parts = tkParticipantsFor_(tkRead_('participants'), t.Ticket_ID);
+  var courses = readAllCoursesFromCache_();
+  var acc = tkAccess_(v, t, parts, courses);
+  if (!acc.view) { console.warn('[Tickets] unauthorized view attempt ' + v.email + ' -> ' + t.Ticket_Number); throw new Error('You do not have access to this ticket.'); }
+  return { t: t, parts: parts, acc: acc, courses: courses };
+}
+
+function tkRead_(key) {
+  var sh = tkSheet_(key), def = TK_SHEETS_[key], last = sh.getLastRow();
+  if (last < 2) return [];
+  var vals = sh.getRange(2, 1, last - 1, def.header.length).getValues();
+  return vals.map(function (r, i) { var o = { _row: i + 2 }; def.header.forEach(function (h, j) { o[h] = r[j] === null || r[j] === undefined ? '' : (r[j] instanceof Date ? r[j].toISOString() : String(r[j])); }); return o; })
+    .filter(function (o) { return o[def.header[0]] !== ''; });
+}
+
+function tkReadOnly_(v) { try { return !!(getDashboardRolePermission_(v.role) || {}).readOnly; } catch (e) { return false; } }
+
+function tkConfig_() {
+  var cfg = { rules: JSON.parse(JSON.stringify(TK_DEFAULT_RULES_)), adminCc: 'admin@avvaiyarpadasalai.org', notify: {}, enabledTypes: TK_TYPES_.slice(), defaultPriority: 'NORMAL' };
+  TK_EVENTS_.forEach(function (e) { cfg.notify[e] = true; });
+  tkRead_('config').forEach(function (r) {
+    var v; try { v = JSON.parse(r.Value_JSON); } catch (e) { return; }
+    if (r.Key === 'rules' && v && typeof v === 'object') TK_TYPES_.forEach(function (t) { if (v[t]) cfg.rules[t] = { chain: TK_CHAIN_TYPES_.indexOf(t) > -1 ? true : !!v[t].chain, emails: tkCleanEmails_(v[t].emails || []) }; });
+    if (r.Key === 'adminCc' && typeof v === 'string' && TK_EMAIL_RE_.test(v.toLowerCase())) cfg.adminCc = v.toLowerCase();
+    if (r.Key === 'notify' && v && typeof v === 'object') TK_EVENTS_.forEach(function (e) { if (typeof v[e] === 'boolean') cfg.notify[e] = v[e]; });
+    if (r.Key === 'enabledTypes' && Array.isArray(v)) { var en = v.filter(function (t) { return TK_TYPES_.indexOf(t) > -1; }); if (en.length) cfg.enabledTypes = en; }
+    if (r.Key === 'defaultPriority' && TK_PRIORITIES_.indexOf(v) > -1) cfg.defaultPriority = v;
+  });
+  return cfg;
+}
+
+function tkIsAdmin_(v) { return isAdminRole_(v.role); }
+
+function tkIsStaffRole_(role) { return role === 'admin' || role === SUPERADMIN_ROLE || role === 'headmaster' || role === 'teacher'; }
+
+function tkDeptName_(email) {
+  var map = { 'simplysuga_aps501@avvaiyarpadasalai.org': 'APS Books', 'info@avvaiyarpadasalai.org': 'APS Tech Support (info@)', 'info1@avvaiyarpadasalai.org': 'APS Tech Support (info1@)',
+    'examinations_aps9021@avvaiyarpadasalai.org': 'APS Examinations', 'games_aps9020@avvaiyarpadasalai.org': 'APS Games / Kahoot', 'events_aps9018@avvaiyarpadasalai.org': 'APS Events',
+    'competitions_aps9019@avvaiyarpadasalai.org': 'APS Competitions' };
+  return map[email] || classPrimaryNameFromEmail_(email);
+}
+
+function tkMailMode_() { return apsMailMode_('TICKETS'); }
+
+function tkMailFrom_() { return apsMailFrom_('TICKETS'); }
+
+function apsRequireCountryAdmin_(sessionToken) { // r120: Volunteer/Teacher Management → 🌍 Users outside the USA (Admin / Super Admin only)
+  apsRequireTabForToken_(sessionToken, 'teacherMgmt.userCountry');
+  var s = requireValidSession_(sessionToken);
+  if (!isAdminRole_(s.role)) throw new Error('Only Admin / Super Admin can view or change user countries.');
+  return s;
+}
+
+function zhRequireAdmin_(sessionToken) {
+  var s = apsRequireTabForToken_(sessionToken, 'zohoSync');
+  if (!isAdminRole_(s.role)) throw new Error('Only Admin / Super Admin can use Zoho CRM Sync.');
+  requireDashboardMutationPermission_({ email: s.email, role: s.role }, 'use Zoho CRM Sync');
+  return { email: normalizeEmail_(s.email), role: s.role };
+}
+
+function zhSheet_(ss, name, header) {
+  var sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold'); sh.setFrozenRows(1); return sh; }
+  try {
+    var cur = sh.getRange(1, 1, 1, header.length).getValues()[0];
+    if (!String(cur[header.length - 1] || '') && String(cur[0]) === header[0]) sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
+  } catch (e) { /* header check is best-effort */ }
+  return sh;
+}
+
+function zhBook_() { return openSpreadsheetByIdWithRetry_(zhSheetId_(), '[ZohoSync]'); }
+
+function zhJobPublic_(job) {
+  if (!job) return null;
+  var keep = ['id', 'op', 'actor', 'mode', 'status', 'batchSize', 'total', 'processed', 'batches', 'batchesTotal', 'totals', 'zohoRecordsRead', 'zohoReadTruncated', 'searches', 'foundBySearch', 'apiCalls', 'startedAt', 'updatedAt', 'finishedAt', 'lastError', 'scheduled'];
+  var o = {}; keep.forEach(function (k) { o[k] = job[k]; });
+  o.stale = job.status === 'RUNNING' && !zhJobRunning_(job);
+  return o;
+}
+
+function zhJobGet_() { return zhJsonProp_(ZH_JOB_PROP_, null); }
+
+function tkAccess_(v, t, parts, courses) {
+  var admin = tkIsAdmin_(v);
+  var requester = normalizeEmail_(t.Requester_Email) === v.email;
+  var active = parts.filter(function (p) { return p.Active === 'TRUE' && p.Email === v.email; });
+  var assignee = active.some(function (p) { return p.Participant_Type === 'ASSIGNEE'; });
+  var course = t.Course_ID ? tkCourseById_(courses, t.Course_ID) : null;
+  var classScope = false;
+  if (course && v.role === 'teacher') classScope = userHasCourseAccess_(v.email, course);
+  if (course && v.role === 'headmaster') classScope = true; // school-wide Head Master: every class
+  var staffRole = tkIsStaffRole_(v.role);
+  var staff = admin || (staffRole && (assignee || classScope || active.length > 0));
+  var view = admin || requester || active.length > 0 || classScope;
+  return { view: view, staff: staff, admin: admin, requester: requester, assignee: assignee };
+}
+
+function tkPublicRow_(t, assigneeNames) {
+  return { id: t.Ticket_ID, number: t.Ticket_Number, type: t.Type, icon: TK_TYPE_ICON_[t.Type] || '🎫', subject: t.Subject, status: t.Status, priority: t.Priority,
+    requester: t.Requester_Name, requesterEmail: t.Requester_Email, student: t.Student_Name, apsId: t.APSID, classroom: t.Classroom,
+    assignees: assigneeNames, createdAt: t.Created_At, updatedAt: t.Updated_At, flags: t.Assignment_Flags, replies: Number(t.Reply_Count || 0) };
+}
+
+function zhApsStudents_() {
+  var courses = readAllCoursesFromCache_().filter(function (c) { return courseNameMatches_(c.name); });
+  var by = {}, today = Utilities.formatDate(new Date(), APS_TZ, 'yyyy-MM-dd');
+  courses.forEach(function (c) {
+    var p = parseAPSClassroomName(c.name), t = tccPrimary_(c, courses), chain = tkClassChain_(c, courses);
+    var time = p.startTime ? p.startTime + ' – ' + p.endTime + ' ' + (p.timezone || 'EST') : '';
+    var cls = { courseId: String(c.id), classroom: zhNorm_(c.name), classShort: zhNorm_(String(c.name || '').split('|')[0]), grade: zhGradeLabel_(p.nilai), section: zhNorm_(p.section),
+      classDay: ZH_DAY_NAMES_[p.day] || '', classTime: time, classSchedule: p.day && time ? p.day + ' ' + time : '', academicYear: zhNorm_(p.academicYear), classroomLink: zhNorm_(c.link),
+      teacherName: t ? zhNorm_(t.name) : '', teacherEmail: t ? zhEmail_(t.email) : '',
+      vpName: chain.vp.length ? zhNorm_(chain.vp[0].name) : '', vpEmail: chain.vp.length ? zhEmail_(chain.vp[0].email) : '',
+      hmName: chain.hm.length ? zhNorm_(chain.hm[0].name) : '', hmEmail: chain.hm.length ? zhEmail_(chain.hm[0].email) : '' };
+    (c.students || []).forEach(function (s) {
+      var e = zhEmail_(s.email); if (!e || e.indexOf('@') < 1) return;
+      var row = by[e] || (by[e] = { email: e, name: zhNorm_(s.name), apsId: getAPSIdFromEmail(e) || '', classes: [] });
+      row.classes.push(cls);
+    });
+  });
+  return Object.keys(by).sort().map(function (e) {
+    var r = by[e], one = r.classes.length === 1 ? r.classes[0] : null;
+    var out = { email: r.email, studentEmail: r.email, name: r.name, studentName: r.name, apsId: r.apsId === 'NA' ? '' : r.apsId, syncDate: today, multiple: r.classes.length > 1 };
+    ZH_SOURCES_.forEach(function (s) { if (!(s.key in out) && s.key !== 'FIXED') out[s.key] = one ? (one[s.key] || '') : ''; });
+    if (!one) out.classroom = r.classes.map(function (x) { return x.classroom; }).join(' ; ');
+    return out;
+  });
+}
+
+function mhgConfig_() {
+  var raw = null; try { raw = JSON.parse(PropertiesService.getScriptProperties().getProperty(MHG_PROP_) || 'null'); } catch (e) { raw = null; }
+  return mhgSanitize_(raw, false);
+}
+
+function mhgCollect_(cfg, now) {
+  now = now || new Date();
+  var today = mhgToday_(now), rds = rosterDataset_(), courses = readAllCoursesFromCache_(), ex = ccwExcludeRe_(), ov = amOverrides_();
+  var cById = {}; courses.forEach(function (c) { cById[String(c.id)] = c; });
+  var classes = rds.classrooms.filter(function (c) { return c.status === ROSTER_STATUS.ACTIVE && courseNameMatches_(c.name) && !ex.test(String(c.name || '')); });
+  var grades = gradesForCourses_(classes.map(function (c) { return c.id; }));
+  var stuBy = {}; rds.students.forEach(function (s) { if (s.s === ROSTER_STATUS.ACTIVE) stuBy[s.c + '|' + s.u] = s; });
+  var seen = {}, records = [], warnings = [];
+  var gs = gradesLastSync_();
+  if (!gs || !gs.lastSyncAt) warnings.push('Google Classroom grades have never been synced — nothing could be scanned.');
+  else {
+    var ageH = (now.getTime() - Number(gs.lastSyncAt)) / 3600000;
+    if (ageH > 30) warnings.push('The last Google Classroom grade sync was ' + Math.round(ageH) + ' hours ago (' + gs.lastSync + ') — newer submissions and grades are not included.');
+    if (gs.result === 'FAILED') warnings.push('The last grade sync FAILED — the list may be incomplete.');
+    var g0 = gs.grades || {};
+    if (g0.classroomsDeferred) warnings.push(g0.classroomsDeferred + ' classroom(s) did not fit in the last grade sync and were not refreshed.');
+    var errCls = {}; (gs.errors || []).forEach(function (e) { if (e && (e.classroom || e.courseId)) errCls[e.classroom || e.courseId] = true; });
+    if (Object.keys(errCls).length) warnings.push('Some Google Classroom classes could not be scanned in the last sync: ' + Object.keys(errCls).slice(0, 15).join('; ') + (Object.keys(errCls).length > 15 ? ' …' : '') + '.');
+  }
+  classes.forEach(function (rc) {
+    var cid = String(rc.id), cc = cById[cid] || {}, g = grades[cid] || { w: [], s: [] };
+    var t = cc.id ? srmClassTeacher_(cc, courses) : null, classLink = mhgSafeLink_(cc.link);
+    var wById = {}; (g.w || []).forEach(function (w) { wById[w.id] = w; });
+    (g.s || []).forEach(function (x) {
+      if (String(x.st) !== 'TURNED_IN') return; // RETURNED = done; RECLAIMED / CREATED / NEW = not submitted
+      var w = wById[x.w]; if (!w) return;
+      var code = mhgCode_(w.t); if (!code || cfg.categories.indexOf(code) === -1) return;
+      var stu = stuBy[cid + '|' + x.u]; if (!stu) return; // removed / re-mapped students
+      var em = normalizeEmail_(stu.e || x.e); if (!em || isRosterHiddenStaffEmail_(em)) return;
+      if (ov.exAssign[cid + '|' + w.id] || ov.exStudent[cid + '|' + w.id + '|' + em]) return; // excluded in Assignment Monitoring
+      var ti = String(x.ti || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(ti)) return;
+      var days = mhgDays_(ti, today); if (!(days > cfg.days)) return; // strictly more than N days
+      var key = cid + '|' + w.id + '|' + (x.u || em); if (seen[key]) return; seen[key] = true;
+      var graded = x.g !== '' && x.g !== null && x.g !== undefined, draft = x.dg !== '' && x.dg !== null && x.dg !== undefined;
+      records.push({ key: key, courseId: cid, className: String(rc.name || ''), classCode: String(rc.name || '').split('|')[0].trim(), teacher: t ? t.name : '', classLink: classLink,
+        workId: String(w.id), title: String(w.t || ''), code: code, workLink: mhgSafeLink_(w.lk) || classLink, email: em, apsId: stu.a || getAPSIdFromEmail(em), name: stu.n || localPartOfEmail_(em),
+        turnIn: ti, days: days, kind: graded ? 'GRADED_NOT_RETURNED' : draft ? 'DRAFT_NOT_RETURNED' : 'NOT_GRADED' });
+    });
+  });
+  records.sort(function (a, b) { return b.days - a.days || naturalCompareJs_(a.className, b.className) || String(a.title).localeCompare(String(b.title)) || String(a.name).localeCompare(String(b.name)); });
+  var cl = {}, as = {}; records.forEach(function (r) { cl[r.courseId] = true; as[r.courseId + '|' + r.workId] = true; });
+  return { today: today, records: records, warnings: warnings, classes: Object.keys(cl).length, assignments: Object.keys(as).length, sync: gs ? String(gs.lastSync || '') : 'never' };
+}
+
+function mhgEmail_(scan, stats, cfg, preview) {
+  var e = htmlEscape_, R = scan.records, dateLbl = mhgMdY_(scan.today);
+  var kinds = { NOT_GRADED: 0, DRAFT_NOT_RETURNED: 0, GRADED_NOT_RETURNED: 0 }; R.forEach(function (r) { kinds[r.kind]++; });
+  var buckets = { a: 0, b: 0, c: 0 }; R.forEach(function (r) { if (r.days <= 28) buckets.a++; else if (r.days <= 42) buckets.b++; else buckets.c++; });
+  var typeNames = cfg.categories.map(function (k) { return MHG_CATS_[k].label; }).join(', ');
+  var subject = 'APS Google Classroom – Homework Pending Grading > 3 Weeks – ' + dateLbl;
+  var btn = function (href, label, primary) { return href ? '<a href="' + e(href) + '" style="display:inline-block;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:700;' + (primary ? 'background:#1a73e8;color:#fff;' : 'background:#e8f0fe;color:#174ea6;') + '">' + e(label) + '</a>' : '<span style="color:#80868b;font-size:12px;">link not available</span>'; };
+  var kv = [['Classes affected', scan.classes], ['Assignments affected', scan.assignments], ['Student submissions pending', R.length],
+    ['Pending 22–28 days / 29–42 days / 43+ days', buckets.a + ' / ' + buckets.b + ' / ' + buckets.c],
+    ['Not graded', kinds.NOT_GRADED], ['Grade typed in, only needs “Return”', kinds.DRAFT_NOT_RETURNED + kinds.GRADED_NOT_RETURNED],
+    ['New on the list this week', stats.isNew], ['Cleared since the last report', stats.cleared]];
+  var html = '<div style="font-size:14px;line-height:1.5;">' +
+    (preview ? '<div style="background:#fff7e0;border:1px solid #f9ab00;border-radius:8px;padding:10px 12px;margin-bottom:12px;"><b>PREVIEW</b> — not sent.</div>' : '') +
+    '<p style="margin:0 0 10px;">Dear Grading Help Team,</p><p style="margin:0 0 10px;">This report lists student work (' + e(typeNames) + ') that the student <b>turned in more than ' + cfg.days + ' days ago</b> and that is still <b>not graded / not returned</b> in Google Classroom. Please open each class, review the student’s submission, grade it and <b>Return</b> it. Oldest first.</p>' +
+    (scan.warnings.length ? '<div style="background:#fce8e6;border:1px solid #d93025;border-radius:8px;padding:10px 12px;margin:0 0 12px;"><b>⚠️ WARNING:</b> Some Google Classroom classes could not be scanned completely. Please review:<ul style="margin:6px 0 0;padding-left:18px;">' + scan.warnings.map(function (w) { return '<li>' + e(w) + '</li>'; }).join('') + '</ul></div>' : '') +
+    '<table style="border-collapse:collapse;font-size:13px;margin:0 0 14px;">' + kv.map(function (x) { return '<tr><td style="padding:3px 12px 3px 0;color:#5f6368;">' + e(x[0]) + '</td><td><b>' + e(String(x[1])) + '</b></td></tr>'; }).join('') + '</table>';
+  // group by class (classes ordered by their oldest item), then assignment
+  var byClass = {}, order = [];
+  var shown = R.slice(0, cfg.maxRowsInEmail);
+  shown.forEach(function (r) { if (!byClass[r.courseId]) { byClass[r.courseId] = { r: r, works: {}, wOrder: [] }; order.push(r.courseId); } var c = byClass[r.courseId]; if (!c.works[r.workId]) { c.works[r.workId] = []; c.wOrder.push(r.workId); } c.works[r.workId].push(r); });
+  order.forEach(function (cid) {
+    var c = byClass[cid], r0 = c.r, n = c.wOrder.reduce(function (a, w) { return a + c.works[w].length; }, 0);
+    html += '<div style="border:1px solid #dadce0;border-radius:10px;margin:0 0 12px;overflow:hidden;">' +
+      '<div style="background:#f8f9fa;padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;"><div><b>' + e(r0.className) + '</b><div style="font-size:12px;color:#5f6368;">' + (r0.teacher ? 'Teacher: ' + e(r0.teacher) + ' · ' : '') + n + ' submission(s) pending</div></div>' + btn(r0.classLink, 'Open Google Classroom', true) + '</div>' +
+      '<table style="border-collapse:collapse;width:100%;font-size:13px;">' +
+      '<tr><th style="text-align:left;padding:5px 10px;font-size:12px;color:#5f6368;">Assignment</th><th style="text-align:left;padding:5px 10px;font-size:12px;color:#5f6368;">Student</th><th style="text-align:left;padding:5px 10px;font-size:12px;color:#5f6368;">Submitted</th><th style="text-align:right;padding:5px 10px;font-size:12px;color:#5f6368;">Pending days</th><th style="text-align:left;padding:5px 10px;font-size:12px;color:#5f6368;">Status</th><th style="text-align:left;padding:5px 10px;font-size:12px;color:#5f6368;">Classroom</th></tr>' +
+      c.wOrder.map(function (wid) {
+        return c.works[wid].map(function (r, i) {
+          return '<tr style="border-top:1px solid #eee;"><td style="padding:5px 10px;vertical-align:top;">' + (i === 0 ? '<b>' + e(r.title) + '</b>' : '') + '</td><td style="padding:5px 10px;">' + e(r.name) + ' <span style="color:#5f6368;font-size:12px;">' + e(r.apsId || '') + '</span>' + (r.weeksListed > 1 ? '<div style="color:#b06000;font-size:11.5px;">on this list for ' + r.weeksListed + ' weeks</div>' : '') + '</td>' +
+            '<td style="padding:5px 10px;white-space:nowrap;">' + e(mhgMdY_(r.turnIn)) + '</td><td style="padding:5px 10px;text-align:right;"><b>' + r.days + '</b></td><td style="padding:5px 10px;font-size:12px;">' + e(MHG_KIND_LABEL_[r.kind]) + '</td><td style="padding:5px 10px;">' + (i === 0 ? btn(r.workLink, r.workLink && r.workLink !== r.classLink ? 'Open assignment' : 'Open Google Classroom', false) : '') + '</td></tr>';
+        }).join('');
+      }).join('') + '</table></div>';
+  });
+  if (R.length > shown.length) html += '<p style="background:#e8f0fe;border-radius:8px;padding:8px 12px;">Showing the oldest ' + shown.length + ' of ' + R.length + ' submissions. The full list is attached (Excel / CSV) and in the APS Dashboard → 📚 Assignment Monitoring → ⚙️ Admin.</p>';
+  html += '<p style="color:#5f6368;font-size:12px;margin-top:12px;">This report never changes Google Classroom: it does not grade or return any work and is not sent to students, parents or teachers. Days are counted from the student’s latest turn-in (Eastern Time). Data: daily Google Classroom sync (last ' + e(scan.sync) + ').</p></div>';
+  var text = subject + '\n\nClasses affected: ' + scan.classes + '\nAssignments affected: ' + scan.assignments + '\nStudent submissions pending: ' + R.length + '\nNew this week: ' + stats.isNew + ' · Cleared since the last report: ' + stats.cleared +
+    (scan.warnings.length ? '\n\nWARNING: Some Google Classroom classes could not be scanned completely:\n- ' + scan.warnings.join('\n- ') : '') + '\n\n' +
+    shown.map(function (r) { return r.days + ' days · ' + r.classCode + ' · ' + r.title + ' · ' + r.name + ' (' + (r.apsId || '') + ') · submitted ' + mhgMdY_(r.turnIn) + ' · ' + MHG_KIND_LABEL_[r.kind] + (r.workLink ? ' · ' + r.workLink : ''); }).join('\n');
+  return { subject: subject, html: apsEmailShell_(subject, html, { buttonLabel: 'OPEN APS DASHBOARD' }), text: text, bodyHtml: html };
+}
+
+function mhgCsv_(records) {
+  var q = function (s) { s = String(s === null || s === undefined ? '' : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  var lines = [['Class', 'Teacher', 'Assignment', 'Type', 'Student', 'APSID', 'Student Email', 'Submitted', 'Pending Days', 'Status', 'Assignment Link', 'Classroom Link'].map(q).join(',')];
+  records.forEach(function (r) { lines.push([r.className, r.teacher, r.title, MHG_CATS_[r.code].label, r.name, r.apsId, r.email, mhgMdY_(r.turnIn), r.days, MHG_KIND_LABEL_[r.kind], r.workLink, r.classLink].map(q).join(',')); });
+  return '﻿' + lines.join('\r\n');
+}
+
+function taClone_(o) { return JSON.parse(JSON.stringify(o)); }
+
+function taValidateConfig_(c) {
+  try {
+    var w = c.weights || {}, sum = 0;
+    TA_METRICS_.forEach(function (k) { var v = taInt_(w[k], 0, 100); if (v === null) throw new Error('Each weight must be a whole number from 0 to 100.'); w[k] = v; sum += v; });
+    if (sum !== 100) throw new Error('The six weights must add up to 100 (now ' + sum + ').');
+    var b = c.bands || {};
+    ['exceptional', 'outstanding', 'good'].forEach(function (k) { var v = Number(b[k]); if (isNaN(v) || v < 0 || v > 100) throw new Error('Band thresholds must be between 0 and 100.'); b[k] = v; });
+    if (!(b.exceptional > b.outstanding && b.outstanding > b.good)) throw new Error('Band thresholds must be Exceptional > Outstanding > Good.');
+    var nums = [['appreciateMin', 50, 100], ['minCoverage', 30, 100], ['heldPct', 10, 100], ['attendanceTarget', 10, 100], ['gradingDays', 1, 30], ['gradingLookbackWeeks', 1, 8],
+      ['consistencyWeeks', 2, 8], ['submissionHighlight', 10, 100], ['monthlyMinWeeks', 1, 5], ['monthlyQualPct', 10, 100], ['gradeSyncMaxHours', 6, 168]];
+    nums.forEach(function (x) { var v = taInt_(c[x[0]], x[1], x[2]); if (v === null) throw new Error(x[0] + ' must be a whole number from ' + x[1] + ' to ' + x[2] + '.'); c[x[0]] = v; });
+    var p = c.punctuality || {};
+    ['full', 'good', 'fair'].forEach(function (k) { var v = taInt_(p[k], 0, 60); if (v === null) throw new Error('Punctuality minutes must be whole numbers from 0 to 60.'); p[k] = v; });
+    if (!(p.full <= p.good && p.good <= p.fair)) throw new Error('Punctuality minutes must increase: on time ≤ good ≤ fair.');
+    var mails = Array.isArray(c.adminEmails) ? c.adminEmails : String(c.adminEmails || '').split(/[\s,;]+/);
+    mails = mails.map(normalizeEmail_).filter(Boolean);
+    if (!mails.length || mails.length > 10) throw new Error('Enter 1 to 10 admin email addresses.');
+    mails.forEach(function (m) { if (!isSyntacticallyValidEmail_(m) || !/@avvaiyarpadasalai\.org$/.test(m)) throw new Error('Admin emails must be @avvaiyarpadasalai.org addresses.'); });
+    c.adminEmails = mails.filter(function (m, i) { return mails.indexOf(m) === i; });
+    var ex = c.expected || {}, out = {};
+    Object.keys(ex).forEach(function (k) {
+      var key = String(k).trim().toUpperCase().replace(/\s+/g, ' '); if (!key || key.length > 40) throw new Error('Invalid Nilai name in expected items.');
+      var items = (Array.isArray(ex[k]) ? ex[k] : String(ex[k]).split(/[\s,]+/)).map(function (x) { return String(x).trim().toUpperCase().replace(/_$/, ''); }).filter(Boolean);
+      items.forEach(function (x) { if (!TA_ITEM_PREFIX_[x]) throw new Error('Expected items can only be ATT, HW and QUZ.'); });
+      out[key] = items.filter(function (x, i) { return items.indexOf(x) === i; });
+    });
+    if (!out.DEFAULT) out.DEFAULT = TA_DEFAULTS_.expected.DEFAULT.slice();
+    c.expected = out;
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+function taCompletedWeek_(now) {
+  var today = taToday_(now), dow = taDow_(today);
+  return attWeekIdForDateStr_(dsShift_(today, -(dow === 0 ? 7 : dow)));
+}
+
+function taEvaluate_(weekId, now, cfg) {
+  now = now || new Date(); cfg = cfg || taConfig_();
+  var wk = taWeekBounds_(weekId), today = taToday_(now);
+  var courses = readAllCoursesFromCache_(), ex = ccwExcludeRe_(), cls = {}, allowed = {};
+  courses.forEach(function (c) {
+    var name = String(c.name || '').trim();
+    if (!courseNameMatches_(name) || (c.courseState && c.courseState !== 'ACTIVE') || ex.test(name)) return;
+    var p = examQpParseClassName_(name), t = srmClassTeacher_(c, courses), id = String(c.id);
+    if (p.dayOfWeek === null || p.dayOfWeek === undefined) return; // no readable schedule → nothing to evaluate
+    var minutes = p.start && p.end ? ((p.end.hour * 60 + p.end.minute) - (p.start.hour * 60 + p.start.minute) + 1440) % 1440 : 90;
+    cls[id] = { id: id, name: name, code: name.split('|')[0].trim(), nilai: String(p.grade || '').toUpperCase(), dow: p.dayOfWeek, startMin: p.start ? p.start.hour * 60 + p.start.minute : null,
+      minutes: minutes || 90, teacher: t && t.email && !attIsExcludedEmail_(t.email) ? { email: normalizeEmail_(t.email), name: teacherDisplayName_(t.name || '') || t.email } : null, students: (c.students || []).length };
+    allowed[id] = true;
+  });
+  // ---- one read per source ----
+  var weeks = [weekId];
+  for (var i = 1; i < cfg.consistencyWeeks; i++) weeks.push(attWeekIdForDateStr_(dsShift_(wk.friday, -7 * i)));
+  var recsByWeek = {};
+  weeks.forEach(function (w) { recsByWeek[w] = attReadRecordsForFilters_({ weekOf: w }, allowed); });
+  var leave = taTeacherLeaveIndex_(), cancelled = {};
+  try { var cct = cctReadRecords_(''); Object.keys(cct).forEach(function (k) { if (cct[k].status === 'CLASS_CANCELLED') cancelled[k] = true; }); } catch (eC) { /* no coverage data */ }
+  var gs = gradesLastSync_(), gradeFresh = !!(gs && gs.lastSyncAt && gs.result !== 'FAILED' && now.getTime() - Number(gs.lastSyncAt) <= cfg.gradeSyncMaxHours * 3600000);
+  var grades = gradeFresh ? gradesForCourses_(Object.keys(allowed)) : {};
+  var holiday = {}, isHoliday = function (d) { if (!(d in holiday)) { try { holiday[d] = isAPSSchoolHoliday(d); } catch (e) { holiday[d] = false; } } return holiday[d]; };
+  var onLeave = function (email, d) { return (leave[email] || []).some(function (l) { return l.start <= d && d <= l.end; }); };
+  var eff = function (r) { return String(r.overrideStatus || r.status || '').toUpperCase(); };
+  var present = function (r) { var s = eff(r); return s === 'PRESENT' || s === 'PARTIAL' || (!r.overrideStatus && Number(r.activeMinutes) > 0); };
+
+  // ---- class occurrences of the evaluated week ----
+  var occ = []; // one per class held / scheduled in the week
+  var byCourseDate = {};
+  (recsByWeek[weekId] || []).forEach(function (r) { (byCourseDate[r.courseId + '|' + r.date] = byCourseDate[r.courseId + '|' + r.date] || []).push(r); });
+  Object.keys(cls).forEach(function (id) {
+    var c = cls[id], d = apsClassDateInWeek_(weekId, c.dow);
+    if (!d || d > today) return;
+    var o = { courseId: id, code: c.code, name: c.name, nilai: c.nilai, date: d, minutes: c.minutes, teacher: c.teacher ? c.teacher.email : '', status: '', reason: '', by: '' };
+    var rows = byCourseDate[id + '|' + d] || [];
+    var students = rows.filter(function (r) { return String(r.role).toUpperCase() === 'STUDENT'; });
+    var teachers = rows.filter(function (r) { return String(r.role).toUpperCase() === 'TEACHER'; });
+    if (isHoliday(d)) { o.status = TA_CLASS_STATUS_.HOLIDAY; occ.push(o); return; }
+    if (cancelled[weekId + '|' + id]) { o.status = TA_CLASS_STATUS_.CANCELLED; occ.push(o); return; }
+    if (!c.teacher) { o.status = TA_CLASS_STATUS_.NOT_VERIFIED; o.reason = 'No class teacher on the class'; occ.push(o); return; }
+    var tr = teachers.filter(function (r) { return normalizeEmail_(r.email) === c.teacher.email; })[0];
+    if (tr && present(tr)) {
+      o.status = TA_CLASS_STATUS_.HELD; o.by = c.teacher.email;
+      taScoreOccurrence_(o, tr, students, c, cfg);
+    } else if (onLeave(c.teacher.email, d)) {
+      o.status = TA_CLASS_STATUS_.LEAVE; o.reason = 'Approved leave';
+    } else {
+      var sub = teachers.filter(function (r) { return normalizeEmail_(r.email) !== c.teacher.email && present(r) && !attIsExcludedEmail_(r.email); })[0];
+      if (sub) {
+        o.status = TA_CLASS_STATUS_.COVERED; o.reason = 'Covered by ' + (sub.personName || sub.email);
+        var so = { courseId: id, code: c.code, name: c.name, nilai: c.nilai, date: d, minutes: c.minutes, teacher: normalizeEmail_(sub.email), teacherName: sub.personName || '', status: TA_CLASS_STATUS_.COVERING, by: normalizeEmail_(sub.email), reason: 'Covered ' + c.code };
+        taScoreOccurrence_(so, sub, students, c, cfg); occ.push(so);
+      } else {
+        o.status = TA_CLASS_STATUS_.NOT_VERIFIED;
+        o.reason = !rows.length ? 'No attendance captured for this class' : (rows.every(function (r) { return /NO_ACTIVITY/i.test(r.captureSource); }) ? 'No Google Meet activity found' : 'Teacher not found in the class Meet');
+      }
+    }
+    occ.push(o);
+  });
+
+  // ---- Classroom work per class (grade sync tables) ----
+  var work = {}; // courseId -> { posted:{ATT:{due}}, exam:bool, subRates:[], grading:{n, ok, early}, weeksPosted:{weekId:true} }
+  Object.keys(cls).forEach(function (id) {
+    var g = grades[id]; if (!g) return;
+    var w = work[id] = { posted: {}, exam: false, subRates: [], gOk: 0, gN: 0, early: 0, weeksPosted: {} };
+    var stuCount = cls[id].students;
+    var subsByWork = {}; (g.s || []).forEach(function (s) { (subsByWork[s.w] = subsByWork[s.w] || []).push(s); });
+    var runMs = taDateMs_(today + ' 00:00:00'), lateFrom = runMs - (cfg.gradingDays + cfg.gradingLookbackWeeks * 7) * 86400000, lateTo = runMs - cfg.gradingDays * 86400000;
+    (g.w || []).forEach(function (x) {
+      var cat = gradesCategory_(x.t), ad = String(x.ad || '').slice(0, 10), due = String(x.due || '').slice(0, 10);
+      if (!cat) return;
+      var inWeek = function (d) { return d && d >= wk.start && d <= wk.end; };
+      var wid = ad ? attWeekIdForDateStr_(ad) : '';
+      if (wid && weeks.indexOf(wid) > -1) w.weeksPosted[wid] = true;
+      if (inWeek(ad)) {
+        Object.keys(TA_ITEM_PREFIX_).forEach(function (k) { if (TA_ITEM_PREFIX_[k] === cat) { var cur = w.posted[k]; var v = x.due ? 1 : 0.5; if (!cur || v > cur) w.posted[k] = v; } });
+        if ((cat === 'HOMEWORK' || cat === 'QUIZ') && stuCount) {
+          var turned = (subsByWork[x.id] || []).filter(function (s) { return s.ti || s.st === 'TURNED_IN' || s.st === 'RETURNED'; }).length;
+          w.subRates.push(Math.min(1, turned / stuCount));
+        }
+      }
+      if (cat === 'EXAMINATION' || cat === 'PROJECT WORK') { if (inWeek(ad) || inWeek(due)) w.exam = true; }
+      if (cat === 'ATTENDANCE') return; // auto-graded attendance check: not part of grading follow-up
+      (subsByWork[x.id] || []).forEach(function (s) {
+        var ti = taDateMs_(s.ti); if (ti === null || ti < lateFrom || ti >= lateTo) return;
+        var graded = s.g !== '' && s.g !== null && s.g !== undefined, gd = taDateMs_(s.gd);
+        if (graded && gd !== null && gd < ti) { w.early++; return; } // graded before the student turned it in — not counted, flagged
+        w.gN++;
+        if (graded && gd !== null && gd - ti <= cfg.gradingDays * 86400000) w.gOk++;
+      });
+    });
+  });
+
+  // ---- teachers ----
+  var T = {};
+  var touch = function (email, name) { var t = T[email] || (T[email] = { email: email, name: name || '', classes: {}, nilai: {}, occ: [] }); if (!t.name && name) t.name = name; return t; };
+  Object.keys(cls).forEach(function (id) { var c = cls[id]; if (c.teacher) { var t = touch(c.teacher.email, c.teacher.name); t.classes[id] = c.code; t.nilai[c.nilai] = true; } });
+  occ.forEach(function (o) { if (!o.by && !o.teacher) return; var e = o.status === TA_CLASS_STATUS_.COVERING ? o.by : o.teacher; if (!e) return; var t = touch(e, o.teacherName); t.occ.push(o); });
+  // consistency: weeks with a held class vs weeks with lesson work posted
+  var heldWeeks = {};
+  weeks.forEach(function (w) {
+    (recsByWeek[w] || []).forEach(function (r) {
+      if (String(r.role).toUpperCase() !== 'TEACHER' || !present(r)) return;
+      var e = normalizeEmail_(r.email), c = cls[r.courseId]; if (!c || !c.teacher || c.teacher.email !== e) return;
+      ((heldWeeks[e] = heldWeeks[e] || {})[w] = heldWeeks[e][w] || {})[r.courseId] = true;
+    });
+  });
+  var teachers = Object.keys(T).map(function (email) { return taScoreTeacher_(T[email], cls, work, heldWeeks[email] || {}, weeks, gradeFresh, cfg, wk); });
+  teachers.sort(function (a, b) { return (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score) || String(a.name).localeCompare(String(b.name)); });
+  var counts = { active: teachers.length, scored: 0, eligible: 0 };
+  Object.keys(TA_BAND_).forEach(function (k) { counts[TA_BAND_[k]] = 0; });
+  teachers.forEach(function (t) { counts[t.band]++; if (t.dataStatus === 'SUFFICIENT') counts.scored++; if (t.eligible) counts.eligible++; });
+  var held = occ.filter(function (o) { return o.status === TA_CLASS_STATUS_.HELD || o.status === TA_CLASS_STATUS_.COVERING; });
+  var stuRows = held.reduce(function (a, o) { return a + (o.stuTotal || 0); }, 0), stuIn = held.reduce(function (a, o) { return a + (o.stuIn || 0); }, 0);
+  counts.classesScheduled = occ.filter(function (o) { return o.status !== TA_CLASS_STATUS_.HOLIDAY && o.status !== TA_CLASS_STATUS_.CANCELLED && o.status !== TA_CLASS_STATUS_.COVERING; }).length;
+  counts.classesHeld = held.length;
+  counts.classesNotVerified = occ.filter(function (o) { return o.status === TA_CLASS_STATUS_.NOT_VERIFIED; }).length;
+  counts.studentAttendancePct = stuRows ? taRound_(stuIn / stuRows * 100) : null;
+  counts.itemsPosted = Object.keys(work).reduce(function (a, id) { return a + Object.keys(work[id].posted).length; }, 0);
+  counts.gradedOnTime = Object.keys(work).reduce(function (a, id) { return a + work[id].gOk; }, 0);
+  counts.gradedTotal = Object.keys(work).reduce(function (a, id) { return a + work[id].gN; }, 0);
+  counts.gradedBeforeTurnIn = Object.keys(work).reduce(function (a, id) { return a + work[id].early; }, 0);
+  return { weekId: weekId, start: wk.start, end: wk.end, label: taWeekLabel_(weekId), configVersion: cfg.version, evaluatedAt: taTs_(now),
+    gradeSync: { fresh: gradeFresh, label: gs && gs.lastSync ? String(gs.lastSync) : 'never' }, teachers: teachers, occurrences: occ, counts: counts };
+}
+
+function personDisplayNameServer_(n) { try { return typeof teacherDisplayName_ === 'function' ? teacherDisplayName_(n) : String(n || ''); } catch (e) { return String(n || ''); } }
+
+function tkStudentScope_(v, courses) {
+  if (v.role === 'student') return { self: true, courses: courses.filter(function (c) { return courseHasStudentEmail_(c, v.email); }) };
+  if (isAdminOrHm_(v.role) || v.role === VCFO_AMCHSTS_BOD_ROLE) return { self: false, courses: courses };
+  if (v.role === 'teacher') return { self: false, courses: courses.filter(function (c) { return userHasCourseAccess_(v.email, c); }) };
+  return { self: false, courses: [] };
+}
+
+function tkNameFor_(email, courses) {
+  var e = normalizeEmail_(email); if (!e) return '';
+  var name = '';
+  (courses || []).some(function (c) {
+    return (c.teachers || []).concat(c.students || []).some(function (p) { if (normalizeEmail_(p.email) === e && p.name) { name = (typeof teacherDisplayName_ === 'function' ? teacherDisplayName_(p.name) : p.name); return true; } return false; });
+  });
+  return name || classPrimaryNameFromEmail_(e);
+}
+
+function exportTeacherAppreciation(sessionToken, opts) {
+  taViewer_(sessionToken, false); opts = opts || {};
+  var rows = taReadTable_(TA_SCORES_SHEET_, TA_SCORES_HEADER_).map(taRowToTeacher_).filter(function (t) {
+    if (opts.weekId && t.weekId !== opts.weekId) return false;
+    if (opts.nilai && String(t.nilai).split(', ').indexOf(opts.nilai) === -1) return false;
+    if (opts.teacher && t.email !== normalizeEmail_(opts.teacher)) return false;
+    return true;
+  });
+  var q = function (s) { s = String(s === null || s === undefined ? '' : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  var lines = [['Week', 'Week Start', 'Week End', 'Teacher', 'APSID', 'Teacher Email', 'Nilai', 'Classes', 'Classes Scheduled', 'Classes Held', 'Classes Excluded', 'Class Completion', 'Punctuality', 'Student Attendance',
+    'Engagement', 'Grading Follow-up', 'Consistency', 'Student Submission Rate', 'Data Coverage %', 'Score', 'Band', 'Data Status', 'Eligible for Appreciation', 'Highlights', 'Notes'].map(q).join(',')];
+  rows.forEach(function (t) {
+    var b = taWeekBounds_(t.weekId);
+    lines.push([taWeekLabel_(t.weekId), b.start, b.end, t.name, t.apsId, t.email, t.nilai, t.classes.join(', '), t.scheduled, t.held, t.excluded, t.metrics.completion, t.metrics.punctuality, t.metrics.attendance,
+      t.metrics.engagement, t.metrics.grading, t.metrics.consistency, t.submissionRate, t.coverage, t.score, TA_BAND_LABEL_[t.band] || t.band, t.dataStatus, t.eligible ? 'Yes' : 'No',
+      t.highlights.map(function (h) { return TA_HIGHLIGHT_EN_[h] || h; }).join('; '), t.reasons.join('; ')].map(q).join(','));
+  });
+  return { csv: '﻿' + lines.join('\r\n'), rows: rows.length, fileName: 'teacher_appreciation_' + (opts.weekId || 'all') + '_' + Utilities.formatDate(new Date(), APS_TZ, 'yyyyMMdd-HHmm') + '.csv' };
+}
+
+function exportUserCountry(sessionToken) {
+  var d = getUserCountryAdmin(sessionToken), q = function (v) { v = String(v === null || v === undefined ? '' : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+  var lines = [['Email', 'APSID', 'Name', 'Role', 'Country_Code', 'Country', 'Source', 'Updated_At', 'Updated_By'].map(q).join(',')]
+    .concat(d.rows.map(function (r) { return [r.email, r.apsid, r.name, r.role, r.code, r.country, r.source, r.updatedAt, r.updatedBy].map(q).join(','); }));
+  return { csv: '﻿' + lines.join('\r\n'), fileName: 'APS_Users_Outside_USA_' + Utilities.formatDate(new Date(), APS_TZ, 'yyyy-MM-dd') + '.csv', rows: d.rows.length };
+}
+
+function getAccessControlHistory(sessionToken, limit) {
+  acRequireAdmin_(sessionToken);
+  var n = Math.min(500, Math.max(1, Number(limit) || 200));
+  var sh = getWorkbook_().getSheetByName(AC_AUDIT_SHEET_);
+  if (!sh || sh.getLastRow() < 2) return { rows: [] };
+  var last = sh.getLastRow(), start = Math.max(2, last - n + 1);
+  var rows = sh.getRange(start, 1, last - start + 1, AC_AUDIT_HEADER_.length).getValues().reverse().map(function (r) {
+    var d = new Date(r[0]);
+    return { at: isNaN(d.getTime()) ? String(r[0]) : Utilities.formatDate(d, APS_TZ, 'MM/dd/yyyy h:mm a') + ' EST', by: String(r[1]), role: AC_ROLE_LABELS_[String(r[3])] || String(r[3]), tab: String(r[5]), from: String(r[6]), to: String(r[7]) };
+  });
+  return { rows: rows };
+}
+
+function getAdminAssignmentAuditLog(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'assignClassroom'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var courses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminRole_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin users can access assignment history.');
+  var gtr = readAllGtrRequests_().map(function(r){ return { type:'Class/Grade Change', timestamp:r.requestDateTime, studentName:r.studentName, studentEmail:r.studentEmail, from:r.currentClassroom, to:r.requestedClassroom, timing:appendEstLabel_(r.requestedClassTiming), status:r.requestStatus, reason:r.reasonComments || '' }; });
+  var sheet = getOrCreateAssignmentAuditSheet_();
+  var rows = [];
+  if (sheet.getLastRow() >= 2) rows = sheet.getRange(2,1,sheet.getLastRow()-1,12).getValues().map(function(r){ var act = String(r[9] || ''), k = act.indexOf(' · '); return { type: k > 0 ? act.slice(0, k) : 'Assign Classroom', timestamp:r[0], studentName:r[2], studentEmail:r[3], from:r[4], to:r[6], timing:appendEstLabel_(r[7]), status: k > 0 ? act.slice(k + 3) : r[9], reason:r[10] || '', gradeTransfer: String(r[11] || '') }; }); // r84: Add/Remove Student rows carry "ACTION · STATUS"
+  return gtr.concat(rows).sort(function(a,b){ return String(b.timestamp).localeCompare(String(a.timestamp)); });
+}
+
+function getAdminClassroomAssignments(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'assignClassroom.remap'); // r60: Assign Classroom → Re-Map Student (parent checked too)
+  // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var courses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminRole_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin users can access Assign Classroom.');
+  var students = {};
+  courses.forEach(function(c) {
+    (c.students || []).forEach(function(st) {
+      var email = normalizeEmail_(st.email); if (!email) return;
+      if (!students[email]) students[email] = { email: email, name: st.name || email, apsId: st.apsId || extractAPSID_(email), classrooms: [] }; // r60: APSID for search
+      students[email].classrooms.push({ courseId: c.id, name: c.name, section: c.section || '', count: c.studentCount || 0 });
+    });
+  });
+  var classes = courses.map(function(c) { return { courseId: c.id, name: c.name, section: c.section || '', count: c.studentCount || 0 }; });
+  // Round 36: upgraded from plain localeCompare to the numeric-aware
+  // naturalCompareJs_ for consistency with the main classroom list's
+  // Ascending order (so "NILAI - 10" still sorts after "NILAI - 2").
+  var studentList = Object.keys(students).map(function(k){ return students[k]; }).sort(function(a,b){ return naturalCompareJs_(a.name, b.name); });
+  classes.sort(function(a,b){ return naturalCompareJs_(a.name, b.name); });
+  return { students: studentList, classes: classes, maxStudents: APS_CLASS_TIMINGS.MAX_STUDENTS };
+}
+
+function getApplyLeaveData(sessionToken) {
+  var v = lvViewer_(sessionToken), rows = lvRows_(), today = ttmToday_(new Date());
+  var mine = rows.filter(function (r) { return normalizeEmail_(r.User_Email) === v.email; }).sort(function (a, b) { return a.Submitted_DateTime < b.Submitted_DateTime ? 1 : -1; });
+  var out = { today: today, minDate: lvAddDays_(today, -lvMaxPastDays_()), maxDays: lvMaxSpanDays_(), name: v.name, roleLabel: v.roleLabel, apsId: getAPSIdFromEmail(v.email), isStudent: v.role === 'student',
+    classes: lvClasses_(v.email, v.role, v.courses).map(lvClassLine_), mine: mine.map(function (r) { return lvPublic_(r, false); }), isAdmin: v.isAdmin };
+  if (v.isAdmin) out.all = rows.slice().sort(function (a, b) { return a.Submitted_DateTime < b.Submitted_DateTime ? 1 : -1; }).slice(0, 500).map(function (r) { return lvPublic_(r, true); });
+  return out;
+}
+
+function getAppreciationLetterAudit(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'letters'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var leader = canSendTeacherAppreciation_(session.role);
+  var me = normalizeEmail_(session.email);
+  if (!leader) appreciationTeacherCourses_(session); // throws "Only a Teacher account…" for non-teachers
+  var sheet = getWorkbook_().getSheetByName(APPRECIATION_CERTIFICATE_AUDIT_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return { rows: [], all: leader };
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 13).getValues();
+  var rows = [];
+  for (var i = values.length - 1; i >= 0 && rows.length < 500; i--) {
+    var r = values[i];
+    if (!r[0] && !r[1]) continue;
+    if (!leader && normalizeEmail_(r[1]) !== me) continue;
+    var d = r[0] instanceof Date ? r[0] : new Date(r[0]);
+    rows.push({ at: isNaN(d.getTime()) ? String(r[0]) : Utilities.formatDate(d, APS_TZ, 'MM-dd-yyyy hh:mm a'), sender: String(r[1] || ''), recipientName: String(r[3] || ''),
+      recipientEmail: String(r[4] || ''), course: String(r[6] || '').split('|')[0].trim(), letterType: String(r[7] || ''), result: String(r[8] || ''),
+      fileName: String(r[9] || ''), entryMode: String(r[11] || 'ROSTER'), senderRole: String(r[12] || '') });
+  }
+  return { rows: rows, all: leader };
+}
+
+function getAssignmentHealthCard(sessionToken) {
+  var v = amViewer_(sessionToken, false), cfg = amConfig_();
+  var ck = 'am_card_' + String(rosterProp_('GRADES_DATA_GEN', '0')) + '_' + (v.all ? 'all' : Utilities.base64EncodeWebSafe(v.email).slice(0, 180)); // per-user scope is fixed by the session email
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(ck); if (hit) return JSON.parse(hit); } catch (e) { /* rebuild */ }
+  var now = new Date();
+  var m = amBuild_(cfg, v.all ? null : v.ids, { from: rosterTs_(new Date(now.getTime() - 7 * 86400000)).slice(0, 10), to: rosterTs_(new Date(now.getTime() + 7 * 86400000)).slice(0, 10), courses: v.courses, studentEmail: v.student ? v.email : '' });
+  var s = amSummary_(m, []);
+  var out = { completed: m.totals.graded, awaitingGrading: m.totals.ungraded, missing: m.totals.missing, requireAttention: s.red, needAttention: s.yellow, onTrack: s.green,
+    submissionRate: m.totals.submissionRate, gradingRate: m.totals.gradingRate, student: !!v.student };
+  try { cache.put(ck, JSON.stringify(out), 600); } catch (e2) { /* fine */ }
+  return out;
+}
+
+function getAssignmentMonitoring(sessionToken, opts) {
+  var v = amViewer_(sessionToken, false), cfg = amConfig_();
+  opts = opts || {};
+  var m = amBuild_(cfg, v.all ? null : v.ids, { from: opts.from, to: opts.to, courses: v.courses, studentEmail: v.student ? v.email : '' });
+  var teachers = v.student ? [] : amTeachers_(m, cfg);
+  var items = m.items.slice(0, AM_MAX_ITEMS_).map(function (i) { var o = {}; Object.keys(i).forEach(function (k) { if (k !== 'userId') o[k] = i[k]; }); return o; });
+  return {
+    enabled: cfg.enabled, role: v.role, canAdmin: v.admin, student: !!v.student, scopeAll: !!v.all, academicYear: rosterAcademicYear_().label || COURSE_NAME_SUFFIX,
+    window: { from: m.window.from.slice(0, 10), to: m.window.to.slice(0, 10) }, now: rosterLabel_(new Date()),
+    totals: m.totals, summary: amSummary_(m, teachers), classes: m.classes.map(function (c) { var o = {}; Object.keys(c).forEach(function (k) { if (k !== 'studentList' && !(k === 'teacherEmail' && v.student)) o[k] = c[k]; }); return o; }),
+    items: items, itemsTruncated: m.items.length > AM_MAX_ITEMS_, teachers: teachers.map(function (t) { return { name: t.name, email: v.student ? '' : t.email, classes: t.classes, counts: t.counts, assignments: t.assignments, attention: t.attention }; }),
+    types: cfg.types.filter(function (t) { return t.monitor; }).map(function (t) { return { code: t.code, label: t.label }; }), trainingUrl: cfg.trainingUrl, gradeSteps: AM_GRADE_STEPS_,
+    statusLabels: AM_STATUS_LABEL_, lastSync: (gradesLastSync_() || {}).lastSync || '', thresholds: { repeatMissing: cfg.repeatMissing, gradingGraceDays: cfg.gradingGraceDays }
+  };
+}
+
+function getAssignmentMonitoringClass(sessionToken, courseId, opts) {
+  var v = amViewer_(sessionToken, false), cfg = amConfig_();
+  courseId = String(courseId || '').replace(/[^0-9]/g, '');
+  if (!courseId || (!v.all && !v.ids[courseId])) throw new Error('You do not have permission to view this class.');
+  opts = opts || {};
+  var ids = {}; ids[courseId] = true;
+  var m = amBuild_(cfg, ids, { from: opts.from, to: opts.to, courses: v.courses, studentEmail: v.student ? v.email : '', withMatrix: true });
+  var c = m.classes[0];
+  if (!c) return { found: false };
+  return { found: true, id: c.id, name: c.name, teacher: c.teacher, link: c.link, health: c.health, counts: c.counts,
+    assignments: c.assignments.map(function (a) { return { id: a.id, title: a.title, type: a.type, dueLabel: a.dueLabel, health: a.health, counts: a.counts, excluded: a.excluded }; }),
+    students: c.studentList.map(function (s) {
+      var issues = s.missing + s.ungraded;
+      return { email: s.email, name: s.name, apsId: s.apsId, cells: s.cells, missing: s.missing, ungraded: s.ungraded, overall: !issues ? 'GOOD' : issues === 1 ? 'ATTENTION' : 'ACTION_REQUIRED' };
+    }) };
+}
+
+function getAssignmentMonitoringHistory(sessionToken) {
+  var v = amViewer_(sessionToken, false);
+  return { history: amHistoryFor_(v, 400) };
+}
+
+function getAuthenticatedAPSUser(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  var courses = readAllCoursesFromCache_();
+  return buildAuthenticatedUserPayload_({ email: session.email, role: session.role }, courses);
+}
+
+function getAuthorizedEmailsForGroupSync(sessionToken) {
+  var auth = requireSuperAdminViewer_(sessionToken);
+  var courses = auth.courses;
+
+  var staticRoles = [], configuredRoles = [], teachers = [], students = [];
+  var seen = {}; // per-bucket dedup, keyed "bucketName|email"
+
+  function addTo(bucket, bucketName, email, extra) {
+    var normalized = normalizeEmail_(email);
+    if (!normalized) return;
+    var key = bucketName + '|' + normalized;
+    if (seen[key]) return;
+    seen[key] = true;
+    var row = { email: normalized };
+    for (var k in extra) { if (extra.hasOwnProperty(k)) row[k] = extra[k]; }
+    bucket.push(row);
+  }
+
+  SUPERADMIN_EMAILS.forEach(function (e) { addTo(staticRoles, 'staticRoles', e, { role: SUPERADMIN_ROLE }); });
+  VCFO_AMCHATS_BOD_EMAILS.forEach(function (e) { addTo(staticRoles, 'staticRoles', e, { role: VCFO_AMCHSTS_BOD_ROLE }); });
+  ADMIN_EMAILS.forEach(function (e) { addTo(staticRoles, 'staticRoles', e, { role: 'admin' }); });
+  HEADMASTER_EMAILS.forEach(function (e) { addTo(staticRoles, 'staticRoles', e, { role: 'headmaster' }); });
+
+  var configured = readConfiguredUserRoles_();
+  Object.keys(configured).forEach(function (email) {
+    addTo(configuredRoles, 'configuredRoles', email, { role: configured[email] });
+  });
+
+  courses.forEach(function (c) {
+    (c.teachers || []).forEach(function (t) { addTo(teachers, 'teachers', t.email, { name: t.name || '' }); });
+    (c.students || []).forEach(function (s) { addTo(students, 'students', s.email, { name: s.name || '' }); });
+  });
+
+  var allEmailsSet = {};
+  [staticRoles, configuredRoles, teachers, students].forEach(function (bucket) {
+    bucket.forEach(function (row) { allEmailsSet[row.email] = true; });
+  });
+  var allEmails = Object.keys(allEmailsSet).sort();
+
+  return {
+    generatedAt: new Date().toISOString(),
+    counts: {
+      staticRoles: staticRoles.length,
+      configuredRoles: configuredRoles.length,
+      teachers: teachers.length,
+      students: students.length,
+      totalUnique: allEmails.length
+    },
+    allEmails: allEmails, // ready to paste, one per line, into the Group's "Add people" box
+    buckets: { staticRoles: staticRoles, configuredRoles: configuredRoles, teachers: teachers, students: students }
+  };
+}
+
+function getCacheSheetUrl(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  if (!isAdminRole_(session.role)) throw new Error('Only Admin users can view the underlying Sheet link.');
+  if (TARGET_SPREADSHEET_ID) {
+    return SpreadsheetApp.openById(TARGET_SPREADSHEET_ID).getUrl();
+  }
+  var props = PropertiesService.getScriptProperties();
+  var ssId = props.getProperty(CACHE_SHEET_ID_KEY);
+  if (!ssId) return null;
+  return SpreadsheetApp.openById(ssId).getUrl();
+}
+
+function getClassChangeContext(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'classChange'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var allCourses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  if (viewer.role !== 'student') {
+    throw new Error('Only a Student account can request a class/timing change.');
+  }
+  var myCourses = allCourses.filter(function (c) { return courseHasStudentEmail_(c, viewer.email); });
+  if (myCourses.length === 0) {
+    throw new Error('No enrolled class found for your account.');
+  }
+  var currentCourse = myCourses[0]; // the common case is exactly one; see round-25 doc for the (rare) multi-course note
+  var parsed = parseClassroomTitle_(currentCourse.name);
+  var windowOpen = isTimingChangeWindowOpen_();
+
+  return {
+    studentEmail: viewer.email,
+    studentName: findDisplayName_(allCourses, viewer.email),
+    apsId: deriveApsId_(viewer.email),
+    currentCourseId: currentCourse.id,
+    currentGrade: parsed ? parsed.grade : '',
+    currentClassroomName: currentCourse.name,
+    currentTimingLabel: appendEstLabel_(currentCourse.section || ''),
+    currentStudentCount: currentCourse.studentCount,
+    timingChangeWindowOpen: windowOpen,
+    timingChangeDeadline: APS_CLASS_TIMINGS.TIMING_CHANGE_DEADLINE,
+    timingCandidates: windowOpen && parsed ? findTimingChangeCandidates_(currentCourse, allCourses) : [],
+    knownGrades: getAllKnownGrades_(allCourses).filter(function (g) {
+      return normalizeGradeName_(g) !== normalizeGradeName_(parsed ? parsed.grade : '');
+    }),
+    hasActiveRequest: hasActiveGtrRequest_(viewer.email),
+    maxStudents: APS_CLASS_TIMINGS.MAX_STUDENTS,
+    messages: {
+      noTimingClass: GTR_MESSAGES.NO_TIMING_CLASS_AVAILABLE,
+      noGradeClass: GTR_MESSAGES.NO_GRADE_CLASS_AVAILABLE,
+      duplicateActive: GTR_MESSAGES.DUPLICATE_ACTIVE_REQUEST,
+      acknowledgementText: GTR_MESSAGES.ACKNOWLEDGEMENT_TEXT,
+      homeworkReminder: GTR_MESSAGES.HOMEWORK_REMINDER
+    }
+  };
+}
+
+function getClassChangeRequestsForApprover(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'classChange'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var email = session.email;
+  var role = session.role;
+  var isReadOnlyViewer = role === VCFO_AMCHSTS_BOD_ROLE;
+  if (!isReadOnlyViewer) {
+    if (isReadOnlyRole_(role)) throw new Error('Read-only access: approval actions are disabled.');
+    if (!isInEmailList_(email, GRADE_CHANGE_APPROVER_EMAILS)) {
+      throw new Error('You are not authorized to view Grade/Timing Change requests.');
+    }
+  }
+  return readAllGtrRequests_().sort(function (a, b) { return (b.requestDateTime || '').localeCompare(a.requestDateTime || ''); });
+}
+
+function getClassCoverageHistory(sessionToken, opts) {
+  var v = cctViewer_(sessionToken, false);
+  opts = opts || {};
+  var weekId = String(opts.weekId || ''), courseId = String(opts.courseId || '');
+  if (!v.courses.some(function (c) { return String(c.id) === courseId; })) throw new Error('You can view coverage only for classes you are responsible for.');
+  var sh = ctaSheet_(CCT_AUDIT_SHEET_, CCT_AUDIT_HEADER_), last = sh.getLastRow(), out = [];
+  if (last >= 2) sh.getRange(2, 1, last - 1, CCT_AUDIT_HEADER_.length).getValues().forEach(function (r) {
+    if (String(r[2]) === weekId && String(r[3]) === courseId) out.push({ at: String(r[1]), by: String(r[5]), byRole: String(r[6]), oldStatus: String(r[7]), newStatus: String(r[8]), oldAction: String(r[9]).replace(/^'/, ''), newAction: String(r[10]).replace(/^'/, '') });
+  });
+  return out.reverse();
+}
+
+function getClassCoverageTracking(sessionToken, opts) {
+  var v = cctViewer_(sessionToken, false);
+  opts = opts || {};
+  var weeks = cctWeeks_(), weekId = String(opts.weekId || '');
+  if (!weeks.some(function (w) { return w.id === weekId; })) weekId = weeks.filter(function (w) { return w.current; })[0].id;
+  var avail = {};
+  buildAvailabilityBoard_(v.courses, weekId).forEach(function (r) { avail[String(r.courseId)] = r; });
+  var recs = cctReadRecords_(weekId), hist = cctAuditCounts_(weekId);
+  var rows = v.courses.map(function (c) { var id = String(c.id); return cctRowFor_(c, avail[id], recs[weekId + '|' + id], hist[id]); });
+  var canEdit = true;
+  try { requireDashboardMutationPermission_({ email: v.email, role: v.role }, 'update Class Coverage Tracking'); } catch (e) { canEdit = false; }
+  return { weekId: weekId, weekLabel: getWeekLabel_(weekId), weeks: weeks, statuses: CCT_STATUSES_, rows: rows, canEdit: canEdit,
+    scope: v.all ? 'all' : 'supported', roleLabel: v.roleLabel, actionMax: CCT_ACTION_MAX_ };
+}
+
+function getCourseMeetLinkMappings(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminOrHm_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin/Headmaster/Super Admin can view the Course-Meet Link mapping.');
+  var sheet = getOrCreateMeetLinkMapSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange(2, 1, lastRow - 1, 7).getValues().filter(function (r) { return r[0]; }).map(function (r) {
+    return { courseId: String(r[0]), courseName: r[1] || '', meetCode: r[2] || '', updatedAt: r[3] || '', updatedBy: r[4] || '',
+      source: String(r[5] || 'MANUAL'), joinLink: String(r[6] || '') };
+  });
+}
+
+function getCourseNameSuffix(sessionToken) {
+  requireValidSession_(sessionToken);
+  return COURSE_NAME_SUFFIX;
+}
+
+function getCoverageBootstrap(sessionToken) {
+  var v = tccViewer_(sessionToken, false);
+  var now = new Date();
+  var originals = v.courses.filter(function (c) { return tccCanUseOriginal_(v, c.id); }).map(function (c) {
+    var s = tccSchedule_(c), t = tccPrimary_(c, v.courses);
+    return { id: String(c.id), name: c.name, teacher: t ? t.name : '', teacherEmail: t ? t.email : '', students: (c.students || []).length,
+      ok: s.ok, reason: s.ok ? (t ? '' : 'No Primary Teacher in the Course Description') : s.reason, dates: s.ok ? tccUpcomingDates_(s, now, 6) : [] };
+  }).sort(function (a, b) { return naturalCompareJs_(a.name, b.name); });
+  return { originals: originals, history: tccHistory_(v), grace: tccGraceMinutes_(), mailReady: attMailConfigured_() };
+}
+
+function getCoveragePlan(sessionToken, req) {
+  var v = tccViewer_(sessionToken, false);
+  req = req || {};
+  return tccPublicPlan_(tccPlan_(v, req.originalId, req.destinationId, String(req.date || ''), new Date(), { confirmStreamLink: req.confirmStreamLink === true }), !!req.withPreview);
+}
+
+function getDashboardRolePermissions(sessionToken) {
+  requireSuperAdminViewer_(sessionToken);
+  return readDashboardRolePermissions_();
+}
+
+function getDashboardUserRoles(sessionToken) {
+  requireSuperAdminViewer_(sessionToken);
+  var sheet = getOrCreateUserRoleSheet_();
+  if (sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues().filter(function (row) { return row[0]; }).map(function (row) {
+    return { email: normalizeEmail_(row[0]), role: String(row[1] || ''), active: row[2] === true || String(row[2]).toLowerCase() === 'true' || row[2] === 1, updatedAt: row[3] || '', updatedBy: row[4] || '' };
+  });
+}
+
+function getExamQuestionPaperAuditLog(sessionToken, filters) {
+  apsRequireTabForToken_(sessionToken, 'exam.questionPaper'); // r56: Admin Control → Access Control
+  const v = examQpViewer_(sessionToken);
+  if (!v.canMonitorAll) throw new Error('Only Admin/HM can view the examination audit log.');
+  const meta = examQpSheet_(EXAM_QP_CONFIG.SHEET_AUDIT, EXAM_QP_AUDIT_HEADER);
+  const last = meta.sheet.getLastRow();
+  if (last < 2) return [];
+  const n = Math.min(last - 1, 3000);
+  const q = String((filters && filters.search) || '').trim().toUpperCase();
+  const out = [];
+  const rows = meta.sheet.getRange(last - n + 1, 1, n, meta.width).getValues();
+  for (let i = rows.length - 1; i >= 0 && out.length < EXAM_QP_CONFIG.MAX_EVENTS_RETURNED; i--) {
+    const o = examQpObjectFromRow_(meta, rows[i]);
+    if (q && [o.Event_Type, o.Question_Paper_ID, o.Exam_ID, o.User_Email, o.APSID, o.Student_Name, o.Class_Name, o.Result, o.Reason].join(' ').toUpperCase().indexOf(q) === -1) continue;
+    out.push({ auditId: o.Audit_ID, type: o.Event_Type, examId: o.Exam_ID, questionPaperId: o.Question_Paper_ID, user: o.User_Email, role: o.User_Role, apsId: o.APSID,
+      studentName: o.Student_Name, className: o.Class_Name, at: o.Timestamp_EST, result: o.Result, reason: o.Reason });
+  }
+  return out;
+}
+
+function getExamQuestionPaperMonitoring(sessionToken, filters) {
+  apsRequireTabForToken_(sessionToken, 'exam.questionPaper'); // r56: Admin Control → Access Control
+  const v = examQpViewer_(sessionToken);
+  if (!v.canMonitorAll && !v.isTeacher) throw new Error('You are not authorized to view examination monitoring.');
+  filters = filters || {};
+  const nowMs = Date.now();
+  const courses = readAllCoursesFromCache_();
+  const courseById = {};
+  courses.forEach(function (c) { courseById[String(c.id)] = c; });
+  let records = examQpReadRecords_();
+  if (!v.canMonitorAll) records = records.filter(function (r) { const c = courseById[r.Course_ID]; return c && userHasCourseAccess_(v.email, c); });
+  const allScoped = records.slice();
+  const f = {
+    ay: String(filters.academicYear || ''), examId: String(filters.examId || ''), grade: String(filters.grade || ''), courseId: String(filters.courseId || ''),
+    teacher: String(filters.teacher || ''), status: String(filters.downloadStatus || ''), from: String(filters.dateFrom || ''), to: String(filters.dateTo || ''),
+    q: String(filters.search || '').trim().toUpperCase(), qpId: String(filters.questionPaperId || '')
+  };
+  const fqKey = examQpNormDownloadKey_(f.q);
+  records = records.filter(function (r) {
+    if (f.ay && r.Academic_Year !== f.ay) return false;
+    if (f.examId && r.Exam_ID !== f.examId) return false;
+    if (f.grade && r.Grade !== f.grade) return false;
+    if (f.courseId && r.Course_ID !== f.courseId) return false;
+    if (f.qpId && r.Question_Paper_ID !== f.qpId) return false;
+    if (f.teacher && r.Teacher_Name !== f.teacher) return false;
+    if (f.from && r.Class_Date < f.from) return false;
+    if (f.to && r.Class_Date > f.to) return false;
+    return true;
+  });
+  const qpSet = {};
+  records.forEach(function (r) { qpSet[r.Question_Paper_ID] = true; });
+  let events = examQpReadEvents_(qpSet);
+  if (!v.canMonitorAll) {
+    // A class teacher sees only events of THEIR students — never another class's student who tried this paper.
+    const roster = {};
+    records.forEach(function (r) { const c = courseById[r.Course_ID]; (c ? c.students || [] : []).forEach(function (s) { roster[r.Question_Paper_ID + '|' + normalizeEmail_(s.email)] = true; }); });
+    events = events.filter(function (e) { return roster[e.Question_Paper_ID + '|' + normalizeEmail_(e.Student_Email || e.Authenticated_User_Email)]; });
+  }
+  const byKey = {}; // qpId|email -> aggregate
+  events.forEach(function (e) {
+    const email = normalizeEmail_(e.Student_Email || e.Authenticated_User_Email);
+    const k = e.Question_Paper_ID + '|' + email;
+    const a = byKey[k] = byKey[k] || { count: 0, failed: 0, first: '', last: '', lastStatus: '', completedTimes: [], name: e.Student_Full_Name, apsId: e.APSID };
+    if (e.Download_Status === EXAM_QP_DOWNLOAD_STATUS.DOWNLOAD_COMPLETED) {
+      a.count++; const t = e.Download_Date_Time_EST || e.Created_Date_Time;
+      if (e.Download_Key) a.key = e.Download_Key;
+      if (!a.first || t < a.first) a.first = t; if (!a.last || t > a.last) a.last = t; a.completedTimes.push(t);
+    } else a.failed++;
+    a.lastStatus = e.Download_Status;
+    if (e.Student_Full_Name) a.name = e.Student_Full_Name;
+  });
+  const papers = [], students = [];
+  const staffOn = v.isAdmin || v.isHm || v.isTeacher; // r67 (never BOD / students)
+  const lastSent = staffOn ? examQpLastSentMap_(qpSet) : {};
+  const autoMap = records.some(function (r) { return String(r.Auto_Email_Enabled || '') !== ''; }) ? examQpAutoStatusMap_(qpSet) : {}; // r99: automatic email state (no key); r100: no sheet read when the setting was never used
+  const tiles = { totalExams: 0, totalClasses: 0, totalStudents: 0, published: 0, pending: 0, eligible: 0, downloaded: 0, notDownloaded: 0, downloadPct: 0, failed: 0, repeated: 0, unauthorized: 0, todaysExams: 0,
+    autoSent: 0, autoNotSent: 0, autoNotOnline: 0, autoUnreported: 0 };
+  const examSet = {}, classSet = {}, studentSet = {};
+  const today = Utilities.formatDate(new Date(nowMs), APS_TZ, 'yyyy-MM-dd');
+  // r95: "Display Past Exams" OFF — the same tiles from today's and upcoming exams only (Exam Date >= today, APS time zone), from the SAME data (no extra read)
+  const tilesCur = JSON.parse(JSON.stringify(tiles)), examSetC = {}, classSetC = {}, studentSetC = {}, pastQp = {};
+  const isPast = function (r) { return /^\d{4}-\d{2}-\d{2}$/.test(String(r.Class_Date || '')) && r.Class_Date < today; };
+  const both = function (cur, fn) { fn(tiles); if (cur) fn(tilesCur); };
+  records.forEach(function (r) {
+    const c = courseById[r.Course_ID];
+    const cr = examQpClientRecord_(r, nowMs);
+    const roster = c ? (c.students || []) : [];
+    const staffBlock = staffOn ? examQpStaffPaperBlock_(r, nowMs) : 'n/a'; // r67: Teacher Copy / Send to Student
+    if (staffOn) { cr.staffCanUse = !staffBlock; cr.staffBlockReason = staffBlock; }
+    if (staffOn) { // r104: Teacher Copy has its own rules (assigned teacher / Admin, 24-hour publish rule, opens 60 min before) — Send to Student keeps staffCanUse
+      cr.tcopyShow = examQpTeacherCopyAccess_(v, r, c, courses).ok;
+      const tb = cr.tcopyShow ? examQpTeacherCopyBlock_(r, nowMs) : 'n/a';
+      cr.tcopyCanUse = cr.tcopyShow && !tb; cr.tcopyBlockReason = cr.tcopyShow ? tb : '';
+      try { const sl = getAPSSchoolLeaveStatus(r.Class_Date); cr.schoolLeave = sl.isSchoolLeave ? (sl.leaveTitle + ' (' + sl.startDate + ' – ' + sl.endDate + ')') : ''; } catch (eSL) { cr.schoolLeave = ''; } // r110: warning only — exams are never cancelled automatically
+    }
+    const cur = !isPast(r); if (!cur) pastQp[r.Question_Paper_ID] = true;
+    examSet[r.Exam_ID] = true; classSet[r.Course_ID] = true;
+    if (cur) { examSetC[r.Exam_ID] = true; classSetC[r.Course_ID] = true; }
+    if (r.Class_Date === today && r.Status !== EXAM_QP_STATUS.CANCELLED) both(cur, function (x) { x.todaysExams++; });
+    const published = r.Status === EXAM_QP_STATUS.PUBLISHED;
+    if (published) both(cur, function (x) { x.published++; }); else if (r.Status !== EXAM_QP_STATUS.CANCELLED) both(cur, function (x) { x.pending++; });
+    let dl = 0, last = '';
+    roster.forEach(function (s) {
+      const email = normalizeEmail_(s.email);
+      studentSet[email] = true; if (cur) studentSetC[email] = true;
+      const a = byKey[r.Question_Paper_ID + '|' + email];
+      let st;
+      if (!published) st = EXAM_QP_STUDENT_STATUS.NOT_ELIGIBLE;
+      else if (a && a.count) st = EXAM_QP_STUDENT_STATUS.DOWNLOADED;
+      else if (examQpBool_(r.Locked)) st = EXAM_QP_STUDENT_STATUS.NOT_ELIGIBLE;
+      else if (nowMs < cr.releaseAt) st = EXAM_QP_STUDENT_STATUS.WAITING;
+      else if (a && /INVALID_APSID|CONFIRMATION_REQUIRED|VERIFICATION_FAILED/.test(a.lastStatus)) st = EXAM_QP_STUDENT_STATUS.VERIFICATION_PENDING;
+      else if (a && a.lastStatus === EXAM_QP_DOWNLOAD_STATUS.DOWNLOAD_FAILED) st = EXAM_QP_STUDENT_STATUS.FAILED;
+      else if (nowMs >= cr.closeAt) st = EXAM_QP_STUDENT_STATUS.NOT_DOWNLOADED;
+      else st = EXAM_QP_STUDENT_STATUS.ELIGIBLE;
+      if (published) { both(cur, function (x) { x.eligible++; if (a && a.count) x.downloaded++; }); if (a && a.count) { dl++; if (!last || a.last > last) last = a.last; } }
+      if (a && a.count > 1) both(cur, function (x) { x.repeated++; });
+      const au = autoMap[r.Question_Paper_ID + '|' + email] || null; // r99
+      if (au && published) both(cur, function (x) { if (au.code === 'SENT') x.autoSent++; else if (au.code === 'NOT_ONLINE' || au.code === 'UA' || au.code === 'MEET_UNKNOWN') { x.autoNotSent++; if (au.code === 'NOT_ONLINE') x.autoNotOnline++; else if (au.code === 'UA') x.autoUnreported++; } });
+      const sent = staffOn ? lastSent[r.Question_Paper_ID + '|' + email] : null; // r67
+      const row = {
+        canSend: staffOn && !staffBlock && email.slice(-EXAM_QP_APS_DOMAIN_.length) === EXAM_QP_APS_DOMAIN_, lastEmailed: sent ? examQpLabel_(examQpParseTs_(sent.at)) : '', // r67
+        questionPaperId: r.Question_Paper_ID, examId: r.Exam_ID, examTitle: r.Exam_Title, className: r.Class_Name, shortClass: cr.shortClass,
+        grade: r.Grade, teacherName: r.Teacher_Name, studentName: s.name || (a && a.name) || '', apsId: getAPSIdFromEmail(email), email: email,
+        status: st, downloadCount: a ? a.count : 0, failedAttempts: a ? a.failed : 0,
+        firstDownload: a && a.first ? examQpLabel_(examQpParseTs_(a.first)) : '', lastDownload: a && a.last ? examQpLabel_(examQpParseTs_(a.last)) : '',
+        releaseLabel: cr.releaseLabel, downloadKey: a && a.count ? (a.key || '') : '',
+        autoEmail: au ? au.code : '', autoEmailLabel: au ? au.label : '', autoEmailAt: au && au.at && examQpParseTs_(au.at) ? examQpLabel_(examQpParseTs_(au.at)) : '' // r99
+      };
+      if (/^AUTO_/.test(f.status)) { // r99 tiles / filter
+        const want = { AUTO_SENT: ['SENT'], AUTO_NOT_SENT: ['NOT_ONLINE', 'UA', 'MEET_UNKNOWN'], AUTO_NOT_ONLINE: ['NOT_ONLINE'], AUTO_UA: ['UA'] }[f.status] || [];
+        if (want.indexOf(row.autoEmail) === -1) return;
+      } else if (f.status === 'NOT_DOWNLOADED_ANY') { if (row.status === EXAM_QP_STUDENT_STATUS.DOWNLOADED || row.status === EXAM_QP_STUDENT_STATUS.NOT_ELIGIBLE) return; }
+      else if (f.status && row.status !== f.status) return;
+      if (f.q && [row.studentName, row.apsId, row.email, row.examTitle, row.questionPaperId, row.className, row.teacherName, row.downloadKey].join(' ').toUpperCase().indexOf(f.q) === -1 &&
+        !(fqKey.length >= 6 && examQpNormDownloadKey_(row.downloadKey).indexOf(fqKey) > -1)) return; // a key copied from an answer sheet matches with or without dashes
+      students.push(row);
+    });
+    const eligible = published ? roster.length : 0;
+    cr.eligibleCount = eligible;
+    cr.totalStudents = roster.length;
+    cr.downloadedCount = dl;
+    cr.notDownloadedCount = Math.max(0, eligible - dl);
+    cr.downloadPct = eligible ? Math.round(dl * 10000 / eligible) / 100 : 0;
+    cr.lastDownload = last ? examQpLabel_(examQpParseTs_(last)) : '';
+    if (!f.q || [r.Exam_Title, r.Question_Paper_ID, r.Class_Name, r.Teacher_Name, r.Exam_ID].join(' ').toUpperCase().indexOf(f.q) > -1 || students.some(function (s) { return s.questionPaperId === r.Question_Paper_ID; })) papers.push(cr);
+  });
+  [[tiles, examSet, classSet, studentSet], [tilesCur, examSetC, classSetC, studentSetC]].forEach(function (x) {
+    const t = x[0];
+    t.totalExams = Object.keys(x[1]).length;
+    t.totalClasses = Object.keys(x[2]).length;
+    t.totalStudents = Object.keys(x[3]).length;
+    t.notDownloaded = Math.max(0, t.eligible - t.downloaded);
+    t.downloadPct = t.eligible ? Math.round(t.downloaded * 10000 / t.eligible) / 100 : 0;
+  });
+  events.forEach(function (e) {
+    const cur = !pastQp[e.Question_Paper_ID];
+    if (e.Download_Status === EXAM_QP_DOWNLOAD_STATUS.DOWNLOAD_FAILED) both(cur, function (x) { x.failed++; });
+    if (/INVALID_CLASS|UNAUTHORIZED|INVALID_STUDENT|QUESTION_PAPER_NOT_FOUND/.test(e.Download_Status)) both(cur, function (x) { x.unauthorized++; });
+  });
+  const suspicious = examQpSuspicious_(events, byKey);
+  const recent = events.slice(-EXAM_QP_CONFIG.MAX_EVENTS_RETURNED).reverse().map(function (e) {
+    return { auditId: e.Audit_ID, questionPaperId: e.Question_Paper_ID, examTitle: e.Exam_Title, className: e.Class_Name, studentName: e.Student_Full_Name,
+      apsId: e.APSID, email: e.Student_Email || e.Authenticated_User_Email, status: e.Download_Status, reason: e.Reason, at: e.Created_Date_Time,
+      enteredApsId: e.Entered_APSID, verification: e.Verification_Status, count: e.Download_Attempt_Count, fileName: e.File_Name, session: e.Session_ID, downloadKey: e.Download_Key || '' };
+  }).filter(function (e) { return !f.q || [e.studentName, e.apsId, e.email, e.examTitle, e.questionPaperId, e.className, e.downloadKey].join(' ').toUpperCase().indexOf(f.q) > -1 || (fqKey.length >= 6 && examQpNormDownloadKey_(e.downloadKey).indexOf(fqKey) > -1); });
+  // Unauthorized attempts on papers outside a teacher's scope are never visible to that teacher (events are qp-filtered above).
+  const options = { academicYears: {}, exams: {}, grades: {}, classes: {}, teachers: {} };
+  allScoped.forEach(function (r) {
+    options.academicYears[r.Academic_Year] = true; options.exams[r.Exam_ID] = r.Exam_Title; options.grades[r.Grade] = true;
+    options.classes[r.Course_ID] = String(r.Class_Name); if (r.Teacher_Name) options.teachers[r.Teacher_Name] = true;
+  });
+  return {
+    serverNow: nowMs, scope: v.canMonitorAll ? 'ALL' : 'TEACHER', canManage: v.canManage, canPreview: v.canPreview, readOnly: v.isReadOnly, tiles: tiles,
+    tilesCurrent: tilesCur, pastPaperIds: Object.keys(pastQp), // r95: Display Past Exams OFF → tilesCurrent; past papers' activity hidden on the page
+    staffActions: staffOn, // r67: ⬇️ Download Teacher Copy + 📧 Send to Student
+    papers: papers.sort(function (a, b) { return (a.releaseAt || 0) - (b.releaseAt || 0) || a.className.localeCompare(b.className, undefined, { numeric: true }); }),
+    students: students.sort(function (a, b) { return a.className.localeCompare(b.className, undefined, { numeric: true }) || a.studentName.localeCompare(b.studentName); }),
+    events: recent, suspicious: suspicious,
+    filterOptions: {
+      academicYears: Object.keys(options.academicYears).sort(), grades: Object.keys(options.grades).sort(), teachers: Object.keys(options.teachers).sort(),
+      exams: Object.keys(options.exams).map(function (k) { return { id: k, title: options.exams[k] }; }),
+      classes: Object.keys(options.classes).map(function (k) { return { id: k, name: options.classes[k] }; }).sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true }); })
+    }
+  };
+}
+
+function getExamQuestionPaperPublishPreview(sessionToken, questionPaperIds) {
+  apsRequireTabForToken_(sessionToken, 'exam.questionPaper'); // r56: Admin Control → Access Control
+  const v = examQpViewer_(sessionToken);
+  examQpRequireManage_(v);
+  const courses = readAllCoursesFromCache_();
+  const byId = {};
+  courses.forEach(function (c) { byId[String(c.id)] = c; });
+  const nowMs = Date.now();
+  return (questionPaperIds || []).map(String).map(function (id) {
+    const r = examQpFindRecord_(id);
+    if (!r) return { questionPaperId: id, ok: false, problems: ['Not found'] };
+    const c = byId[r.Course_ID];
+    const cr = examQpClientRecord_(r, nowMs);
+    const problems = cr.missing.slice();
+    if (r.Status === EXAM_QP_STATUS.CANCELLED) problems.push('Cancelled');
+    if (cr.releaseAt && cr.releaseAt <= nowMs) problems.push('Release time has already passed');
+    if (!c) problems.push('Class is no longer in the synced class list');
+    return { questionPaperId: id, ok: !problems.length, problems: problems, examTitle: r.Exam_Title, className: r.Class_Name, shortClass: cr.shortClass,
+      classStart: cr.startLabel, release: cr.releaseLabel, close: cr.closeLabel, fileName: r.Original_File_Name, version: cr.version, eligibleStudents: c ? (c.students || []).length : 0 };
+  });
+}
+
+function getExaminationHistory(sessionToken, filters) {
+  apsRequireTabForToken_(sessionToken, 'exam'); // r56: Admin Control → Access Control
+  examRequireAccess_(sessionToken, false);
+  filters = filters || {};
+  const sheet = getOrCreateExaminationAuditSheet_();
+  const last = sheet.getLastRow();
+  if (last < 2) return { rows: [], scanned: 0, truncated: false };
+  const count = Math.min(last - 1, EXAMINATION_CONFIG.HISTORY_SCAN_ROWS);
+  const values = sheet.getRange(last - count + 1, 1, count, EXAMINATION_AUDIT_HEADER.length).getDisplayValues();
+  const q = String(filters.search || '').trim().toUpperCase();
+  const action = String(filters.action || ''), status = String(filters.status || ''), topic = String(filters.topic || ''), date = String(filters.date || '').trim();
+  const out = [];
+  for (let i = values.length - 1; i >= 0 && out.length < EXAMINATION_CONFIG.HISTORY_MAX_RESULTS; i--) {
+    const r = values[i];
+    if (action && r[EXAM_AUDIT_COL.ACTION] !== action) continue;
+    if (status && r[EXAM_AUDIT_COL.STATUS] !== status) continue;
+    if (topic && r[EXAM_AUDIT_COL.TOPIC] !== topic) continue;
+    if (date && String(r[EXAM_AUDIT_COL.TS]).indexOf(date) !== 0) continue;
+    if (q) {
+      const hay = [r[EXAM_AUDIT_COL.ANN_ID], r[EXAM_AUDIT_COL.NAME], r[EXAM_AUDIT_COL.COURSE_NAME], r[EXAM_AUDIT_COL.BATCH], r[EXAM_AUDIT_COL.TOPIC]].join(' ').toUpperCase();
+      if (hay.indexOf(q) === -1) continue;
+    }
+    out.push({
+      timestamp: r[EXAM_AUDIT_COL.TS], user: r[EXAM_AUDIT_COL.USER], userApsId: r[EXAM_AUDIT_COL.APSID] || getAPSIdFromEmail(r[EXAM_AUDIT_COL.USER]),
+      action: r[EXAM_AUDIT_COL.ACTION], batchId: r[EXAM_AUDIT_COL.BATCH], announcementId: r[EXAM_AUDIT_COL.ANN_ID],
+      courseId: r[EXAM_AUDIT_COL.COURSE_ID], courseName: r[EXAM_AUDIT_COL.COURSE_NAME], topic: r[EXAM_AUDIT_COL.TOPIC],
+      type: r[EXAM_AUDIT_COL.TYPE], assignmentName: r[EXAM_AUDIT_COL.NAME], grading: r[EXAM_AUDIT_COL.GRADING], points: r[EXAM_AUDIT_COL.POINTS],
+      scheduled: r[EXAM_AUDIT_COL.SCHEDULED], due: r[EXAM_AUDIT_COL.DUE], status: r[EXAM_AUDIT_COL.STATUS],
+      classroomId: r[EXAM_AUDIT_COL.CLASSROOM_ID], message: r[EXAM_AUDIT_COL.MESSAGE]
+    });
+  }
+  return { rows: out, scanned: count, truncated: last - 1 > count || out.length >= EXAMINATION_CONFIG.HISTORY_MAX_RESULTS };
+}
+
+function getGradeChangeApproverInfo(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  var email = session.email;
+  var role = session.role;
+  var readOnly = isReadOnlyRole_(role);
+  return {
+    isApprover: !readOnly && isInEmailList_(email, GRADE_CHANGE_APPROVER_EMAILS),
+    isFinalApprover: !readOnly && email === normalizeEmail_(FINAL_APPROVER_EMAIL),
+    isReadOnlyViewer: role === VCFO_AMCHSTS_BOD_ROLE
+  };
+}
+
+function getGradeChangeTimingOptions(sessionToken, targetGrade) {
+  apsRequireTabForToken_(sessionToken, 'classChange'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var allCourses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  if (viewer.role !== 'student') throw new Error('Only a Student account can request a class/timing change.');
+  return findGradeChangeCandidates_(targetGrade, allCourses);
+}
+
+function getKnowledgeBaseVideos(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'kb'); // r56: Admin Control → Access Control
+  requireValidSession_(sessionToken);
+  return KNOWLEDGE_BASE_VIDEOS;
+}
+
+function getLastSyncError(sessionToken) {
+  requireValidSession_(sessionToken);
+  return PropertiesService.getScriptProperties().getProperty(LAST_SYNC_ERROR_KEY) || null;
+}
+
+function getLastSyncInfo(sessionToken) {
+  requireValidSession_(sessionToken);
+  return PropertiesService.getScriptProperties().getProperty(LAST_SYNC_KEY) || null;
+}
+
+function getMyClassChangeRequests(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'classChange'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var allCourses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  if (viewer.role !== 'student') return [];
+  return readAllGtrRequests_()
+    .filter(function (r) { return normalizeEmail_(r.studentEmail) === viewer.email; })
+    .sort(function (a, b) { return (b.requestDateTime || '').localeCompare(a.requestDateTime || ''); });
+}
+
+function getMyReferenceLetterRequests(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'letters.reference'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var email = session.email;
+  var courses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  // Sept 2026 addendum: matches the same widened eligibility as
+  // submitReferenceLetterRequest() — a dual-hat Admin/Headmaster/BOD/
+  // SuperAdmin who also co-teaches a course can now submit a request, so
+  // they must also be able to see it here afterward.
+  var isClassroomTeacher = courses.some(function (c) { return courseHasTeacherEmail_(c, email); });
+  if (viewer.role !== 'teacher' && !isClassroomTeacher) return [];
+  return readAllReferenceLetterRequests_()
+    .filter(function (r) { return normalizeEmail_(r.teacherEmail) === email && r.source === REFERENCE_LETTER_SOURCE.TEACHER_SELF; })
+    .sort(function (a, b) { return String(b.requestDateTime || '').localeCompare(String(a.requestDateTime || '')); });
+}
+
+function getReferenceLetterAccessInfo(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  var email = session.email;
+  // Sept 2026 addendum: isReadOnlyViewer (BOD only) is deliberately separate from
+  // isApprover/isFinalApprover — the client uses it only to SHOW the approvals queue,
+  // never to enable an approve/reject action (see renderReferenceLetterApprovalList()
+  // in Dashboard.html, which gates its buttons on isApprover/isFinalApprover directly).
+  // Checked directly against the email lists (mirroring getViewerRole_()'s own
+  // SuperAdmin-beats-BOD precedence) rather than via getViewerRole_()/
+  // readAllCoursesFromCache_(), to keep this the same cheap, no-Sheet-access,
+  // once-per-login call the function's original design called for.
+  var isReadOnlyViewer = isInEmailList_(email, VCFO_AMCHATS_BOD_EMAILS) && !isInEmailList_(email, SUPERADMIN_EMAILS);
+  return {
+    isApprover: isInEmailList_(email, REFERENCE_LETTER_APPROVER_EMAILS),
+    isFinalApprover: email === normalizeEmail_(REFERENCE_LETTER_FINAL_APPROVER_EMAIL),
+    isReadOnlyViewer: isReadOnlyViewer
+  };
+}
+
+function getReferenceLetterRequestsForApprover(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'rlApprovals'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var email = session.email;
+  var isApprover = isInEmailList_(email, REFERENCE_LETTER_APPROVER_EMAILS);
+  var isFinalApprover = email === normalizeEmail_(REFERENCE_LETTER_FINAL_APPROVER_EMAIL);
+  var viewerRole = session.role;
+  var isAdmin = viewerRole === 'admin';
+  // Sept 2026 addendum: BOD (vcfo_amchsts_bod) gets READ-ONLY visibility into this
+  // queue too — decideReferenceLetterStage1()/decideReferenceLetterFinalApproval()
+  // below are unchanged and still require isApprover/isFinalApprover, so this alone
+  // grants no write access.
+  var isReadOnlyViewer = viewerRole === VCFO_AMCHSTS_BOD_ROLE;
+  if (!isApprover && !isFinalApprover && !isAdmin && !isReadOnlyViewer) {
+    throw new Error('You are not authorized to view Reference Letter requests.');
+  }
+  return readAllReferenceLetterRequests_().sort(function (a, b) { return String(b.requestDateTime || '').localeCompare(String(a.requestDateTime || '')); });
+}
+
+function getRemovalContext(sessionToken) {
+  var v = srmViewer_(sessionToken, false);
+  var out = { canRemove: v.canRemove, students: [], audit: srmAudit_(), minWords: SRM_MIN_WORDS_, maxWords: SRM_MAX_WORDS_, mailReady: attMailConfigured_(),
+    canAdd: v.canRemove, addAudit: adsAudit_(), multiAck: ADS_MULTI_ACK_ }; // r84: Add Student (same sub-tab, same roles)
+  if (!v.canRemove) return out;
+  var courses = readAllCoursesFromCache_().filter(function (c) { return courseNameMatches_(c.name); });
+  // Pairs already removed since the last Classroom sync are hidden until the next sync refreshes the rosters.
+  var lastSync = String(PropertiesService.getScriptProperties().getProperty(LAST_SYNC_KEY) || '');
+  var gone = {};
+  srmRows_().forEach(function (r) { if ((r.Removal_Status === 'REMOVED' || r.Removal_Status === 'ALREADY_ABSENT') && (!lastSync || r.Requested_At > lastSync)) gone[r.Student_Email + '|' + r.Course_ID] = true; });
+  var map = {};
+  courses.forEach(function (c) {
+    var t = srmClassTeacher_(c, courses);
+    (c.students || []).forEach(function (st) {
+      var e = normalizeEmail_(st.email); if (!e || isRosterHiddenStaffEmail_(e) || gone[e + '|' + c.id]) return;
+      var m = map[e] || (map[e] = { email: e, name: st.name || e, apsId: st.apsId || extractAPSID_(e), classrooms: [] });
+      m.classrooms.push({ courseId: String(c.id), name: c.name, teacher: t ? t.name : '' });
+    });
+  });
+  out.students = Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return naturalCompareJs_(a.name, b.name); });
+  return out;
+}
+
+function getSchoolLeaveAdminData(sessionToken) {
+  slAdmin_(sessionToken);
+  var today = slDateStr_(new Date());
+  var leaves = slReadAll_().filter(function (o) { return o.Status !== 'DELETED'; }).map(function (o) { return slPublic_(o, today); })
+    .sort(function (a, b) { return a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0; });
+  return { today: today, leaves: leaves, types: SL_TYPES_, lists: slLists_(), sender: apsMailFrom_(slProfile_()), active: getAPSSchoolLeaveStatus(today), enabled: slEnabled_() };
+}
+
+function getSchoolLeaveHistory(sessionToken, leaveId) {
+  slAdmin_(sessionToken);
+  leaveId = String(leaveId || '');
+  var rd = function (name, header) { var sh = getWorkbook_().getSheetByName(name); if (!sh || sh.getLastRow() < 2) return []; return sh.getRange(2, 1, sh.getLastRow() - 1, header.length).getValues().map(function (r) { var o = {}; header.forEach(function (h, i) { o[h] = r[i] instanceof Date ? Utilities.formatDate(r[i], APS_TZ, 'yyyy-MM-dd HH:mm:ss') : String(r[i] === null || r[i] === undefined ? '' : r[i]); }); return o; }); };
+  return { emails: rd(SL_EMAIL_SHEET_, SL_EMAIL_HEADER_).filter(function (o) { return o.Leave_ID === leaveId; }).reverse(),
+    audit: rd(SL_AUDIT_SHEET_, SL_AUDIT_HEADER_).filter(function (o) { return o.Leave_ID === leaveId && o.Action !== 'SKIPPED_SCHOOL_LEAVE'; }).reverse(),
+    skipped: rd(SL_AUDIT_SHEET_, SL_AUDIT_HEADER_).filter(function (o) { return o.Leave_ID === leaveId && o.Action === 'SKIPPED_SCHOOL_LEAVE'; }).reverse().slice(0, 50) };
+}
+
+function getShowContactPhone(sessionToken) {
+  requireValidSession_(sessionToken);
+  return SHOW_CONTACT_PHONE;
+}
+
+function getSpecialClassEnrollments(sessionToken, classId) {
+  scRequireAdmin_(sessionToken);
+  classId = String(classId || '').trim();
+  var p = scLoad_().filter(function (x) { return x.id === classId; })[0];
+  if (!p) throw new Error('Special Class ' + classId + ' was not found.');
+  var rows;
+  try { rows = scEnrollments_().filter(function (e) { return e.classId === classId; }); } catch (e) { throw new Error(SC_UNAVAILABLE_MSG_); }
+  return { classId: classId, title: p.title, options: (p.options || []).map(function (o) { return o.label; }), maxSeats: p.maxSeats, rows: rows.map(function (e) {
+    return { id: e.id, email: e.email, apsId: e.apsId, name: e.name, role: e.role, option: e.option, status: e.status, payment: e.payment, source: e.source, mapping: e.mapping,
+      date: e.date ? Utilities.formatDate(new Date(e.date), APS_TZ, 'MM/dd/yyyy') : '' };
+  }), statuses: SC_ENR_STATUSES_, payments: SC_PAY_STATUSES_ };
+}
+
+function getSpecialClasses(sessionToken) {
+  var s = apsRequireTabForToken_(sessionToken, 'specialClasses');
+  if (AC_ROLES_.indexOf(s.role) < 0) throw new Error(AC_OFF_MSG_); // unknown roles never see Special Classes
+  var admin = isAdminRole_(s.role), today = scToday_();
+  var cfg = scSettings_(), showCompleted = cfg.showCompleted;
+  var list = scLoad_().filter(function (p) { return p.status === 'ACTIVE' && (admin || scAudienceAllows_(p.audience, s.role)); })
+    .map(function (p) { return scPublic_(p, today, true); })
+    .filter(function (p) { return admin || showCompleted || p.state.code !== 'COMPLETED'; });
+  list.sort(scSort_);
+  var mine = [];
+  try { mine = scMyPrograms_(s.email, today); } catch (eMine) { console.warn('[SpecialClasses] enrollments unavailable: ' + (eMine && eMine.message)); mine = null; }
+  return { programs: list, mine: mine, canManage: admin, today: today, todayLabel: scFmtDate_(today), role: s.role, intro: cfg.intro, emptyText: cfg.emptyText };
+}
+
+function getSpecialClassesAdmin(sessionToken) {
+  scRequireAdmin_(sessionToken);
+  var today = scToday_(), enrCount = {};
+  try { scEnrollments_().forEach(function (e) { if (e.status === 'ENROLLED') enrCount[e.classId] = (enrCount[e.classId] || 0) + 1; }); } catch (eE) { /* counts optional */ }
+  var rows = scLoad_().map(function (p) {
+    var o = scPublic_(p, today, false);
+    o.raw = { title: p.title, description: p.description, audience: p.audience, mode: p.mode, modeDetails: p.modeDetails, programStart: p.programStart, programEnd: p.programEnd,
+      enrollStart: p.enrollStart, enrollEnd: p.enrollEnd, fees: p.fees, startTime: scTo24_(p.startTime), endTime: scTo24_(p.endTime), classDay: p.classDay, link: p.link, status: p.status, order: p.order === null ? '' : p.order,
+      icon: p.icon, instructor: p.instructor, infoLink: p.infoLink, maxSeats: p.maxSeats === null ? '' : p.maxSeats, classroomId: p.classroomId, registrationMode: p.registrationMode,
+      options: p.options || [], classLink: p.classLink };
+    o.classroomName = scClassroomName_(p.classroomId);
+    (o.raw.options || []).forEach(function (op) { op.classroomName = scClassroomName_(op.classroomId); });
+    o.updatedBy = p.updatedBy || p.createdBy; o.updatedAt = p.updatedAt || p.createdAt;
+    o.enrolled = enrCount[p.id] || 0;
+    return o;
+  });
+  rows.sort(function (a, b) { return (a.status === b.status ? 0 : a.status === 'ACTIVE' ? -1 : 1) || scSort_(a, b); });
+  return { rows: rows, audiences: SC_AUDIENCES_, modes: SC_MODES_, today: today, sheetName: scSheetName_(), settings: scSettings_() };
+}
+
+function getStudentLoginNoticeStatus(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  var email = session.email;
+  var googleReview = grPromptState_(email, session.role); // r84: the monthly Google Review popup rides on this sign-in call (no extra round trip)
+  if (session.role !== 'student') return { required: false, notice1: false, notice2: false, expiresOn: STUDENT_NOTICE_EXPIRY, googleReview: googleReview };
+  var today = Utilities.formatDate(new Date(), LAST_LOGIN_TIMEZONE, 'yyyy-MM-dd');
+  if (today > STUDENT_NOTICE_EXPIRY) return { required: false, notice1: false, notice2: false, expiresOn: STUDENT_NOTICE_EXPIRY, googleReview: googleReview };
+  // Sept 2026, fifty-second round: switched from getUserProperties() to a
+  // per-user-keyed getScriptProperties() entry — under owner-execution,
+  // getUserProperties() resolves to the OWNER's properties for EVERY
+  // visitor (it is keyed by the EFFECTIVE user, which is always the owner
+  // now), so it would silently share one "accepted" flag across every
+  // student instead of tracking each student's own acceptance.
+  var props = PropertiesService.getScriptProperties();
+  var prefix = STUDENT_NOTICE_PROP_PREFIX + email + '_';
+  return {
+    required: true,
+    notice1: props.getProperty(prefix + 'about') === 'accepted',
+    notice2: props.getProperty(prefix + 'schedule') === 'accepted',
+    expiresOn: STUDENT_NOTICE_EXPIRY,
+    email: email,
+    googleReview: googleReview
+  };
+}
+
+function getTeacherAppreciationAdminReport(sessionToken, opts) {
+  taViewer_(sessionToken, false); opts = opts || {};
+  var ev = taStoredWeek_(opts.weekId);
+  if (!ev.teachers.length) throw new Error('No saved scores for that week yet.');
+  var del = { previewed: ev.teachers.filter(function (t) { return t.eligible; }).length };
+  var rep = taAdminReport_(ev, del, taEmailsOn_() ? 'LIVE' : 'PREVIEW', [], '');
+  return { subject: rep.subject, html: rep.bodyHtml };
+}
+
+function getTeacherAppreciationEmailPreview(sessionToken, opts) {
+  taViewer_(sessionToken, false); opts = opts || {};
+  var e = normalizeEmail_(opts.email), weekId = opts.weekId;
+  if (opts.type === 'MONTHLY') {
+    var m = taMonthly_(opts.month || taMonthOf_(weekId), taConfig_()).filter(function (x) { return x.email === e; })[0];
+    if (!m) throw new Error('This teacher does not qualify for the monthly appreciation in that month.');
+    var mm = taMonthlyEmail_(m, ''); return { subject: mm.subject, html: mm.bodyHtml };
+  }
+  var t = taStoredWeek_(weekId).teachers.filter(function (x) { return x.email === e; })[0];
+  if (!t) throw new Error('No saved score for this teacher in that week.');
+  var w = taWeeklyEmail_(t, weekId);
+  return { subject: w.subject, html: w.bodyHtml, eligible: t.eligible };
+}
+
+function getTeacherAppreciationHistory(sessionToken, teacherEmail) {
+  taViewer_(sessionToken, false);
+  var e = normalizeEmail_(teacherEmail); if (!e) throw new Error('Choose a teacher.');
+  var rows = taReadTable_(TA_SCORES_SHEET_, TA_SCORES_HEADER_).filter(function (r) { return r.Teacher_Email === e; }).map(taRowToTeacher_);
+  rows.sort(function (a, b) { return String(a.weekId).localeCompare(String(b.weekId)); });
+  var months = {};
+  rows.forEach(function (r) { if (r.score === null) return; var k = r.weekId.slice(3, 10); (months[k] = months[k] || []).push(r.score); });
+  return { email: e, name: rows.length ? rows[rows.length - 1].name : e, apsId: getAPSIdFromEmail(e),
+    weeks: rows.map(function (r) { r.label = taWeekLabel_(r.weekId); return r; }),
+    months: Object.keys(months).sort().map(function (k) { var a = months[k]; return { month: k, average: taRound_(a.reduce(function (x, y) { return x + y; }, 0) / a.length), weeks: a.length }; }) };
+}
+
+function getTempTeacherData(sessionToken) {
+  var v = ttmViewer_(sessionToken, false), now = new Date(), courses = v.courses;
+  var teachers = ttmTeachers_(courses);
+  var rows = (v.rows || ttmRows_()).filter(function (r) { return v.all || v.ids[r.Classroom_ID] || normalizeEmail_(r.Temp_Teacher_Email) === v.email; })
+    .sort(function (a, b) { return a.Created_Timestamp < b.Created_Timestamp ? 1 : -1; });
+  var list = rows.map(function (r) { return ttmPublic_(r, now, v.all || !!v.ids[r.Classroom_ID]); });
+  var sum = { ACTIVE: 0, SCHEDULED: 0, REMOVAL_DUE: 0, FAILED: 0 };
+  list.forEach(function (a) { if (sum[a.status] !== undefined) sum[a.status]++; });
+  return {
+    canAll: v.all, roleLabel: v.roleLabel, canAnyEmail: !!v.anyEmail, emailDomains: v.anyEmail ? APS_ALLOWED_DOMAINS.slice() : [], /* r98 */ today: ttmToday_(now), removalHour: ttmRemovalHour_(), removalHourLabel: ttmHourLabel_(ttmRemovalHour_()), minWords: TTM_MIN_WORDS_, maxWords: TTM_MAX_WORDS_,
+    classes: v.classes.map(function (c) { var o = ttmClassInfo_(c, courses); o.anyEmail = !!(v.all || (v.anyEmail && courseHasSupportEmail_(c, v.email))); return o; }).sort(function (a, b) { return naturalCompareJs_(a.name, b.name); }),
+    teachers: Object.keys(teachers).map(function (k) { return teachers[k]; }).sort(function (a, b) { return ((a.tcsList ? 0 : 1) - (b.tcsList ? 0 : 1)) || (a.tcsList ? a.tcsOrder - b.tcsOrder : 0) || naturalCompareJs_(a.name, b.name); }), // r97: TCS on-call list first (sheet order), then Primary Teachers A-Z
+    assignments: list, summary: sum
+  };
+}
+
+function getTicket(sessionToken, ticketId) {
+  apsRequireTabForToken_(sessionToken, 'tickets'); // r56: Admin Control → Access Control
+  var v = tkViewer_(sessionToken);
+  var L = tkLoad_(v, ticketId), t = L.t;
+  var msgs = tkRead_('messages').filter(function (m) { return m.Ticket_ID === t.Ticket_ID && (m.Message_Type === 'PUBLIC' || L.acc.staff); })
+    .sort(function (a, b) { return a.Created_At < b.Created_At ? -1 : 1; })
+    .map(function (m) {
+      var a = []; try { a = JSON.parse(m.Attachments || '[]'); } catch (e) { a = []; }
+      var kind = m.Message_Type === 'INTERNAL' ? 'INTERNAL' : (normalizeEmail_(m.Author_Email) === normalizeEmail_(t.Requester_Email) ? 'REQUESTER' : 'STAFF');
+      return { id: m.Message_ID, author: m.Author_Name, authorEmail: m.Author_Email, kind: kind, message: m.Message, createdAt: m.Created_At, attachments: a.map(function (x) { return { id: x.id, name: x.name, size: x.size }; }) };
+    });
+  var parts = L.parts.filter(function (p) { return p.Active === 'TRUE'; }).map(function (p) { return { email: p.Email, name: p.Name, role: p.Role, type: p.Participant_Type }; });
+  var out = {
+    ticket: { id: t.Ticket_ID, number: t.Ticket_Number, type: t.Type, icon: TK_TYPE_ICON_[t.Type] || '🎫', subject: t.Subject, status: t.Status, priority: t.Priority,
+      requester: t.Requester_Name, requesterEmail: t.Requester_Email, createdAt: t.Created_At, updatedAt: t.Updated_At, resolvedAt: t.Resolved_At, closedAt: t.Closed_At,
+      student: t.Student_Name, apsId: t.APSID, studentEmail: t.Student_Email, classroom: t.Classroom, primaryTeacher: t.Primary_Teacher, headmaster: t.Headmaster, vp: t.VP,
+      flags: L.acc.staff ? t.Assignment_Flags : '' },
+    messages: msgs, participants: parts,
+    can: { reply: t.Status !== 'CLOSED' && !tkReadOnly_(v), internal: L.acc.staff && t.Status !== 'CLOSED', status: L.acc.staff, admin: L.acc.admin,
+      statuses: L.acc.admin ? TK_STATUSES_ : (L.acc.staff ? ['IN PROGRESS', 'WAITING FOR USER', 'RESOLVED'] : []) }
+  };
+  if (L.acc.admin) {
+    out.audit = tkRead_('audit').filter(function (a) { return a.Ticket_ID === t.Ticket_ID; }).sort(function (a, b) { return a.Date_Time < b.Date_Time ? -1 : 1; })
+      .map(function (a) { return { action: a.Action, oldValue: a.Old_Value, newValue: a.New_Value, by: a.Performed_By, byEmail: a.Performed_By_Email, at: a.Date_Time, notes: a.Notes }; });
+    out.config = { types: TK_TYPES_, priorities: TK_PRIORITIES_, statuses: TK_STATUSES_ };
+  }
+  return out;
+}
+
+function getTicketBootstrap(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'tickets'); // r56: Admin Control → Access Control
+  var v = tkViewer_(sessionToken);
+  var cfg = tkConfig_();
+  var tickets = tkRead_('tickets'), parts = tkRead_('participants');
+  var mine = tickets.filter(function (t) { return t.Requester_Email === v.email && TK_ACTIVE_STATUSES_.indexOf(t.Status) > -1; }).length;
+  var activeIds = {}; tickets.forEach(function (t) { if (TK_ACTIVE_STATUSES_.indexOf(t.Status) > -1) activeIds[t.Ticket_ID] = true; });
+  var assigned = {}; parts.forEach(function (p) { if (p.Email === v.email && p.Active === 'TRUE' && p.Participant_Type === 'ASSIGNEE' && activeIds[p.Ticket_ID]) assigned[p.Ticket_ID] = true; });
+  return { role: v.role, admin: tkIsAdmin_(v), staff: tkIsStaffRole_(v.role), student: v.role === 'student', readOnly: tkReadOnly_(v),
+    types: cfg.enabledTypes.map(function (t) { return { type: t, icon: TK_TYPE_ICON_[t], studentRequired: TK_CHAIN_TYPES_.indexOf(t) > -1, chain: !!cfg.rules[t].chain, departments: cfg.rules[t].emails.map(tkDeptName_) }; }),
+    priorities: tkIsAdmin_(v) ? TK_PRIORITIES_ : ['LOW', 'NORMAL', 'HIGH'], defaultPriority: cfg.defaultPriority, statuses: TK_STATUSES_,
+    counts: { myOpen: mine, assignedOpen: Object.keys(assigned).length } };
+}
+
+function getTicketReports(sessionToken, opts) {
+  apsRequireTabForToken_(sessionToken, 'tickets.reports'); // r56: Admin Control → Access Control
+  var v = tkViewer_(sessionToken);
+  if (!tkIsAdmin_(v)) throw new Error('Only Admin can view ticket reports.');
+  opts = opts || {};
+  var from = opts.from ? new Date(opts.from + 'T00:00:00').getTime() : null, to = opts.to ? new Date(opts.to + 'T23:59:59').getTime() : null;
+  var tickets = tkRead_('tickets').filter(function (t) { var c = new Date(t.Created_At).getTime(); return (!from || c >= from) && (!to || c <= to); });
+  var parts = tkRead_('participants');
+  var r = { total: tickets.length, byStatus: {}, byType: {}, byPriority: {}, byAssignee: {}, byDate: {}, open: 0, highUrgent: 0, flagged: 0, avgResolutionHours: null, resolvedCount: 0 };
+  TK_STATUSES_.forEach(function (s) { r.byStatus[s] = 0; }); TK_TYPES_.forEach(function (s) { r.byType[s] = 0; }); TK_PRIORITIES_.forEach(function (s) { r.byPriority[s] = 0; });
+  var ids = {}, sumH = 0;
+  tickets.forEach(function (t) {
+    ids[t.Ticket_ID] = true;
+    r.byStatus[t.Status] = (r.byStatus[t.Status] || 0) + 1; r.byType[t.Type] = (r.byType[t.Type] || 0) + 1; r.byPriority[t.Priority] = (r.byPriority[t.Priority] || 0) + 1;
+    if (TK_ACTIVE_STATUSES_.indexOf(t.Status) > -1) r.open++;
+    if (t.Priority === 'HIGH' || t.Priority === 'URGENT') r.highUrgent++;
+    if (t.Assignment_Flags) r.flagged++;
+    var d = Utilities.formatDate(new Date(t.Created_At), APS_TZ, 'yyyy-MM-dd'); r.byDate[d] = (r.byDate[d] || 0) + 1;
+    if (t.Resolved_At) { var h = (new Date(t.Resolved_At).getTime() - new Date(t.Created_At).getTime()) / 3600000; if (h >= 0) { sumH += h; r.resolvedCount++; } }
+  });
+  parts.forEach(function (p) { if (ids[p.Ticket_ID] && p.Participant_Type === 'ASSIGNEE' && p.Active === 'TRUE') { var k = p.Name ? p.Name + ' <' + p.Email + '>' : p.Email; r.byAssignee[k] = (r.byAssignee[k] || 0) + 1; } });
+  if (r.resolvedCount) r.avgResolutionHours = Math.round(sumH / r.resolvedCount * 10) / 10;
+  return r;
+}
+
+function getTicketSettings(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'tickets.settings'); // r56: Admin Control → Access Control
+  var v = tkViewer_(sessionToken);
+  if (!tkIsAdmin_(v)) throw new Error('Only Admin can view ticket settings.');
+  var cfg = tkConfig_(), mode = tkMailMode_(), p = PropertiesService.getScriptProperties(), saEmail = '';
+  if (mode === 'SERVICE_ACCOUNT') { try { saEmail = JSON.parse(p.getProperty('TICKET_MAIL_SERVICE_ACCOUNT_JSON')).client_email || ''; } catch (e) { saEmail = '(invalid JSON)'; } }
+  return { types: TK_TYPES_.map(function (t) { return { type: t, icon: TK_TYPE_ICON_[t], enabled: cfg.enabledTypes.indexOf(t) > -1, chain: !!cfg.rules[t].chain, chainLocked: TK_CHAIN_TYPES_.indexOf(t) > -1, emails: cfg.rules[t].emails, studentRequired: TK_CHAIN_TYPES_.indexOf(t) > -1 }; }),
+    statuses: TK_STATUSES_, priorities: TK_PRIORITIES_, defaultPriority: cfg.defaultPriority, notify: cfg.notify, events: TK_EVENTS_, adminCc: cfg.adminCc,
+    email: { from: tkMailFrom_(), mode: mode, serviceAccount: saEmail, configured: mode !== 'NOT_CONFIGURED', note: mode === 'MAILAPP_FALLBACK' ? 'Fallback active: emails go from the dashboard account with Reply-To donotreply@. Configure a service account or refresh token to send as donotreply@.' : '' } };
+}
+
+function getUserCountryAdmin(sessionToken) {
+  apsRequireCountryAdmin_(sessionToken);
+  var rows = ucRows_().map(function (r) { return { email: r.e, apsid: r.a, name: r.nm, role: r.role, code: r.c, country: r.n, flag: countryCodeToFlagServer_(r.c), source: r.s, updatedAt: r.at, updatedBy: r.by }; });
+  rows.sort(function (a, b) { return a.country.localeCompare(b.country) || a.email.localeCompare(b.email); });
+  var by = {}; rows.forEach(function (r) { by[r.country] = (by[r.country] || 0) + 1; });
+  return { on: apsCountryOn_(), rows: rows, countries: Object.keys(by).sort().map(function (k) { return { country: k, count: by[k] }; }) };
+}
+
+function getZohoSyncHistory(sessionToken, opts) {
+  zhRequireAdmin_(sessionToken);
+  var limit = Math.max(1, Math.min(500, Number(opts && opts.limit) || 200));
+  var sh = zhSheet_(zhBook_(), ZH_LOG_SHEET_, ZH_LOG_HEADER_), last = sh.getLastRow();
+  if (last < 2) return [];
+  var from = Math.max(2, last - limit + 1);
+  return sh.getRange(from, 1, last - from + 1, ZH_LOG_HEADER_.length).getValues().map(function (v) {
+    var o = {}; ZH_LOG_HEADER_.forEach(function (h, i) { o[h] = String(v[i] === null || v[i] === undefined ? '' : v[i]).replace(/^'/, ''); }); return o;
+  }).reverse();
+}
+
+function getZohoSyncJob(sessionToken) { zhRequireAdmin_(sessionToken); return { job: zhJobPublic_(zhJobGet_()) }; }
+
+function listTickets(sessionToken, opts) {
+  apsRequireTabForToken_(sessionToken, 'tickets'); // r56: Admin Control → Access Control
+  var v = tkViewer_(sessionToken);
+  opts = opts || {};
+  var scope = String(opts.scope || 'mine');
+  if (scope === 'all') apsRequireTabForToken_(sessionToken, 'tickets.all'); // r56
+  if (scope === 'all' && !tkIsAdmin_(v)) { console.warn('[Tickets] non-admin All Tickets attempt: ' + v.email); throw new Error('Only Admin can view All Tickets.'); }
+  var tickets = tkRead_('tickets'), parts = tkRead_('participants');
+  var byTicket = {};
+  parts.forEach(function (p) { (byTicket[p.Ticket_ID] = byTicket[p.Ticket_ID] || []).push(p); });
+  var courses = scope === 'assigned' ? readAllCoursesFromCache_() : null;
+  var rows = tickets.filter(function (t) {
+    var ps = byTicket[t.Ticket_ID] || [];
+    if (scope === 'mine') return normalizeEmail_(t.Requester_Email) === v.email;
+    if (scope === 'assigned') {
+      var mine = ps.some(function (p) { return p.Active === 'TRUE' && p.Email === v.email && (p.Participant_Type === 'ASSIGNEE' || p.Role !== 'REQUESTER'); });
+      if (mine) return true;
+      if (opts.includeClasses && t.Course_ID && (v.role === 'teacher' || v.role === 'headmaster')) return tkAccess_(v, t, ps, courses).view;
+      return false;
+    }
+    return true;
+  });
+  var q = String(opts.q || '').trim().toLowerCase();
+  var f = opts.filters || {};
+  var from = f.from ? new Date(f.from + 'T00:00:00').getTime() : null, to = f.to ? new Date(f.to + 'T23:59:59').getTime() : null;
+  rows = rows.filter(function (t) {
+    var ps = byTicket[t.Ticket_ID] || [];
+    if (f.type && t.Type !== f.type) return false;
+    if (f.status) { if (f.status === 'OPEN') { if (TK_ACTIVE_STATUSES_.indexOf(t.Status) < 0) return false; } else if (t.Status !== f.status) return false; }
+    if (f.priority && t.Priority !== f.priority) return false;
+    if (f.assignee && !ps.some(function (p) { return p.Active === 'TRUE' && p.Participant_Type === 'ASSIGNEE' && p.Email === normalizeEmail_(f.assignee); })) return false;
+    if (f.createdBy && normalizeEmail_(t.Created_By) !== normalizeEmail_(f.createdBy)) return false;
+    if (f.student) { var s = String(f.student).toLowerCase(); if ((t.Student_Name + ' ' + t.APSID + ' ' + t.Student_Email).toLowerCase().indexOf(s) < 0) return false; }
+    var c = new Date(t.Created_At).getTime();
+    if (from && c < from) return false;
+    if (to && c > to) return false;
+    if (q) {
+      var hay = [t.Ticket_Number, t.Student_Name, t.APSID, t.Student_Email, t.Requester_Name, t.Requester_Email, t.Subject, t.Description, t.Classroom, t.Assigned_To,
+        ps.map(function (p) { return p.Name; }).join(' ')].join(' ').toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+  rows.sort(function (a, b) { return a.Updated_At < b.Updated_At ? 1 : -1; });
+  var pageSize = Math.min(Math.max(Number(opts.pageSize) || 25, 5), 100), page = Math.max(Number(opts.page) || 1, 1);
+  var total = rows.length, pages = Math.max(1, Math.ceil(total / pageSize));
+  if (page > pages) page = pages;
+  var slice = rows.slice((page - 1) * pageSize, page * pageSize).map(function (t) {
+    var names = (byTicket[t.Ticket_ID] || []).filter(function (p) { return p.Active === 'TRUE' && p.Participant_Type === 'ASSIGNEE'; }).map(function (p) { return p.Name || p.Email; });
+    return tkPublicRow_(t, names);
+  });
+  var out = { rows: slice, total: total, page: page, pages: pages, pageSize: pageSize };
+  if (scope === 'all') {
+    var assignees = {}, creators = {};
+    parts.forEach(function (p) { if (p.Participant_Type === 'ASSIGNEE' && p.Active === 'TRUE') assignees[p.Email] = p.Name || p.Email; });
+    tickets.forEach(function (t) { creators[t.Created_By] = t.Requester_Name || t.Created_By; });
+    out.facets = { assignees: Object.keys(assignees).sort().map(function (e) { return { email: e, name: assignees[e] }; }), creators: Object.keys(creators).sort().map(function (e) { return { email: e, name: creators[e] }; }) };
+  }
+  return out;
+}
+
+function loadZohoSyncStudents(sessionToken) {
+  zhRequireAdmin_(sessionToken);
+  var rows = zhApsStudents_();
+  return { rows: rows.map(function (r) { return { email: r.email, name: r.name, apsId: r.apsId, courseId: r.courseId, classroom: r.classroom, grade: r.grade, teacherName: r.teacherName, teacherEmail: r.teacherEmail, multiple: r.multiple }; }), total: rows.length };
+}
+
+function previewMissingGrading(sessionToken) {
+  amViewer_(sessionToken, true);
+  var cfg = mhgConfig_(), scan = mhgCollect_(cfg, new Date());
+  var m = mhgEmail_(scan, { isNew: '—', cleared: '—' }, cfg, true);
+  return { found: scan.records.length, classes: scan.classes, assignments: scan.assignments, warnings: scan.warnings, subject: m.subject, html: m.bodyHtml, csv: mhgCsv_(scan.records), fileName: 'homework_pending_grading_' + scan.today + '.csv' };
+}
+
+function previewTeacherAppreciation(sessionToken, opts) {
+  taViewer_(sessionToken, true); opts = opts || {};
+  var cfg = taConfig_();
+  if (opts.config) { var c = taClone_(opts.config); var ok = taValidateConfig_(c); if (!ok.ok) throw new Error(ok.error); c.version = 'draft'; cfg = c; } // "try these settings" before saving
+  var weekId = opts.weekId && /^WK-\d{4}-\d{2}-\d{2}$/.test(opts.weekId) ? opts.weekId : taCompletedWeek_(new Date());
+  var ev = taEvaluate_(weekId, new Date(), cfg);
+  delete ev.occurrences;
+  return ev;
+}
+
+function searchTamilThadamStudents(sessionToken, query) {
+  var s = requireValidSession_(sessionToken);
+  if (!isAdminRole_(s.role)) throw new Error('Only Admin / Super Admin can look up a student\'s Tamil Thadam.');
+  apsRequireTabForToken_(sessionToken, 'tamilThadam');
+  var q = String(query || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  var out = {}, n = 0;
+  readAllCoursesFromCache_().forEach(function (c) {
+    if (!courseNameMatches_(c.name)) return;
+    (c.students || []).forEach(function (st) {
+      var e = normalizeEmail_(st.email); if (!e || out[e] || n >= 20) return;
+      var id = getAPSIdFromEmail(e), nm = String(st.name || '');
+      if (e.indexOf(q) > -1 || nm.toLowerCase().indexOf(q) > -1 || String(id).toLowerCase() === q) { out[e] = { email: e, name: personDisplayNameServer_(nm), apsId: id === 'APSXXX' ? '' : id, classroom: String(c.name).split('|')[0].trim() }; n++; }
+    });
+  });
+  return Object.keys(out).map(function (k) { return out[k]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+}
+
+function searchTicketStudents(sessionToken, query) {
+  apsRequireTabForToken_(sessionToken, 'tickets'); // r56: Admin Control → Access Control
+  var v = tkViewer_(sessionToken);
+  var courses = readAllCoursesFromCache_();
+  var scope = tkStudentScope_(v, courses);
+  var q = String(query || '').trim().toLowerCase(), qId = q.replace(/^aps/, '');
+  var map = {};
+  scope.courses.forEach(function (c) {
+    (c.students || []).forEach(function (s) {
+      var e = normalizeEmail_(s.email); if (!e) return;
+      if (scope.self && e !== v.email) return;
+      var apsId = s.apsId || extractAPSID_(e);
+      if (!scope.self) {
+        if (q.length < 2) return;
+        var hay = [String(s.name || '').toLowerCase(), e, String(apsId).toLowerCase()].join(' ');
+        if (hay.indexOf(q) < 0 && !(/^\d+$/.test(qId) && String(apsId).toLowerCase().replace(/^aps/, '').indexOf(qId) === 0)) return;
+      }
+      var r = map[e] || (map[e] = { name: s.name || tkNameFor_(e, courses), apsId: apsId, email: e, classes: [] });
+      if (!r.classes.some(function (x) { return x.courseId === String(c.id); })) r.classes.push({ courseId: String(c.id), classroom: String(c.name || '') });
+    });
+  });
+  var list = Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+  return { results: list.slice(0, 20), total: list.length, self: scope.self };
+}
 
 function getAttendanceCourseAwkMap(sessionToken) {
   apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
@@ -1907,7 +7256,7 @@ function ucPref_(email) {
 function apsCountryOn_() { return apsReqMemo_('countryOn', function () { return String(rosterProp_('APS_COUNTRY_FEATURE', 'on')).trim().toLowerCase() !== 'off'; }); }
 
   APS_REQ_MEMO_ = {};
-  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, getAttendanceCourseAwkMap, defaultDashboardRolePermissions_, getEffectiveClassMinutes, attAttendedPct_, attScoreForPct_, attStatusForScore_, readDashboardRolePermissionsRaw_, attApplyClassDurationRule_, getConfigString_, readDashboardRolePermissions_, attColumnLetter_, attRowToRecord_, attReadSheetRecords_, attWeekIdForDateStr_, attShiftDateStr_, getDashboardRolePermission_, attSummaryKey_, attStudentOverallKey_, attSummaryOverall_, attWeekSheetNameForDate_, attReadRecordsForSheets_, attEffectiveScore_, ensureSheetHeader_, getAttendanceWeek1Start_, attListWeekSheets_, attWeekIdForNumber_, classSupportElevated_, courseHasStudentEmail_, requireDashboardMutationPermission_, readAttendanceSummaryMap_, getAPSIdFromEmail, attReadRecordsForFilters_, attOverallFor_, attCompareRecords_, attCountedMinutes_, attWeekNumberForWeekId_, formatAwkSheetName_, getOrCreateAttendanceAuditLogSheet_, attCellToText_, getAttendanceRecordsForViewer, getOnCallTeacherAttendance, getAttendanceWeekOptions, getAttendanceAuditLog, getAttendanceSyncDiagnostics, getAttendanceLastSyncInfo, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, ATTENDANCE_EFFECTIVE_CAP_FROM_MIN, ATTENDANCE_EFFECTIVE_CAP_MIN, ATTENDANCE_SCORE_TIERS_, ATTENDANCE_STATUS, ROLE_PERMISSION_CACHE_KEY, ROLE_PERMISSION_PROP_KEY, ROLE_PERMISSION_CACHE_SECONDS, ATTENDANCE_COL_, ATTENDANCE_HEADER_ROW, ATTENDANCE_SPREADSHEET_ID, ATTENDANCE_OVERRIDE_SCORES_, ATTENDANCE_WEEK1_START_DEFAULT_, ATTENDANCE_WEEK_SHEET_PATTERN_, ATTENDANCE_SUMMARY_SHEET_NAME, ATTENDANCE_SUMMARY_HEADER_ROW, ATTENDANCE_SHEET_PREFIX, ATTENDANCE_AUDIT_LOG_SHEET_NAME, ATTENDANCE_ROLE, ATTENDANCE_SOURCE, ATTENDANCE_AUDIT_LOG_HEADER_ROW, ATTENDANCE_SYNC_DIAGNOSTIC_KEY, ATTENDANCE_LAST_SYNC_SUMMARY_KEY, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
+  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, apcIso_, acItem_, apcKeyOut_, apcVal_, rosterSheet_, acOverridesRaw_, scNorm_, scCodeOf_, scDate_, scTime_, scSafeUrl_, scParseOptions_, apsBigStore_, apcIsC_, apcDecodeObj_, srmFmt_, amDefaults_, amDayStart_, amDayEnd_, amOvRows_, rosterLoadTable_, rosterGet_, canViewAllDashboardFilters_, examQpStudentTeacherAccessEnabled_, rosterEnabled_, classRolesPrimary_, acOverrides_, acSwitchable_, acCell_, acProtected_, isNilai4To8Grade_, parseConfiguredClockTime_, cctStatus_, tccDateLabel_, tccZoned_, tccTzAbbrev_, tccTimeText_, tccApsIdNumber_, tccAnnouncementTitle_, getDashboardEnvironment_, examQpGenKey_, examQpComputeWindow_, examQpHmText_, examQpDayOf_, examQpHm_, scSheet_, scParseRow_, isPermissionDeniedError_, apsBigGetStored_, apcDecodeRaw_, getGoogleReviewEmailFooter, saSafeErr_, ttmRemovalReached_, zhProp_, mhgDefaults_, mhgEmails_, lvIsDate_, taMinutes_, taExpectedFor_, taBand_, taHighlights_, examLessonNames_, taMdY_, getOrCreateGradeTimeChangeSheet_, gtrRowToObject_, lvRoleLabel_, teacherDisplayName_, adsSchedule_, lvFmt_, ttmFmtTs_, amAccessFlag_, amSanitize_, amWindow_, amOverrides_, rosterDataset_, gradesForCourses_, amCounts_, amClassify_, amTypeOf_, amDueLabel_, amStatus_, amTsMs_, amAdd_, adsApsId_, amRates_, amPct_, amEscalate_, resolveViewerBadgeName_, canViewMonitoringFilters_, canViewMonitoringTotals_, examinationAccessForRole_, rosterAccessForRole_, apsRoleFor_, acEffectiveForRole_, getAllowedTimingsForGrade_, scheduleMatchesTimingOption_, timingOptionLabel_, cctAvailability_, cctPublicRecord_, parseAPSClassroomName, tccMinutes_, tkClassChain_, tccDateParts_, tccSession_, tccPublicRecord_, apsMailMode_, tccEmailHtml_, tccIsLive_, tccMeetFor_, tccDestContext_, tccDecorateDest_, tccDestRank_, tccMarkRecommended_, tccRecipients_, tccClassMax_, tccAnnouncementText_, tccSubject_, examQpConfig_, examQpSpreadsheet_, examQpTs_, examQpRecordCacheKey_, examQpAutoState_, examQpWindowOf_, examQpScheduleModeOf_, examQpExamStatus_, examQpLongLabel_, examQpTimeLabel_, examQpMissingFields_, examQpTeacherCopyTeachers_, examQpTeacherCopyLeadOk_, getOrCreateReferenceLetterSheet_, rlRowToObject_, srmPublic_, adsRows_, adsPublic_, slDays_, scRecords_, openSpreadsheetByIdWithRetry_, scSpreadsheetId_, scEnrSheet_, scText_, scState_, scLabelOf_, scRangeLabel_, scTimeMinutes_, getGoogleReviewUrl, apsBigGet_, grMonth_, taEmailHistory_, htmlEscape_, taMonthLabelEn_, apsEmailShell_, taSafeErr_, taFirstName_, taMonthLabelTa_, taSign_, taPick_, classesPrimaryOnlyPrefix_, ttmTcsList_, attNameFromEmail_, ttmDisplayStatus_, tkParticipantsFor_, tkSheet_, tkCleanEmails_, classPrimaryNameFromEmail_, zhSheetId_, zhJobRunning_, zhJsonProp_, tkCourseById_, zhNorm_, zhGradeLabel_, zhEmail_, mhgSanitize_, mhgToday_, ccwExcludeRe_, mhgSafeLink_, mhgCode_, mhgDays_, mhgMdY_, taInt_, taToday_, taDow_, taTeacherLeaveIndex_, isAPSSchoolHoliday, taScoreOccurrence_, taDateMs_, gradesCategory_, taScoreTeacher_, taTs_, getTargetSpreadsheetId_, taViewer_, taReadTable_, taRowToTeacher_, taWeekBounds_, taWeekLabel_, acRequireAdmin_, readAllGtrRequests_, appendEstLabel_, getOrCreateAssignmentAuditSheet_, lvViewer_, lvRows_, lvAddDays_, lvMaxPastDays_, lvMaxSpanDays_, lvClasses_, lvClassLine_, lvPublic_, canSendTeacherAppreciation_, appreciationTeacherCourses_, amViewer_, amConfig_, amBuild_, amSummary_, amTeachers_, rosterAcademicYear_, rosterLabel_, gradesLastSync_, amHistoryFor_, buildAuthenticatedUserPayload_, requireSuperAdminViewer_, parseClassroomTitle_, isTimingChangeWindowOpen_, deriveApsId_, findTimingChangeCandidates_, getAllKnownGrades_, normalizeGradeName_, hasActiveGtrRequest_, isInEmailList_, cctViewer_, cctWeeks_, cctReadRecords_, cctAuditCounts_, cctRowFor_, getOrCreateMeetLinkMapSheet_, tccViewer_, tccCanUseOriginal_, tccSchedule_, tccPrimary_, tccUpcomingDates_, tccHistory_, attMailConfigured_, tccPublicPlan_, tccPlan_, getOrCreateUserRoleSheet_, examQpViewer_, examQpSheet_, examQpObjectFromRow_, examQpReadRecords_, examQpNormDownloadKey_, examQpReadEvents_, examQpLastSentMap_, examQpAutoStatusMap_, examQpClientRecord_, examQpStaffPaperBlock_, examQpTeacherCopyAccess_, examQpTeacherCopyBlock_, examQpBool_, examQpLabel_, examQpParseTs_, examQpSuspicious_, examQpRequireManage_, examQpFindRecord_, examRequireAccess_, getOrCreateExaminationAuditSheet_, findGradeChangeCandidates_, readAllReferenceLetterRequests_, srmViewer_, srmAudit_, adsAudit_, courseNameMatches_, srmRows_, srmClassTeacher_, slAdmin_, slPublic_, slLists_, slProfile_, scRequireAdmin_, scLoad_, scEnrollments_, scToday_, scSettings_, scAudienceAllows_, scPublic_, scSort_, scMyPrograms_, scFmtDate_, scTo24_, scClassroomName_, scSheetName_, grPromptState_, taStoredWeek_, taAdminReport_, taEmailsOn_, taMonthly_, taMonthOf_, taConfig_, taMonthlyEmail_, taWeeklyEmail_, taRound_, ttmViewer_, ttmTeachers_, ttmPublic_, ttmRemovalHour_, ttmHourLabel_, ttmClassInfo_, tkViewer_, tkLoad_, tkRead_, tkReadOnly_, tkConfig_, tkIsAdmin_, tkIsStaffRole_, tkDeptName_, tkMailMode_, tkMailFrom_, apsRequireCountryAdmin_, zhRequireAdmin_, zhSheet_, zhBook_, zhJobPublic_, zhJobGet_, tkAccess_, tkPublicRow_, zhApsStudents_, mhgConfig_, mhgCollect_, mhgEmail_, mhgCsv_, taClone_, taValidateConfig_, taCompletedWeek_, taEvaluate_, personDisplayNameServer_, tkStudentScope_, tkNameFor_, exportTeacherAppreciation, exportUserCountry, getAccessControlHistory, getAdminAssignmentAuditLog, getAdminClassroomAssignments, getApplyLeaveData, getAppreciationLetterAudit, getAssignmentHealthCard, getAssignmentMonitoring, getAssignmentMonitoringClass, getAssignmentMonitoringHistory, getAuthenticatedAPSUser, getAuthorizedEmailsForGroupSync, getCacheSheetUrl, getClassChangeContext, getClassChangeRequestsForApprover, getClassCoverageHistory, getClassCoverageTracking, getCourseMeetLinkMappings, getCourseNameSuffix, getCoverageBootstrap, getCoveragePlan, getDashboardRolePermissions, getDashboardUserRoles, getExamQuestionPaperAuditLog, getExamQuestionPaperMonitoring, getExamQuestionPaperPublishPreview, getExaminationHistory, getGradeChangeApproverInfo, getGradeChangeTimingOptions, getKnowledgeBaseVideos, getLastSyncError, getLastSyncInfo, getMyClassChangeRequests, getMyReferenceLetterRequests, getReferenceLetterAccessInfo, getReferenceLetterRequestsForApprover, getRemovalContext, getSchoolLeaveAdminData, getSchoolLeaveHistory, getShowContactPhone, getSpecialClassEnrollments, getSpecialClasses, getSpecialClassesAdmin, getStudentLoginNoticeStatus, getTeacherAppreciationAdminReport, getTeacherAppreciationEmailPreview, getTeacherAppreciationHistory, getTempTeacherData, getTicket, getTicketBootstrap, getTicketReports, getTicketSettings, getUserCountryAdmin, getZohoSyncHistory, getZohoSyncJob, listTickets, loadZohoSyncStudents, previewMissingGrading, previewTeacherAppreciation, searchTamilThadamStudents, searchTicketStudents, getAttendanceCourseAwkMap, defaultDashboardRolePermissions_, getEffectiveClassMinutes, attAttendedPct_, attScoreForPct_, attStatusForScore_, readDashboardRolePermissionsRaw_, attApplyClassDurationRule_, getConfigString_, readDashboardRolePermissions_, attColumnLetter_, attRowToRecord_, attReadSheetRecords_, attWeekIdForDateStr_, attShiftDateStr_, getDashboardRolePermission_, attSummaryKey_, attStudentOverallKey_, attSummaryOverall_, attWeekSheetNameForDate_, attReadRecordsForSheets_, attEffectiveScore_, ensureSheetHeader_, getAttendanceWeek1Start_, attListWeekSheets_, attWeekIdForNumber_, classSupportElevated_, courseHasStudentEmail_, requireDashboardMutationPermission_, readAttendanceSummaryMap_, getAPSIdFromEmail, attReadRecordsForFilters_, attOverallFor_, attCompareRecords_, attCountedMinutes_, attWeekNumberForWeekId_, formatAwkSheetName_, getOrCreateAttendanceAuditLogSheet_, attCellToText_, getAttendanceRecordsForViewer, getOnCallTeacherAttendance, getAttendanceWeekOptions, getAttendanceAuditLog, getAttendanceSyncDiagnostics, getAttendanceLastSyncInfo, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, APC_DOMAIN_, APC_LL_SLOTS_, AC_CACHE_KEY_, AC_SHEET_, AC_HEADER_, AM_OV_SHEET_, AM_OV_HEADER_, AC_PROTECTED_, NILAI_4_TO_8_GRADE_NAMES, TCC_MONTHS_, APS_ENV_PROPERTY, SC_FIELDS_, GRADE_TIME_CHANGE_SHEET_NAME, GTR_FIELD_KEYS, AM_STAGES_, AM_NUM_LIMITS_, ROSTER_MEMO_, ROSTER_CONFIG, ROSTER_CLASSROOM_HEADER, ROSTER_TEACHER_HEADER, ROSTER_STUDENT_HEADER, GRADES_MEMO_, GRADES_CONFIG, GRADES_WORK_HEADER, GRADES_SUB_HEADER, CLASS_ROLE_RANK_, AC_CATALOG_, AVAILABILITY_ALTERNATIVE_LABELS, TCC_DAY_NAMES_, TCC_MAX_DAYS_AHEAD_, TCC_DAY_FULL_, CTA_AVAIL_ALT_LABELS_, EXAM_QP_AUTO_HEADER_, EXAM_QP_EXAM_STATUS, REFERENCE_LETTER_SHEET_NAME, REFERENCE_LETTER_DATE_TIME_COLUMNS_, REFERENCE_LETTER_FIELD_KEYS, ADS_SHEET_, ADS_HEADER_, SC_CACHE_KEY_, SC_SPREADSHEET_ID_DEFAULT_, SC_ENR_SHEET_, SC_STATES_, GR_URL_DEFAULT_, APC_KEYS_, TA_EMAIL_SHEET_, TA_EMAIL_HEADER_, DS_EN_MONTHS_, APS_SCHOOL_LOGO_URL, DS_TA_MONTHS_, CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_, TTM_TCS_SHEET_, ZOHO_SYNC_SPREADSHEET_ID_DEFAULT_, MHG_TZ_, CCW_EXCLUDE_DEFAULT_, GRADES_CATEGORY_PREFIXES_, APPRECIATION_MIN_WORDS, APPRECIATION_MAX_WORDS, GTR_STATUS, EXAMINATION_HELP_LINKS_, TA_TZ_, GTR_COLUMNS, APS_TIMEZONE_LABEL, ASSIGN_CLASSROOM_AUDIT_SHEET_NAME, LV_SHEET_, LV_HEADER_, LV_STATUS_, APPRECIATION_MSG_, AM_OFF_MSG_, AM_MEMO_, AM_CONFIG_PROP_, ROSTER_STATUS, AM_LOG_SHEET_, AM_LOG_HEADER_, ON_CALL_COORDINATOR_LABEL_, GTR_ACTIVE_STATUSES, CCT_WEEKS_BACK_, CCT_SHEET_, CCT_HEADER_, TCC_DAY_INDEX_, EXAM_QP_MEMO_, EXAM_QP_PAPER_HEADER, EXAM_QP_DOWNLOAD_HEADER, EXAM_QP_SEND_SHEET_, EXAM_QP_SEND_HEADER_, EXAM_QP_AUTO_REASON_, EXAM_QP_AUTO_, EXAM_QP_MESSAGES_, EXAM_QP_TCOPY_MSG_, EXAM_QP_TCOPY_, REFERENCE_LETTER_COLUMNS, SRM_SHEET_, SRM_HEADER_, SL_LISTS_DEFAULT_, SC_ENR_CACHE_KEY_, SC_ENR_HEADER_, SC_CACHE_SECONDS_, SC_SETTINGS_PROPS_, SC_STATE_RANK_, SC_MONTHS_, SC_SHEET_DEFAULT_, GR_MESSAGE_, GR_PROMPT_PROP_PREFIX_, TA_BAND_, TA_RUNS_HEADER_, TA_METRICS_, TA_METRIC_LABELS_, TA_EMAILS_PROP_, TA_DEFAULTS_, TA_CONFIG_SHEET_, TA_CONFIG_HEADER_, TA_HIGHLIGHT_TA_, TA_OPENINGS_TA_, TA_CLOSINGS_TA_, TTM_MSG_, TTM_OPEN_, TK_SHEETS_, TK_DEFAULT_RULES_, TK_EMAIL_RE_, ZH_JOB_PROP_, ZH_DAY_NAMES_, ZH_SOURCES_, MHG_PROP_, MHG_CATS_, MHG_KIND_LABEL_, TA_ITEM_PREFIX_, TA_CLASS_STATUS_, EXAMINATION_TOPICS, EXAMINATION_ASSIGNMENT_NAMES, EXAMINATION_CLASSWORK_TYPES, EXAMINATION_PRESETS, TA_SCORES_SHEET_, TA_SCORES_HEADER_, TA_BAND_LABEL_, TA_HIGHLIGHT_EN_, AC_AUDIT_SHEET_, AC_AUDIT_HEADER_, AC_ROLE_LABELS_, APS_CLASS_TIMINGS, APPRECIATION_CERTIFICATE_AUDIT_SHEET_NAME, AM_MAX_ITEMS_, AM_GRADE_STEPS_, AM_STATUS_LABEL_, TARGET_SPREADSHEET_ID, CACHE_SHEET_ID_KEY, GTR_MESSAGES, GRADE_CHANGE_APPROVER_EMAILS, CCT_AUDIT_SHEET_, CCT_AUDIT_HEADER_, CCT_STATUSES_, CCT_ACTION_MAX_, EXAM_QP_CONFIG, EXAM_QP_AUDIT_HEADER, EXAM_QP_DOWNLOAD_STATUS, EXAM_QP_STATUS, EXAM_QP_STUDENT_STATUS, EXAM_QP_APS_DOMAIN_, EXAMINATION_CONFIG, EXAMINATION_AUDIT_HEADER, EXAM_AUDIT_COL, FINAL_APPROVER_EMAIL, KNOWLEDGE_BASE_VIDEOS, LAST_SYNC_ERROR_KEY, LAST_SYNC_KEY, REFERENCE_LETTER_SOURCE, REFERENCE_LETTER_APPROVER_EMAILS, REFERENCE_LETTER_FINAL_APPROVER_EMAIL, SRM_MIN_WORDS_, ADS_MULTI_ACK_, SL_TYPES_, SL_EMAIL_SHEET_, SL_EMAIL_HEADER_, SHOW_CONTACT_PHONE, SC_UNAVAILABLE_MSG_, SC_ENR_STATUSES_, SC_PAY_STATUSES_, AC_ROLES_, AC_OFF_MSG_, SC_AUDIENCES_, SC_MODES_, STUDENT_NOTICE_EXPIRY, STUDENT_NOTICE_PROP_PREFIX, APS_ALLOWED_DOMAINS, TTM_MIN_WORDS_, TK_TYPE_ICON_, TK_STATUSES_, TK_TYPES_, TK_PRIORITIES_, TK_ACTIVE_STATUSES_, TK_CHAIN_TYPES_, TK_EVENTS_, ZH_LOG_SHEET_, ZH_LOG_HEADER_, ATTENDANCE_EFFECTIVE_CAP_FROM_MIN, ATTENDANCE_EFFECTIVE_CAP_MIN, ATTENDANCE_SCORE_TIERS_, ATTENDANCE_STATUS, ROLE_PERMISSION_CACHE_KEY, ROLE_PERMISSION_PROP_KEY, ROLE_PERMISSION_CACHE_SECONDS, ATTENDANCE_COL_, ATTENDANCE_HEADER_ROW, ATTENDANCE_SPREADSHEET_ID, ATTENDANCE_OVERRIDE_SCORES_, ATTENDANCE_WEEK1_START_DEFAULT_, ATTENDANCE_WEEK_SHEET_PATTERN_, ATTENDANCE_SUMMARY_SHEET_NAME, ATTENDANCE_SUMMARY_HEADER_ROW, ATTENDANCE_SHEET_PREFIX, ATTENDANCE_AUDIT_LOG_SHEET_NAME, ATTENDANCE_ROLE, ATTENDANCE_SOURCE, ATTENDANCE_AUDIT_LOG_HEADER_ROW, ATTENDANCE_SYNC_DIAGNOSTIC_KEY, ATTENDANCE_LAST_SYNC_SUMMARY_KEY, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
 }
 export const SCOPE_SOURCE_MD5 = '44ef1e4219409858c968276a3738f1ce';
-export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"attendance":["getAttendanceCourseAwkMap","defaultDashboardRolePermissions_","getEffectiveClassMinutes","attAttendedPct_","attScoreForPct_","attStatusForScore_","readDashboardRolePermissionsRaw_","attApplyClassDurationRule_","getConfigString_","readDashboardRolePermissions_","attColumnLetter_","attRowToRecord_","attReadSheetRecords_","attWeekIdForDateStr_","attShiftDateStr_","getDashboardRolePermission_","attSummaryKey_","attStudentOverallKey_","attSummaryOverall_","attWeekSheetNameForDate_","attReadRecordsForSheets_","attEffectiveScore_","ensureSheetHeader_","getAttendanceWeek1Start_","attListWeekSheets_","attWeekIdForNumber_","classSupportElevated_","courseHasStudentEmail_","requireDashboardMutationPermission_","readAttendanceSummaryMap_","getAPSIdFromEmail","attReadRecordsForFilters_","attOverallFor_","attCompareRecords_","attCountedMinutes_","attWeekNumberForWeekId_","formatAwkSheetName_","getOrCreateAttendanceAuditLogSheet_","attCellToText_","getAttendanceRecordsForViewer","getOnCallTeacherAttendance","getAttendanceWeekOptions","getAttendanceAuditLog","getAttendanceSyncDiagnostics","getAttendanceLastSyncInfo"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};
+export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"reads2":["apcIso_","acItem_","apcKeyOut_","apcVal_","rosterSheet_","acOverridesRaw_","scNorm_","scCodeOf_","scDate_","scTime_","scSafeUrl_","scParseOptions_","apsBigStore_","apcIsC_","apcDecodeObj_","srmFmt_","amDefaults_","amDayStart_","amDayEnd_","amOvRows_","rosterLoadTable_","rosterGet_","canViewAllDashboardFilters_","examQpStudentTeacherAccessEnabled_","rosterEnabled_","classRolesPrimary_","acOverrides_","acSwitchable_","acCell_","acProtected_","isNilai4To8Grade_","parseConfiguredClockTime_","cctStatus_","tccDateLabel_","tccZoned_","tccTzAbbrev_","tccTimeText_","tccApsIdNumber_","tccAnnouncementTitle_","getDashboardEnvironment_","examQpGenKey_","examQpComputeWindow_","examQpHmText_","examQpDayOf_","examQpHm_","scSheet_","scParseRow_","isPermissionDeniedError_","apsBigGetStored_","apcDecodeRaw_","getGoogleReviewEmailFooter","saSafeErr_","ttmRemovalReached_","zhProp_","mhgDefaults_","mhgEmails_","lvIsDate_","taMinutes_","taExpectedFor_","taBand_","taHighlights_","examLessonNames_","taMdY_","getOrCreateGradeTimeChangeSheet_","gtrRowToObject_","lvRoleLabel_","teacherDisplayName_","adsSchedule_","lvFmt_","ttmFmtTs_","amAccessFlag_","amSanitize_","amWindow_","amOverrides_","rosterDataset_","gradesForCourses_","amCounts_","amClassify_","amTypeOf_","amDueLabel_","amStatus_","amTsMs_","amAdd_","adsApsId_","amRates_","amPct_","amEscalate_","resolveViewerBadgeName_","canViewMonitoringFilters_","canViewMonitoringTotals_","examinationAccessForRole_","rosterAccessForRole_","apsRoleFor_","acEffectiveForRole_","getAllowedTimingsForGrade_","scheduleMatchesTimingOption_","timingOptionLabel_","cctAvailability_","cctPublicRecord_","parseAPSClassroomName","tccMinutes_","tkClassChain_","tccDateParts_","tccSession_","tccPublicRecord_","apsMailMode_","tccEmailHtml_","tccIsLive_","tccMeetFor_","tccDestContext_","tccDecorateDest_","tccDestRank_","tccMarkRecommended_","tccRecipients_","tccClassMax_","tccAnnouncementText_","tccSubject_","examQpConfig_","examQpSpreadsheet_","examQpTs_","examQpRecordCacheKey_","examQpAutoState_","examQpWindowOf_","examQpScheduleModeOf_","examQpExamStatus_","examQpLongLabel_","examQpTimeLabel_","examQpMissingFields_","examQpTeacherCopyTeachers_","examQpTeacherCopyLeadOk_","getOrCreateReferenceLetterSheet_","rlRowToObject_","srmPublic_","adsRows_","adsPublic_","slDays_","scRecords_","openSpreadsheetByIdWithRetry_","scSpreadsheetId_","scEnrSheet_","scText_","scState_","scLabelOf_","scRangeLabel_","scTimeMinutes_","getGoogleReviewUrl","apsBigGet_","grMonth_","taEmailHistory_","htmlEscape_","taMonthLabelEn_","apsEmailShell_","taSafeErr_","taFirstName_","taMonthLabelTa_","taSign_","taPick_","classesPrimaryOnlyPrefix_","ttmTcsList_","attNameFromEmail_","ttmDisplayStatus_","tkParticipantsFor_","tkSheet_","tkCleanEmails_","classPrimaryNameFromEmail_","zhSheetId_","zhJobRunning_","zhJsonProp_","tkCourseById_","zhNorm_","zhGradeLabel_","zhEmail_","mhgSanitize_","mhgToday_","ccwExcludeRe_","mhgSafeLink_","mhgCode_","mhgDays_","mhgMdY_","taInt_","taToday_","taDow_","taTeacherLeaveIndex_","isAPSSchoolHoliday","taScoreOccurrence_","taDateMs_","gradesCategory_","taScoreTeacher_","taTs_","getTargetSpreadsheetId_","taViewer_","taReadTable_","taRowToTeacher_","taWeekBounds_","taWeekLabel_","acRequireAdmin_","readAllGtrRequests_","appendEstLabel_","getOrCreateAssignmentAuditSheet_","lvViewer_","lvRows_","lvAddDays_","lvMaxPastDays_","lvMaxSpanDays_","lvClasses_","lvClassLine_","lvPublic_","canSendTeacherAppreciation_","appreciationTeacherCourses_","amViewer_","amConfig_","amBuild_","amSummary_","amTeachers_","rosterAcademicYear_","rosterLabel_","gradesLastSync_","amHistoryFor_","buildAuthenticatedUserPayload_","requireSuperAdminViewer_","parseClassroomTitle_","isTimingChangeWindowOpen_","deriveApsId_","findTimingChangeCandidates_","getAllKnownGrades_","normalizeGradeName_","hasActiveGtrRequest_","isInEmailList_","cctViewer_","cctWeeks_","cctReadRecords_","cctAuditCounts_","cctRowFor_","getOrCreateMeetLinkMapSheet_","tccViewer_","tccCanUseOriginal_","tccSchedule_","tccPrimary_","tccUpcomingDates_","tccHistory_","attMailConfigured_","tccPublicPlan_","tccPlan_","getOrCreateUserRoleSheet_","examQpViewer_","examQpSheet_","examQpObjectFromRow_","examQpReadRecords_","examQpNormDownloadKey_","examQpReadEvents_","examQpLastSentMap_","examQpAutoStatusMap_","examQpClientRecord_","examQpStaffPaperBlock_","examQpTeacherCopyAccess_","examQpTeacherCopyBlock_","examQpBool_","examQpLabel_","examQpParseTs_","examQpSuspicious_","examQpRequireManage_","examQpFindRecord_","examRequireAccess_","getOrCreateExaminationAuditSheet_","findGradeChangeCandidates_","readAllReferenceLetterRequests_","srmViewer_","srmAudit_","adsAudit_","courseNameMatches_","srmRows_","srmClassTeacher_","slAdmin_","slPublic_","slLists_","slProfile_","scRequireAdmin_","scLoad_","scEnrollments_","scToday_","scSettings_","scAudienceAllows_","scPublic_","scSort_","scMyPrograms_","scFmtDate_","scTo24_","scClassroomName_","scSheetName_","grPromptState_","taStoredWeek_","taAdminReport_","taEmailsOn_","taMonthly_","taMonthOf_","taConfig_","taMonthlyEmail_","taWeeklyEmail_","taRound_","ttmViewer_","ttmTeachers_","ttmPublic_","ttmRemovalHour_","ttmHourLabel_","ttmClassInfo_","tkViewer_","tkLoad_","tkRead_","tkReadOnly_","tkConfig_","tkIsAdmin_","tkIsStaffRole_","tkDeptName_","tkMailMode_","tkMailFrom_","apsRequireCountryAdmin_","zhRequireAdmin_","zhSheet_","zhBook_","zhJobPublic_","zhJobGet_","tkAccess_","tkPublicRow_","zhApsStudents_","mhgConfig_","mhgCollect_","mhgEmail_","mhgCsv_","taClone_","taValidateConfig_","taCompletedWeek_","taEvaluate_","personDisplayNameServer_","tkStudentScope_","tkNameFor_","exportTeacherAppreciation","exportUserCountry","getAccessControlHistory","getAdminAssignmentAuditLog","getAdminClassroomAssignments","getApplyLeaveData","getAppreciationLetterAudit","getAssignmentHealthCard","getAssignmentMonitoring","getAssignmentMonitoringClass","getAssignmentMonitoringHistory","getAuthenticatedAPSUser","getAuthorizedEmailsForGroupSync","getCacheSheetUrl","getClassChangeContext","getClassChangeRequestsForApprover","getClassCoverageHistory","getClassCoverageTracking","getCourseMeetLinkMappings","getCourseNameSuffix","getCoverageBootstrap","getCoveragePlan","getDashboardRolePermissions","getDashboardUserRoles","getExamQuestionPaperAuditLog","getExamQuestionPaperMonitoring","getExamQuestionPaperPublishPreview","getExaminationHistory","getGradeChangeApproverInfo","getGradeChangeTimingOptions","getKnowledgeBaseVideos","getLastSyncError","getLastSyncInfo","getMyClassChangeRequests","getMyReferenceLetterRequests","getReferenceLetterAccessInfo","getReferenceLetterRequestsForApprover","getRemovalContext","getSchoolLeaveAdminData","getSchoolLeaveHistory","getShowContactPhone","getSpecialClassEnrollments","getSpecialClasses","getSpecialClassesAdmin","getStudentLoginNoticeStatus","getTeacherAppreciationAdminReport","getTeacherAppreciationEmailPreview","getTeacherAppreciationHistory","getTempTeacherData","getTicket","getTicketBootstrap","getTicketReports","getTicketSettings","getUserCountryAdmin","getZohoSyncHistory","getZohoSyncJob","listTickets","loadZohoSyncStudents","previewMissingGrading","previewTeacherAppreciation","searchTamilThadamStudents","searchTicketStudents"],"attendance":["getAttendanceCourseAwkMap","defaultDashboardRolePermissions_","getEffectiveClassMinutes","attAttendedPct_","attScoreForPct_","attStatusForScore_","readDashboardRolePermissionsRaw_","attApplyClassDurationRule_","getConfigString_","readDashboardRolePermissions_","attColumnLetter_","attRowToRecord_","attReadSheetRecords_","attWeekIdForDateStr_","attShiftDateStr_","getDashboardRolePermission_","attSummaryKey_","attStudentOverallKey_","attSummaryOverall_","attWeekSheetNameForDate_","attReadRecordsForSheets_","attEffectiveScore_","ensureSheetHeader_","getAttendanceWeek1Start_","attListWeekSheets_","attWeekIdForNumber_","classSupportElevated_","courseHasStudentEmail_","requireDashboardMutationPermission_","readAttendanceSummaryMap_","getAPSIdFromEmail","attReadRecordsForFilters_","attOverallFor_","attCompareRecords_","attCountedMinutes_","attWeekNumberForWeekId_","formatAwkSheetName_","getOrCreateAttendanceAuditLogSheet_","attCellToText_","getAttendanceRecordsForViewer","getOnCallTeacherAttendance","getAttendanceWeekOptions","getAttendanceAuditLog","getAttendanceSyncDiagnostics","getAttendanceLastSyncInfo"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};

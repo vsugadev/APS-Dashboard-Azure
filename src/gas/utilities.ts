@@ -13,6 +13,13 @@ const DOW: Record<string, string> = { Mon: '1', Tue: '2', Wed: '3', Thu: '4', Fr
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
 export const Utilities = {
+  /** Apps Script: web-safe Base64 WITH padding (Node's base64url has none). Accepts a string (UTF-8) or a byte array. */
+  base64EncodeWebSafe(data: string | number[]): string {
+    const b = typeof data === 'string' ? Buffer.from(data, 'utf8') : Buffer.from(data.map((x) => x & 255));
+    return b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+  },
+  /** Used by Code.gs retry loops between attempts; reads on Azure are not retried in a busy loop — no wait needed. */
+  sleep(_ms: number): void { /* no-op */ },
   formatDate(date: Date, tz: string, pattern: string): string {
     const p = parts(date, tz);
     const off = (p.timeZoneName || 'GMT').replace('GMT', '') || '+00:00';

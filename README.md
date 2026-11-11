@@ -123,3 +123,5 @@ Until it exists, Admin / Super Admin / HM / BOD (on the lists) can sign in; teac
 - `DEV_LOGIN` refuses to start in Azure.
 
 See `docs/PHASE1.md` for what Phase 1 covers, what is deferred, and the hand-over to Phase 2.
+Phase 2 (read-only screens over the Sheets API, steps 1–6, v0.7.0) is described in `docs/PHASE2.md`; what is on Azure today
+is in `docs/APS_Dashboard_Azure_Guide.md`.

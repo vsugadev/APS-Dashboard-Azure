@@ -37,7 +37,7 @@ export interface AppConfig {
   dashboardEnvironment: string;        // APS_ENVIRONMENT (TESTING / LIVE)
   countryFeatureOn: boolean;
   attendanceSpreadsheetId: string;     // ATTENDANCE_SPREADSHEET_ID (Meet link map sheets) — Script Property of the same name
-  scriptSettings: Record<string, string>; // other Code.gs settings the copied readers read (APS_*, TCC_*, TTM_*, CTA_*, ROSTER_*) — never secrets           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
+  scriptSettings: Record<string, string>; // other Code.gs settings the copied readers read (APS_*, TCC_*, TTM_*, CTA_*, ROSTER_*, ATTENDANCE_*, SPECIAL_CLASSES_*, ZOHO_SYNC_SPREADSHEET_ID) — never secrets           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
 }
@@ -70,7 +70,7 @@ function resolved(env: NodeJS.ProcessEnv, name: string): string | undefined {
 export function scriptSettingsFrom(env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
-    if (v === undefined || !/^(APS_|TCC_|TTM_|CTA_|ROSTER_|ATTENDANCE_)/.test(k) || /SECRET|TOKEN|PASSWORD|KEY|JSON|CREDENTIAL/i.test(k)) continue;
+    if (v === undefined || !(/^(APS_|TCC_|TTM_|CTA_|ROSTER_|ATTENDANCE_|SPECIAL_CLASSES_)/.test(k) || k === 'ZOHO_SYNC_SPREADSHEET_ID') || /SECRET|TOKEN|PASSWORD|KEY|JSON|CREDENTIAL/i.test(k)) continue;
     out[k] = String(v);
   }
   return out;

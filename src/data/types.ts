@@ -16,7 +16,9 @@ export type AccessOverrides = Record<string, Record<string, boolean>> & { __meta
 
 /** One whole sheet as Apps Script getValues() sees it: numbers, strings, booleans, '' for empty, Date for date cells. */
 export interface SheetGrid { values: unknown[][] }
-export type WorkbookKey = 'main' | 'attendance';
+/** 'main' / 'attendance' = the two APS spreadsheets; 'id:<spreadsheetId>' = another spreadsheet a copied Code.gs reader
+ *  opens by ID (Special Classes, Zoho sync log) — only the IDs the copied code itself computes (src/gas/run.ts). */
+export type WorkbookKey = 'main' | 'attendance' | `id:${string}`;
 export interface SheetSnapshot { timeZone: string; sheets: Record<string, SheetGrid | null>; titles: string[] } // null = the sheet does not exist; titles = all sheets
 
 /** Sheets API values:batchGet request (same fields as the Apps Script Sheets advanced service). */
