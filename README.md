@@ -11,9 +11,9 @@ project `APS-Classroom-Dashboard` (which is never changed by anything here).
 | `test/` | Azure tests, incl. parity tests against `gas-source/Code.gs` |
 | `public/` | What the browser loads: `Dashboard.html` (copied from `gas-source/`) and `aps-gas-shim.js` |
 | `infra/` | Azure infrastructure (Bicep) |
-| `tools/` | `sync-gas`, `sync-dashboard`, `sync-prompt`, `gen-gas-helpers` (copies pure Code.gs helpers into `src/gas/`), `push-role-lists-to-keyvault.ps1` (copies the role-list Script Properties into Key Vault), Apps Script regression runner, browser check |
+| `tools/` | `sync-gas`, `sync-dashboard`, `sync-prompt`, `gen-gas-helpers` + `gen-gas-scope` (copy Code.gs helpers / Sheet readers into `src/gas/`), `push-role-lists-to-keyvault.ps1` (copies the role-list Script Properties into Key Vault), Apps Script regression runner, browser check |
 | `gas-source/` | **Reference copy of the Apps Script project** (Code.gs, Dashboard.html, PdfLib.gs, PortalBridge.gs, appsscript.json, APS_PropertyQuota_Fix.gs) + its 119-file regression suite in `gas-source/test/`. Read-only: refresh it from the live project with `npm run sync-gas`. `SNAPSHOT.json` records the release and checksums. Secret files (`ENV_VARIABLE_*.gs`) are never copied. |
-| `src/gas/` | Pure Apps Script helpers copied word for word from `gas-source/Code.gs` (generated — `npm run gen-gas`) + the `Utilities.formatDate` shim |
+| `src/gas/` | Code.gs code copied word for word (generated — `npm run gen-gas`): pure helpers (`classes.generated.ts`) and Sheet readers (`scope.generated.ts`) run in the **read-only Apps Script runtime** (`runtime.ts`: Sheets snapshot, no writes) |
 | `docs/` | Phase notes (`PHASE1.md`, `PHASE2.md`, `PHASE0_STATUS.md`); `docs/reference/` = Help Guide, architecture reference, generic development prompt; `docs/prompt/azure_prompt_addendum.txt` = Azure migration rules |
 | `aps_dashboard_Azure_prompt.txt` | **Generated** master prompt for Azure work = generic prompt (word for word) + Azure rules. Rebuilt automatically on `npm install`, `npm run build`, `npm test`, `npm run dev`; `npm run sync-prompt` for one update, `npm run watch-prompt` to keep it updating. Edit the generic prompt or the addendum, never this file. |
 | `.github/workflows/` | Deploy pipeline (copy of it in `docs/azure-deploy.yml.txt`) |

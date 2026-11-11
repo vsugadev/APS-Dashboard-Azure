@@ -35,7 +35,9 @@ export interface AppConfig {
   gradingTeamEmails: string[];         // APS_GRADING_TEAM_EMAILS (grading@ is always included)
   classesAlwaysShowEmailsRaw: string | null; // APS_CLASSES_ALWAYS_SHOW_EMAILS (JSON array or list; unset = Code.gs default)
   dashboardEnvironment: string;        // APS_ENVIRONMENT (TESTING / LIVE)
-  countryFeatureOn: boolean;           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
+  countryFeatureOn: boolean;
+  attendanceSpreadsheetId: string;     // ATTENDANCE_SPREADSHEET_ID (Meet link map sheets) — Script Property of the same name
+  scriptSettings: Record<string, string>; // other Code.gs settings the copied readers read (APS_*, TCC_*, TTM_*, CTA_*, ROSTER_*) — never secrets           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
 }
@@ -61,6 +63,17 @@ function resolved(env: NodeJS.ProcessEnv, name: string): string | undefined {
   const v = env[name];
   if (v && /^@Microsoft\.KeyVault\(/i.test(v.trim())) { console.warn(`[Config] ${name}: Key Vault reference not resolved yet — treated as not set.`); return undefined; }
   return v;
+}
+
+/** Plain Code.gs settings (same names as the Script Properties) for the read-only runtime. Anything that could be a
+ *  secret is never included, whatever its prefix. */
+export function scriptSettingsFrom(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined || !/^(APS_|TCC_|TTM_|CTA_|ROSTER_|ATTENDANCE_)/.test(k) || /SECRET|TOKEN|PASSWORD|KEY|JSON|CREDENTIAL/i.test(k)) continue;
+    out[k] = String(v);
+  }
+  return out;
 }
 
 export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -94,6 +107,8 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     classesAlwaysShowEmailsRaw: env.APS_CLASSES_ALWAYS_SHOW_EMAILS === undefined ? null : String(env.APS_CLASSES_ALWAYS_SHOW_EMAILS),
     dashboardEnvironment: String(env.APS_ENVIRONMENT || ''),
     countryFeatureOn: String(env.APS_COUNTRY_FEATURE || 'on').trim().toLowerCase() !== 'off',
+    attendanceSpreadsheetId: String(env.ATTENDANCE_SPREADSHEET_ID || ''),
+    scriptSettings: scriptSettingsFrom(env),
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };

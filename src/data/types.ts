@@ -14,6 +14,11 @@ export interface Course {
 /** Saved Access Control switches: { role: { tabKey: true|false } } (+ __meta). */
 export type AccessOverrides = Record<string, Record<string, boolean>> & { __meta?: { at: string; by: string } };
 
+/** One whole sheet as Apps Script getValues() sees it: numbers, strings, booleans, '' for empty, Date for date cells. */
+export interface SheetGrid { values: unknown[][] }
+export type WorkbookKey = 'main' | 'attendance';
+export interface SheetSnapshot { timeZone: string; sheets: Record<string, SheetGrid | null> } // null = the sheet does not exist
+
 export interface DataSource {
   /** Every course row (parsed Detail JSON), like readAllCoursesFromCache_(). Callers may mutate the result. */
   readCourses(): Promise<Course[]>;
@@ -21,4 +26,6 @@ export interface DataSource {
   readConfiguredUserRoles(): Promise<Record<string, string>>;
   /** Rows of "Dashboard_Access_Control", like acOverridesRaw_(). */
   readAccessOverrides(): Promise<AccessOverrides>;
+  /** Whole sheets (read-only snapshot) for the Code.gs readers run on Azure. */
+  readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot>;
 }

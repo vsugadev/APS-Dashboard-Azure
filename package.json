@@ -1,6 +1,6 @@
 {
   "name": "aps-dashboard-azure",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "APS Dashboard on Azure \u2014 Phase 1 foundation (sign-in, sessions, roles, Access Control, API registry, browser shim)",
   "type": "commonjs",
@@ -16,7 +16,7 @@
     "predev": "node tools/sync-prompt.js",
     "dev": "tsc -p tsconfig.json && node dist/src/server.js",
     "pretest": "node tools/sync-prompt.js",
-    "test": "tsc -p tsconfig.json && node tools/gen-gas-helpers.js --check && node --test dist/test/*.test.js",
+    "test": "tsc -p tsconfig.json && node tools/gen-gas-helpers.js --check && node tools/gen-gas-scope.js --check && node --test dist/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "sync-dashboard": "node tools/sync-dashboard.js",
     "e2e": "npm run build && node tools/e2e-browser.js",
@@ -25,7 +25,7 @@
     "sync-prompt": "node tools/sync-prompt.js --strict",
     "watch-prompt": "node tools/sync-prompt.js --watch",
     "postinstall": "node tools/sync-prompt.js",
-    "gen-gas": "node tools/gen-gas-helpers.js"
+    "gen-gas": "node tools/gen-gas-helpers.js && node tools/gen-gas-scope.js"
   },
   "dependencies": {
     "express": "4.21.2",

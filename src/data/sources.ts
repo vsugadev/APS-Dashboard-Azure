@@ -9,7 +9,8 @@ import type { AppConfig } from '../config';
 import { normalizeEmail } from '../lib/email';
 import { TtlCache } from '../lib/ttlCache';
 import { GOOGLE_SCOPES, googleFetchJson, type AccessTokenProvider } from '../google/serviceAccount';
-import type { AccessOverrides, Course, DataSource } from './types';
+import type { AccessOverrides, Course, DataSource, SheetGrid, SheetSnapshot, WorkbookKey } from './types';
+import { serialToDate } from '../gas/runtime';
 import { AC_ROLES, acItem } from '../auth/accessControl';
 import { DASHBOARD_ROLES } from '../auth/roles';
 
@@ -18,6 +19,25 @@ import { DASHBOARD_ROLES } from '../auth/roles';
 export const COURSES_TTL_MS = 60_000;       // Courses sheet (Apps Script memo: 600 s, invalidated on write)
 export const USER_ROLES_TTL_MS = 60_000;    // USER_ROLE_CACHE_SECONDS = 60 in Code.gs
 export const ACCESS_TTL_MS = 60_000;        // Access Control (Apps Script: 600 s, cleared on save)
+export const SHEET_TTL_MS = 60_000;         // whole-sheet snapshots for the copied Code.gs readers (Apps Script caches 5–10 min)
+export const TITLES_TTL_MS = 600_000;       // which sheets exist + the spreadsheet time zone
+
+interface GridCell { effectiveValue?: { numberValue?: number; stringValue?: string; boolValue?: boolean; errorValue?: { type?: string } }; effectiveFormat?: { numberFormat?: { type?: string } } }
+/** Sheets API grid data → Apps Script getValues() types (Date for DATE / TIME / DATE_TIME cells, in the sheet's zone). */
+export function gridToValues(rowData: { values?: GridCell[] }[] | undefined, tz: string): unknown[][] {
+  return (rowData || []).map((r) => (r.values || []).map((c) => {
+    const v = c.effectiveValue;
+    if (!v) return '';
+    if (typeof v.numberValue === 'number') {
+      const t = c.effectiveFormat && c.effectiveFormat.numberFormat && c.effectiveFormat.numberFormat.type;
+      return t === 'DATE' || t === 'DATE_TIME' || t === 'TIME' ? serialToDate(v.numberValue, tz) : v.numberValue;
+    }
+    if (typeof v.stringValue === 'string') return v.stringValue;
+    if (typeof v.boolValue === 'boolean') return v.boolValue;
+    if (v.errorValue) return '#ERROR!';
+    return '';
+  }));
+}
 
 const COURSES_SHEET = 'Courses';                       // getOrCreateCacheSheet_()
 const COURSES_DETAIL_RANGE = `${COURSES_SHEET}!R2:R`;  // column R = "Detail JSON" (data[i][17])
@@ -82,6 +102,31 @@ export class SheetsDataSource implements DataSource {
       catch (e) { if (/GOOGLE_API_400/.test(String((e as Error).message))) return {}; throw e; } // sheet not created yet
     });
   }
+  private bookId(book: WorkbookKey): string { return book === 'main' ? this.cfg.targetSpreadsheetId : this.cfg.attendanceSpreadsheetId; }
+  /** Whole sheets with value types, one spreadsheets.get per uncached group; titles + time zone cached 10 min. */
+  async readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot> {
+    const id = this.bookId(book);
+    if (!id) throw new Error(book === 'main' ? 'TARGET_SPREADSHEET_ID is not set.' : 'ATTENDANCE_SPREADSHEET_ID is not set.');
+    const base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}`;
+    const meta = await this.cache.get('titles:' + id, TITLES_TTL_MS, async () => {
+      const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
+      const r = await googleFetchJson<{ properties?: { timeZone?: string }; sheets?: { properties?: { title?: string } }[] }>(base + '?fields=properties.timeZone,sheets.properties.title', t);
+      return { tz: (r.properties && r.properties.timeZone) || 'America/New_York', titles: (r.sheets || []).map((x) => String(x.properties && x.properties.title)) };
+    });
+    const sheets: Record<string, SheetGrid | null> = {};
+    await Promise.all(names.map(async (name) => {
+      if (meta.titles.indexOf(name) < 0) { sheets[name] = null; return; }
+      sheets[name] = await this.cache.get('grid:' + id + ':' + name, SHEET_TTL_MS, async () => {
+        const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
+        const range = encodeURIComponent("'" + name.replace(/'/g, "''") + "'");
+        const fields = encodeURIComponent('sheets(data(rowData(values(effectiveValue,effectiveFormat.numberFormat.type))))');
+        const r = await googleFetchJson<{ sheets?: { data?: { rowData?: { values?: GridCell[] }[] }[] }[] }>(`${base}?ranges=${range}&includeGridData=true&fields=${fields}`, t);
+        const data = r.sheets && r.sheets[0] && r.sheets[0].data && r.sheets[0].data[0];
+        return { values: gridToValues(data && data.rowData, meta.tz) };
+      });
+    }));
+    return { timeZone: meta.tz, sheets };
+  }
   async readAccessOverrides(): Promise<AccessOverrides> {
     return this.cache.get('access', ACCESS_TTL_MS, async () => {
       try { return parseAccessRows((await this.values([`${AC_SHEET}!A2:F`]))[0]); }
@@ -90,9 +135,16 @@ export class SheetsDataSource implements DataSource {
   }
 }
 
-/** Local development / tests: a JSON file { courses: [...], userRoles: {...}, accessOverrides: {...} }. */
+/** Local development / tests: a JSON file { courses: [...], userRoles: {...}, accessOverrides: {...},
+ *  sheets?: { main: { <sheet name>: rows }, attendance: {...} } } (dates as "date:<ISO>" strings in the file). */
 export class FixtureDataSource implements DataSource {
-  constructor(private data: { courses?: Course[]; userRoles?: Record<string, string>; accessOverrides?: AccessOverrides }) {}
+  constructor(private data: { courses?: Course[]; userRoles?: Record<string, string>; accessOverrides?: AccessOverrides; sheets?: Partial<Record<WorkbookKey, Record<string, unknown[][]>>> }) {}
+  async readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot> {
+    const src = (this.data.sheets && this.data.sheets[book]) || {};
+    const sheets: Record<string, SheetGrid | null> = {};
+    for (const n of names) sheets[n] = src[n] ? { values: src[n].map((r) => r.map((v) => (v instanceof Date ? new Date(v.getTime()) : typeof v === 'string' && v.startsWith('date:') ? new Date(v.slice(5)) : v))) } : null;
+    return { timeZone: 'America/New_York', sheets };
+  }
   static fromFile(path: string): FixtureDataSource {
     return new FixtureDataSource(fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : {});
   }

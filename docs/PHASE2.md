@@ -25,15 +25,34 @@ Browser check: the real Dashboard.html signs in on Azure, passes Continue, and s
 `ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS`, `APS_GRADING_TEAM_EMAILS`, `APS_CLASSES_ALWAYS_SHOW_EMAILS`,
 `APS_ENVIRONMENT`, `APS_COUNTRY_FEATURE`.
 
+## Step 2 — Classes view: Sheet-based parts (v0.3.0, 2026-11-11)
+
+Now on the cards and in the header, exactly as Code.gs: **teacher availability** (Teacher_Weekly_Availability),
+**WhatsApp group links** (WhatsApp_Group_Links), **Google Meet links** (Course_Meet_Link_Map + detected links in the
+Attendance spreadsheet, else the Classroom link), **country flags** + sign-in country preference (USER_COUNTRY),
+**Temporary Class Coverage** banner and tab access (Temporary_Class_Coverage), **Temp Teacher** card note and tab access
+(TEMP_TEACHER_ASSIGNMENTS), **School Leave** banner (APS_SCHOOL_LEAVES).
+
+**How — the Code.gs readers themselves, read-only:** `tools/gen-gas-scope.js` copies 58 Code.gs reader functions
+(+ 27 constants) word for word into `src/gas/scope.generated.ts`; they run in `src/gas/runtime.ts`, a **read-only
+Apps Script runtime**: each sheet is read whole through the Sheets API (one call per sheet, cached 60 s) and given
+to the copied code with Apps Script's value types (numbers, text, true/false, `''`, and **Date** for date cells, in the
+spreadsheet's time zone). Any write to an existing sheet or to a setting fails (`READ_ONLY`); a sheet that does not
+exist is only "created" in memory for that request. The generator stops if the copied code uses any name that is
+neither copied nor provided, or calls Classroom / Gmail / Drive / triggers / locks / setProperty.
+
+**Setting to add on Azure (once):** `ATTENDANCE_SPREADSHEET_ID` = the Script Property of the same name (without it
+the Meet links come from Google Classroom only). The account in `GOOGLE_IMPERSONATE_USER` must be able to open it.
+
+**Tests:** the parity test now fills the Sheets with real rows (availability, WhatsApp, USER_COUNTRY, approved school
+leave with date cells, coverage merged today, temp teacher active now) and checks every card field and the header
+against Code.gs for 7 viewers — and that each of those parts really appeared. `test/runtime.test.ts`: no writes,
+date conversion (EST/EDT/India), settings never include secrets.
+
 ### Not on Azure yet (Code.gs "nothing set" values meanwhile)
 
 | Part | Source | When |
 |---|---|---|
-| Teacher availability on the card (`teacherAvailabilityStatus`) | Teacher_Weekly_Availability sheet | next step |
-| WhatsApp group links, Google Meet links | WhatsApp_Group_Links, Course_Meet_Link_Map sheets | next step |
-| School Leave banner | APS_SCHOOL_LEAVES sheet | next step |
-| Temporary Class Coverage banner, Temp Teacher note, those tabs' access | Temporary_Class_Coverage, TEMP_TEACHER_ASSIGNMENTS sheets | next step |
-| Country flags | USER_COUNTRY sheet | next step |
 | Assignment Monitoring tab access; Examination / Grading access | their modules | later in Phase 2 |
 | Online now, last login, onboarded, manual class status, live Meet status, card Status box during class, on-call banner, Hide/Show | Script / User Properties | Phase 3 |
 | Admin / HM badge name from the Google profile | Admin Directory API | later (scope not approved yet) |

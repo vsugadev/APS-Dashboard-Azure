@@ -25,6 +25,9 @@ param googleImpersonateUser string = ''
 @description('ID of the main Google Sheet (same value as the Script Property TARGET_SPREADSHEET_ID).')
 param targetSpreadsheetId string = ''
 
+@description('ID of the Attendance spreadsheet (Script Property ATTENDANCE_SPREADSHEET_ID) — Meet link map sheets for the Classes view.')
+param attendanceSpreadsheetId string = ''
+
 var vaultName = take('kv-${replace(appName, '-', '')}${uniqueString(resourceGroup().id)}', 24)
 var kvRef = 'https://${vaultName}${environment().suffixes.keyvaultDns}/secrets'
 
@@ -87,6 +90,7 @@ resource web 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
         { name: 'APS_DATA_MODE', value: 'sheets' }
         { name: 'TARGET_SPREADSHEET_ID', value: targetSpreadsheetId }
+        { name: 'ATTENDANCE_SPREADSHEET_ID', value: attendanceSpreadsheetId }
         { name: 'GOOGLE_IMPERSONATE_USER', value: googleImpersonateUser }
         { name: 'DASHBOARD_HTML_PATH', value: 'public/Dashboard.html' }
         // Secrets — Key Vault references, resolved by the managed identity. Add the secrets with the names below.

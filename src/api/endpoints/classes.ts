@@ -1,31 +1,41 @@
 /**
- * Phase 2, step 1 — Classes view: getDashboardData (same name, same payload shape as Code.gs getDashboardData).
+ * Phase 2 — Classes view: getDashboardData (same name, same payload shape as Code.gs getDashboardData).
  *
- * Built from the Google Sheet (Courses tab) with the Apps Script rules copied word for word from Code.gs
- * (src/gas/classes.generated.ts): hidden-staff filter, roster APSIDs, class schedule and automatic class status,
- * Nilai / class-time filters, name sort, who sees which classes, card "Status" box, header fields.
+ * Step 1 (v0.2.0): pure Code.gs rules copied word for word (src/gas/classes.generated.ts) — hidden-staff filter,
+ *   roster APSIDs, class schedule + automatic class status, Nilai / class-time filters, name order, who sees which
+ *   classes, card Status box, header fields.
+ * Step 2 (v0.3.0): the Code.gs Sheet READERS copied word for word (src/gas/scope.generated.ts) and run in the
+ *   read-only runtime (src/gas/runtime.ts) on a snapshot of the Google Sheets — teacher availability on the card,
+ *   WhatsApp group links, Google Meet links, country flags (USER_COUNTRY), Temporary Class Coverage banner, Temp
+ *   Teacher note, School Leave banner, and the Coverage / Temp Teacher tab access.
  *
- * Not on Azure yet (decision 2026-11-11 "Sheets only now"): live data Apps Script keeps in Script / User
- * Properties is sent EMPTY until Phase 3 moves those stores — online now, last login, country flags, onboarded flag,
- * manual class status (cancelled / rescheduled), live Google Meet status, on-call teacher banner, Hide/Show toggle.
- * Sheet-based extras that follow in the next Phase 2 steps are listed in CLASSES_NOT_YET (they keep Code.gs's
- * "nothing set" values meanwhile). Read-only: unlike Code.gs, nothing is written (no heartbeat, no marks).
+ * Not on Azure yet (decision 2026-11-11 "Sheets only now"): data Apps Script keeps in Script / User Properties is
+ * sent EMPTY until Phase 3 — online now (heartbeat), last login, onboarded flag, manual class status, live Google
+ * Meet status, on-call teacher banner, Hide/Show toggle. Assignment Monitoring access and Examination / Grading
+ * access come with those modules. Read-only: nothing is written (no heartbeat, no marks, no sheet created).
  */
 import type { Registry } from '../registry';
 import { requireSession, type AppContext } from '../../app/context';
 import type { Course, Person } from '../../data/types';
 import type { AppConfig } from '../../config';
 import { G } from '../../gas/classes.generated';
-import { acEffectiveForRole } from '../../auth/accessControl';
+import { makeGasScope } from '../../gas/scope.generated';
+import { makeRuntime, SnapWorkbook } from '../../gas/runtime';
+import { acEffectiveForRole, apsTabAllowed } from '../../auth/accessControl';
 import { viewerBadgeName, rolePermission, canViewAllDashboardFilters, isAdminRole, userHasCourseAccess, courseHasStudentEmail } from '../../auth/roles';
 
-/** Sheet-based parts of the Classes view that come in the next Phase 2 steps (shown with Code.gs's empty values now). */
+/** Parts of the Classes view still empty on Azure (see the header). */
 export const CLASSES_NOT_YET = [
-  'teacherAvailabilityStatus (Teacher_Weekly_Availability)', 'WhatsApp group links', 'Google Meet links',
-  'Country flags + preference (USER_COUNTRY sheet)', 'Temporary Class Coverage banner', 'Temp Teacher card note', 'School Leave banner', 'Coverage / Temp Teacher / Assignment Monitoring tab access',
+  'Online now / last login / onboarded (Script Properties — Phase 3)', 'Manual class status + live Google Meet status (Phase 3)',
+  'On-call teacher banner + Hide/Show toggle (Phase 3)', 'Assignment Monitoring / Examination / Grading tab access (their modules)',
 ];
 
 const ACCESS_STAFF_ROLES = new Set(['superadmin', 'admin', 'headmaster', 'vcfo_amchsts_bod']);
+
+/** Sheet names the copied readers open — taken from the copied Code.gs constants, never retyped. */
+const NAMES = makeGasScope(makeRuntime({ main: new SnapWorkbook('x', {}), attendance: null, settings: {}, isRosterHiddenStaffEmail_: () => false, apsTabAllowed_: () => false, isOnCallCoordinatorEmail_: () => false }));
+export const MAIN_SHEETS: string[] = [NAMES.TEACHER_AVAILABILITY_SHEET_NAME, NAMES.WHATSAPP_LINKS_SHEET_NAME, NAMES.SL_SHEET_, NAMES.TCC_SHEET_, NAMES.TTM_SHEET_, NAMES.UC_SHEET_];
+export const ATTENDANCE_SHEETS: string[] = [NAMES.ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, NAMES.CLASS_MEET_DETECTED_SHEET_];
 
 /** Code.gs ROSTER_HIDDEN_STAFF_EMAIL_SET_: Headmaster + Admin lists + ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS + grading team. */
 export function hiddenStaffSet(cfg: AppConfig): Record<string, true> {
@@ -45,12 +55,33 @@ export function classesAlwaysShowSet(cfg: AppConfig): Record<string, true> {
   for (const e of list) { const n = G.normalizeEmail_(e); if (n) out[n] = true; }
   return out;
 }
+function isOnCallCoordinator(cfg: AppConfig, email: unknown): boolean {
+  const e = G.normalizeEmail_(email);
+  return !!e && cfg.onCallCoordinatorEmails.map((x) => G.normalizeEmail_(x)).indexOf(e) > -1;
+}
+
+/** One request's copy of the Code.gs readers, on a read-only snapshot of the sheets they read. */
+export async function gasScopeFor(ctx: AppContext): Promise<any> {
+  const [main, ov] = await Promise.all([ctx.data.readSheets('main', MAIN_SHEETS), ctx.data.readAccessOverrides()]);
+  let attendance: SnapWorkbook | null = null;
+  if (ctx.cfg.attendanceSpreadsheetId || ctx.cfg.dataMode === 'fixture') {
+    try { const a = await ctx.data.readSheets('attendance', ATTENDANCE_SHEETS); attendance = new SnapWorkbook('attendance', a.sheets, a.timeZone); }
+    catch (e) { console.warn('[Classes] attendance workbook not readable — Meet links from Classroom only: ' + String((e as Error).message).slice(0, 120)); }
+  }
+  const hidden = hiddenStaffSet(ctx.cfg);
+  return makeGasScope(makeRuntime({
+    main: new SnapWorkbook('main', main.sheets, main.timeZone), attendance, settings: ctx.cfg.scriptSettings,
+    isRosterHiddenStaffEmail_: (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; },
+    apsTabAllowed_: (r: string, key: string) => apsTabAllowed(r, key, ov),
+    isOnCallCoordinatorEmail_: (e: unknown) => isOnCallCoordinator(ctx.cfg, e),
+  }));
+}
 
 type P = Person & Record<string, any>;
 type C = Course & Record<string, any>;
 
-/** The Code.gs decoration passes, with the Script/User-Property maps empty (see the header). Mutates `courses`. */
-export function decorateCourses(cfg: AppConfig, courses: C[], now: Date): C[] {
+/** The Code.gs decoration passes, in Code.gs order. `S` = the copied Sheet readers (gasScopeFor). Mutates `courses`. */
+export function decorateCourses(cfg: AppConfig, courses: C[], now: Date, S: any): C[] {
   // applyRosterHiddenStaffFilter_ — toggle "Show" lives in a Script Property → default "Hide" on Azure
   const hidden = hiddenStaffSet(cfg), always = classesAlwaysShowSet(cfg);
   const isHidden = (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; };
@@ -70,11 +101,8 @@ export function decorateCourses(cfg: AppConfig, courses: C[], now: Date): C[] {
     const sum = G.summarizeLastLogin_(G.normalizeLastLoginEntry_(undefined));
     p.apsId = G.extractAPSID_(p.email);
     p.lastLoginAt = sum.at; p.lastLoginDisplay = sum.display;
-    // applyUserCountry_ (country feature off by default since r119)
-    const info = G.resolveCountryFlag_(null);
-    p.countryCode = info.countryCode; p.countryName = info.countryName; p.countryFlag = info.flag;
   }
-  for (const c of courses) for (const s of (c.students || []) as P[]) s.onboarded = false; // applyStudentOnboardedFlag_ (map not on Azure yet)
+  S.applyUserCountry_(courses); // USER_COUNTRY sheet (copied reader)
   // applyClassStatus_ — automatic status from the class schedule; no manual override / live Meet / started mark yet
   for (const c of courses) {
     const schedule = G.parseCourseSchedule_(c.name);
@@ -87,7 +115,16 @@ export function decorateCourses(cfg: AppConfig, courses: C[], now: Date): C[] {
     c.classStatusLabel = G.CLASS_STATUS_LABELS[r.code];
     c.classStatusColorCategory = G.CLASS_STATUS_COLOR_CATEGORY[r.code];
   }
-  for (const c of courses) { c.teacherAvailabilityStatus = 'Not Set'; c.teacherAvailabilityAlt = ''; } // next step: Teacher_Weekly_Availability
+  for (const c of courses) for (const s of (c.students || []) as P[]) s.onboarded = false; // applyStudentOnboardedFlag_ (map not on Azure yet)
+  // Teacher availability (Code.gs getDashboardDataInner_, same mapping)
+  const avail: Record<string, string> = {}, alt: Record<string, string> = {};
+  S.buildAvailabilityBoard_(courses, S.getCurrentWeekId_(now)).forEach((row: any) => {
+    avail[String(row.courseId)] = row.status === S.AVAILABILITY_STATUS.CONFIRMED ? 'Available to Take Classes' : row.status === S.AVAILABILITY_STATUS.NOT_AVAILABLE ? 'Not Available to Take Classes' : 'Not Set';
+    if (row.status === S.AVAILABILITY_STATUS.NOT_AVAILABLE) alt[String(row.courseId)] = row.alternative || 'none';
+  });
+  for (const c of courses) { c.teacherAvailabilityStatus = avail[String(c.id)] || 'Not Set'; c.teacherAvailabilityAlt = alt[String(c.id)] || ''; }
+  S.applyWhatsAppLinks_(courses);
+  S.applyMeetLinks_(courses);
   for (const c of courses) { c.nilai = G.extractNilaiFromCourseName_(c.name); c.classTime = G.extractClassTimeFromCourseName_(c.name); }
   courses.sort((a, b) => G.naturalCompareJs_(a.name, b.name));
   return courses;
@@ -109,8 +146,9 @@ export function apsRoleFor(viewer: { email: string; role: string }, courses: C[]
 }
 
 /** Same payload as Code.gs getDashboardDataInner_ + apsSlimDashboardPayload_ (live / not-yet parts empty, see header). */
-export async function buildClassesView(ctx: AppContext, viewer: { email: string; role: string }, allCourses: C[], now: Date): Promise<Record<string, unknown>> {
-  const courses = decorateCourses(ctx.cfg, allCourses, now);
+export async function buildClassesView(ctx: AppContext, viewer: { email: string; role: string }, allCourses: C[], now: Date, S?: any): Promise<Record<string, unknown>> {
+  const scope = S || (await gasScopeFor(ctx));
+  const courses = decorateCourses(ctx.cfg, allCourses, now, scope);
   let visible: C[];
   if (ACCESS_STAFF_ROLES.has(viewer.role)) visible = courses;
   else if (viewer.role === 'teacher') {
@@ -125,9 +163,14 @@ export async function buildClassesView(ctx: AppContext, viewer: { email: string;
   out.apsId = G.extractAPSID_(viewer.email);
   out.isClassroomTeacher = courses.some((c) => G.courseHasTeacherEmail_(c, G.normalizeEmail_(viewer.email)));
   out.apsRole = apsRoleFor({ email: viewer.email, role }, courses);
-  out.roleLabel = ctx.cfg.onCallCoordinatorEmails.map((e) => G.normalizeEmail_(e)).indexOf(G.normalizeEmail_(viewer.email)) > -1 ? 'On-Call Coordinator' : '';
+  out.roleLabel = isOnCallCoordinator(ctx.cfg, viewer.email) ? 'On-Call Coordinator' : '';
   out.tabAccess = acEffectiveForRole(role, ov);
-  out.coverageAccess = false; out.coverageTrackingAccess = false; out.assignMonAccess = false; out.tempTeacherAccess = false; // next steps
+  out.coverageAccess = scope.tccCanUse_(role, viewer.email, courses);
+  out.coverageTrackingAccess = out.coverageAccess;
+  out.assignMonAccess = false; // Assignment Monitoring module (later)
+  try { scope.tccStampToday_(visible); } catch (e) { console.warn('[Coverage] banner: ' + String((e as Error).message).slice(0, 120)); }
+  try { scope.ttmStampCards_(visible); } catch (e) { console.warn('[TempTeacher] card note: ' + String((e as Error).message).slice(0, 120)); }
+  out.tempTeacherAccess = scope.ttmCanUse_(role, viewer.email);
   for (const c of visible) c.liveBox = G.apsClassLiveBox_(c);
   out.canViewMonitoringFilters = canViewAllDashboardFilters(ctx.cfg, role);
   out.canViewMonitoringTotals = out.canViewMonitoringFilters;
@@ -138,7 +181,7 @@ export async function buildClassesView(ctx: AppContext, viewer: { email: string;
   out.rosterHiddenStaffVisible = false;
   out.onCallTeacherCount = 0; out.onCallTeacher = null; // on-call directory lives in Script Properties (Phase 3)
   for (const c of visible) { delete c.rosterTeacherEmails; delete c.onCallRoster; }
-  out.schoolLeave = { isSchoolLeave: false }; // next step: APS_SCHOOL_LEAVES
+  try { out.schoolLeave = scope.getAPSSchoolLeaveStatus(new Date()); } catch { out.schoolLeave = { isSchoolLeave: false }; }
   // apsSlimDashboardPayload_
   for (const c of visible) for (const p of ((c.teachers || []) as P[]).concat((c.students || []) as P[])) {
     if (!p) continue;
@@ -148,18 +191,17 @@ export async function buildClassesView(ctx: AppContext, viewer: { email: string;
   return out;
 }
 
-/** Code.gs getMyCountryPreference: always "has a default" (no country step at sign-in since r120). The person's own
- *  USER_COUNTRY row is added with the USER_COUNTRY step; until then the country fields are blank. */
-export function countryPreference(cfg: AppConfig): Record<string, unknown> {
-  if (!cfg.countryFeatureOn) return { hasDefault: true, disabled: true, defaultCountryCode: '', defaultCountryName: '', defaultFlag: '', detectedCountryCode: '', detectedCountryName: '' };
-  return { hasDefault: true, sheetMode: true, countryCode: '', countryName: '', countryFlag: '', source: '', defaultCountryCode: '', defaultCountryName: '', defaultFlag: '', detectedCountryCode: '', detectedCountryName: '' };
+/** Code.gs getMyCountryPreference (country feature off → "disabled"; on → the person's USER_COUNTRY row, if any). */
+export function countryPreference(S: any, email: string): Record<string, unknown> {
+  if (!S.apsCountryOn_()) return { hasDefault: true, disabled: true, defaultCountryCode: '', defaultCountryName: '', defaultFlag: '', detectedCountryCode: '', detectedCountryName: '' };
+  return S.ucPref_(email);
 }
 
 export function registerClasses(reg: Registry): void {
   /** getMyCountryPreference — the sign-in "Continue" step asks this; without it the page waits for a country pick. */
   reg.register('getMyCountryPreference', async (ctx, [token]) => {
-    await requireSession(ctx, token);
-    return countryPreference(ctx.cfg);
+    const s = await requireSession(ctx, token);
+    return countryPreference(await gasScopeFor(ctx), s.email);
   });
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */
   reg.register('getDashboardData', async (ctx, [token]) => {
