@@ -65,7 +65,10 @@ test('API: same names and arguments as google.script.run; checks on the server; 
     assert.deepEqual(await s.run('getAccessControl', [adm]), { err: 'ACCESS_OFF: This section has been turned off for your role by the APS administrator.' }, 'Super Admin switched it off for Admin');
     assert.deepEqual(await s.run('getAccessControl', [tea]), { err: 'Only Admin / Super Admin can use Admin Control.' });
     assert.deepEqual(await s.run('getAccessControl', ['forged-token']), { err: 'SESSION_EXPIRED: please sign in again.' });
-    assert.deepEqual(await s.run('getDashboardData', [tea]), { err: 'NOT_ON_AZURE_YET: getDashboardData' });
+    const dash = await s.run('getDashboardData', [tea]); // Phase 2: Classes view served from Azure
+    assert.equal(dash.ok.role, 'teacher'); assert.deepEqual(dash.ok.courses.map((c: { id: string }) => c.id), ['101'], 'a teacher sees only own classes');
+    assert.deepEqual(await s.run('getDashboardData', ['forged-token']), { err: 'SESSION_EXPIRED: please sign in again.' });
+    assert.deepEqual(await s.run('getRealtimeStatusSnapshot', [tea]), { err: 'NOT_ON_AZURE_YET: getRealtimeStatusSnapshot' });
     assert.deepEqual(await s.run('requireValidSession_', [tea]), { err: 'Bad request.' }, 'private helpers are never callable');
     const b = await s.run('getStartupBundle', [tea, ['getCurrentUser', 'getLastSyncInfo']]);
     assert.equal(b.ok.getCurrentUser.ok.role, 'teacher'); assert.deepEqual(b.ok.getLastSyncInfo, { err: 'NOT_ON_AZURE_YET: getLastSyncInfo' });
@@ -82,7 +85,7 @@ test('errors never reach the browser with tokens, keys or stack traces', async (
   const r = await reg.call(testContext(), 'boom', []);
   assert.deepEqual(r, { err: 'failed: Bearer [hidden] access_token=[hidden]' });
   assert.equal(safeErrorMessage('-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY----- x'), '[hidden] x');
-  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getCurrentUser', 'getStartupBundle']);
+  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getCurrentUser', 'getDashboardData', 'getMyCountryPreference', 'getStartupBundle']);
 });
 
 test('page renderer: fills exactly the five Code.gs template values, script-safe; refuses an unknown template value', () => {

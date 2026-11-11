@@ -40,9 +40,16 @@ const { DashboardPage } = require('../dist/src/web/render');
       assert.ok(tok && /^[0-9a-f-]{36}$/.test(tok), 'session token held by the page');
       const me = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getCurrentUser(tk)), tok);
       assert.strictEqual(me.role, 'admin'); assert.strictEqual(me.email, 'admin@avvaiyarpadasalai.org');
-      const err = await page.evaluate(() => new Promise((res) => google.script.run.withSuccessHandler(() => res('no error')).withFailureHandler((e, u) => res(e.message + '|' + u)).withUserObject('ctx').getDashboardData('x')));
-      assert.strictEqual(err, 'NOT_ON_AZURE_YET: getDashboardData|ctx', 'errors + user object reach the failure handler as in Apps Script');
+      const err = await page.evaluate(() => new Promise((res) => google.script.run.withSuccessHandler(() => res('no error')).withFailureHandler((e, u) => res(e.message + '|' + u)).withUserObject('ctx').getRealtimeStatusSnapshot('x')));
+      assert.strictEqual(err, 'NOT_ON_AZURE_YET: getRealtimeStatusSnapshot|ctx', 'errors + user object reach the failure handler as in Apps Script');
       console.log('   calls made by the page: ' + Array.from(new Set(calls)).join(', '));
+    });
+    await t('Phase 2: the Classes tab shows the class cards from Azure (getDashboardData)', async () => {
+      await page.evaluate(() => { const b = document.getElementById('apsPermissionContinueBtn'); if (b && b.offsetParent) b.click(); });
+      await page.waitForTimeout(2500);
+      assert.ok(calls.includes('getDashboardData'), 'page asked Azure for the Classes view');
+      const txt = await page.evaluate(() => document.body.innerText);
+      assert.ok(/NILAI 3 - EF/.test(txt) && /NILAI 1 - EA/.test(txt), 'both sample classes shown');
     });
     await t('sign-out: endSession sent and the session is gone on the server', async () => {
       const tok = await page.evaluate(() => apsSessionToken);

@@ -30,6 +30,12 @@ export interface AppConfig {
   impersonateUser: string;             // Workspace account the service account acts as (domain-wide delegation)
   dashboardHtmlPath: string;           // Dashboard.html copied at deploy time
   rolePermissionsJson: string;         // optional copy of the Script Property dashboardRolePermissions_v1
+  // Classes view (Phase 2) — same names as the Script Properties; all optional
+  rosterHiddenStaffAdditionalEmails: string[]; // ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS
+  gradingTeamEmails: string[];         // APS_GRADING_TEAM_EMAILS (grading@ is always included)
+  classesAlwaysShowEmailsRaw: string | null; // APS_CLASSES_ALWAYS_SHOW_EMAILS (JSON array or list; unset = Code.gs default)
+  dashboardEnvironment: string;        // APS_ENVIRONMENT (TESTING / LIVE)
+  countryFeatureOn: boolean;           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
 }
@@ -83,6 +89,11 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     impersonateUser: String(env.GOOGLE_IMPERSONATE_USER || ''),
     dashboardHtmlPath: String(env.DASHBOARD_HTML_PATH || 'public/Dashboard.html'),
     rolePermissionsJson: String(env.ROLE_PERMISSIONS_JSON || ''),
+    rosterHiddenStaffAdditionalEmails: parseList(env.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS, 'ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS'),
+    gradingTeamEmails: parseList(env.APS_GRADING_TEAM_EMAILS, 'APS_GRADING_TEAM_EMAILS'),
+    classesAlwaysShowEmailsRaw: env.APS_CLASSES_ALWAYS_SHOW_EMAILS === undefined ? null : String(env.APS_CLASSES_ALWAYS_SHOW_EMAILS),
+    dashboardEnvironment: String(env.APS_ENVIRONMENT || ''),
+    countryFeatureOn: String(env.APS_COUNTRY_FEATURE || 'on').trim().toLowerCase() !== 'off',
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };

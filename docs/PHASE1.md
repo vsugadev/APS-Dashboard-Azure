@@ -41,9 +41,12 @@ Earlier (2026-11-09):
   (over 90,000 checks); 21 role cases incl. case/space variants; visible classes; APSID; domains; permissions — all equal.
 - Browser (Playwright, real Dashboard.html): sign-in screen + state nonce; page accepts the Azure session; shim calls,
   errors and user objects; sign-out ends the server session. No page errors besides not-yet-moved calls.
-- Since then, on the real Azure deployment (2026-11-10, by the APS admin): Bicep deployed, GitHub Actions deploy
-  works, Google sign-in works. **Waiting:** real Sheets reads (domain-wide delegation can take up to 24 h) and the
-  role-list secrets — the Phase 1 gate "every role signs in on Azure" is checked after that.
+- On the real Azure deployment (by the APS admin): 2026-11-10 Bicep deployed, GitHub Actions deploy works, Google
+  sign-in works; **2026-11-11 real Sheets read works — `[Google] Sheet check OK — 186 classes readable.`**
+  (fix: the service-account key, not the OAuth client file, in `google-service-account-json`; then the Key Vault
+  reference refresh — see docs/PHASE0_STATUS.md).
+- **Phase 1 gate — open:** sign in once per role on Azure (Super Admin, Admin, Headmaster, BOD, teacher, student;
+  personal Gmail refused) after the role-list secrets are saved. Tick here when done: ☐
 
 ## Deferred on purpose (listed in the user payload as safe "no access" values)
 
@@ -55,7 +58,7 @@ Earlier (2026-11-09):
 | Sessions and caches in Redis | single instance is enough until then; a restart/deploy signs people out (6 h sessions) | 3 |
 | Copying the Script Property `dashboardRolePermissions_v1` | Script Properties are only readable inside Apps Script; paste it into Key Vault `role-permissions-json` | 0/1 |
 
-## Hand-over to Phase 2
+## Hand-over to Phase 2 (started 2026-11-11 — see docs/PHASE2.md)
 
 Each module moves by: port its read functions into `src/api/endpoints/<module>.ts` (same names), start each with
 `requireSession` / `requireTab`, read through `DataSource` (one bulk read, cached), port its Apps Script tests with
