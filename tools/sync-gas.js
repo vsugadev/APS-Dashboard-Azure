@@ -5,7 +5,7 @@ const fs = require('fs'); const path = require('path'); const crypto = require('
 const root = path.join(__dirname, '..');
 const from = path.resolve(process.env.APS_GAS_PROJECT || path.join(root, '..', 'APS-Classroom-Dashboard'));
 const to = path.join(root, 'gas-source');
-const FILES = ['Code.gs', 'Dashboard.html', 'PdfLib.gs', 'PortalBridge.gs', 'appsscript.json', 'APS_PropertyQuota_Fix.gs'];
+const FILES = ['Code.gs', 'Dashboard.html', 'PdfLib.gs', 'PortalBridge.gs', 'appsscript.json', 'APS_PropertyQuota_Fix.gs', 'AzureBridge.gs'];
 if (!fs.existsSync(path.join(from, 'Code.gs'))) { console.error('Apps Script project not found: ' + from); process.exit(1); }
 const snap = { copiedAt: new Date().toISOString(), from, files: {} };
 for (const f of FILES) {

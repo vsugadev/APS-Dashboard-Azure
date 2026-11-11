@@ -1,5 +1,6 @@
 /** Shared test fixture: a small school with every role, plus a fake Google sign-in. */
 import { loadConfig, type AppConfig } from '../src/config';
+import { EmptyLiveSource } from '../src/live/liveSource';
 import { FixtureDataSource } from '../src/data/sources';
 import { MemorySessionStore } from '../src/auth/sessions';
 import { StateNonces, type GoogleAuth, type VerifiedClaims } from '../src/auth/google';
@@ -36,6 +37,7 @@ export function testContext(opts: { cfg?: AppConfig; userRoles?: Record<string, 
   return {
     cfg,
     data: new FixtureDataSource({ courses: testCourses(), userRoles: opts.userRoles || {}, accessOverrides: opts.access || {} }),
+    live: new EmptyLiveSource(),
     sessions: new MemorySessionStore(cfg.sessionTtlSeconds, opts.now),
     google: fakeGoogle(opts.claims || {}),
     nonces: new StateNonces(600_000, opts.now),

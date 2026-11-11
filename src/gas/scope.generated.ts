@@ -3,7 +3,13 @@
  * Code.gs Sheet readers copied word for word; run inside the read-only runtime (src/gas/runtime.ts). */
 /* eslint-disable */
 export function makeGasScope(rt: any): any {
-  const { apsDashboardUrl_, getGoogleProfileName_, Sheets, SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_ } = rt;
+  const { apsDashboardUrl_, getGoogleProfileName_, Sheets, SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, classMeetLiveSnapshot_, classMeetApplyLive_, chatVersion_ } = rt;
+
+var LIVE_PROP_KEY = 'liveMap';
+
+var TEACHER_NOT_IN_CLASS_PROP_KEY = 'teacherNotInClassMap';
+
+var NEEDS_TECH_SUPPORT_PROP_KEY = 'needsTechSupportMap';
 
 var CACHE_SHEET_ID_KEY = 'CACHE_SHEET_ID';
 
@@ -11,17 +17,57 @@ var LAST_SYNC_KEY = 'lastSync';
 
 var LAST_SYNC_ERROR_KEY = 'lastSyncError';
 
+var ON_CALL_TEACHERS_PROP_KEY = 'onCallTeachers_v1';
+
 var ON_CALL_COORDINATOR_LABEL_ = 'On-Call Coordinator';
+
+var PRESENCE_PROP_KEY = 'presenceMap';
+
+var PRESENCE_ONLINE_WINDOW_MINUTES = 3;
+
+var LAST_LOGIN_PROP_KEY = 'lastLoginMap';
+
+var EXTERNAL_ACTIVITY_REALTIME_PROP_KEY = 'externalActivityRealtimeMap';
 
 var LAST_LOGIN_TIMEZONE = 'America/New_York';
 
+var LAST_LOGIN_SOURCE_ORDER = ['gc', 'gm', 'db'];
+
+var LAST_LOGIN_SOURCE_LABELS = { gc: 'GC', gm: 'GM', db: 'DB' };
+
 var APS_ENV_PROPERTY = 'APS_ENVIRONMENT';
+
+var CLASS_STATUS_PROP_KEY = 'classStatusMap';
+
+var CLASS_STARTED_MARK_PROP_KEY = 'classStartedMarkMap';
+
+var CLASS_STATUS_COMPLETION_MINUTES = 90;
+
+var CLASS_STATUS_LABELS = {
+  scheduled: 'Scheduled',
+  yet_to_start: 'Yet to Start',
+  started: 'Class Started',
+  completed: 'Class Ended', // r35: was 'Class Completed' — the internal code is unchanged
+  cancelled: 'Class Cancelled',
+  rescheduled: 'Class Rescheduled'
+};
+
+var CLASS_STATUS_COLOR_CATEGORY = {
+  scheduled: 'info',
+  yet_to_start: 'attention',
+  started: 'success',
+  completed: 'neutral',
+  cancelled: 'danger',
+  rescheduled: 'warning'
+};
 
 var CLASS_SCHEDULE_DAY_TOKENS = {
   SUN: 0, SUNDAY: 0, MON: 1, MONDAY: 1, TUE: 2, TUES: 2, TUESDAY: 2,
   WED: 3, WEDS: 3, WEDNESDAY: 3, THU: 4, THUR: 4, THURS: 4, THURSDAY: 4,
   FRI: 5, FRIDAY: 5, SAT: 6, SATURDAY: 6
 };
+
+var ONBOARDED_STUDENTS_PROP_KEY = 'onboardedStudents';
 
 var COURSE_NAME_SUFFIX = 'AY26-27';
 
@@ -209,6 +255,8 @@ var HEADMASTER_EMAILS = getConfigList_('HEADMASTER_EMAILS', []);
 
 var APS_GRADING_TEAM_EMAILS_ = ['grading@avvaiyarpadasalai.org'].concat(getConfigList_('APS_GRADING_TEAM_EMAILS', []));
 
+var ROSTER_HIDDEN_STAFF_VISIBLE_PROP_KEY = 'rosterHiddenStaffVisible_v1';
+
 var APS_ALLOWED_DOMAINS = ['avvaiyarpadasalai.org', 'amchats.org', 'namaps.org', 'apsamerica.org'];
 
 var USER_ROLE_SHEET_NAME = 'Dashboard_User_Roles';
@@ -233,13 +281,25 @@ var ROLE_PERMISSION_CACHE_SECONDS = 60;
 
 var VCFO_AMCHATS_BOD_EMAILS = getConfigList_('VCFO_AMCHATS_BOD_EMAILS', []);
 
+var CLASSES_ALWAYS_SHOW_CACHE_ = null;
+
 var CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_ = null;
 
 var NILAI_FILTER_OPTIONS = ['All', 'MUNMAZHALAI', 'MAZHALAI', 'NILAI 1', 'NILAI 2', 'NILAI 3', 'NILAI 4', 'NILAI 5', 'NILAI 6', 'NILAI 7', 'NILAI 8', 'THULIR(துளிர்)'];
 
 var CLASS_TIME_FILTER_OPTIONS = ['All', 'FRI 6:30 - 8:00 PM EST', 'FRI 7:30 - 9:00 PM EST', 'FRI 9:00 - 10:30 PM EST', 'SAT 12:00 - 1:30 PM EST', 'SUN 7:30 - 9:00 PM EST'];
 
+var COURSES_MEMO_KEY_ = 'aps_courses_memo_v1';
+
+var COURSES_MEMO_SECONDS_ = 600;
+
+var APS_BIG_MOVED_ = {};
+
+var APS_IDLE_POLL_MS_ = 90000;
+
 var TEACHER_AVAILABILITY_SHEET_NAME = 'Teacher_Weekly_Availability';
+
+var TEACHER_AVAILABILITY_REALTIME_PROP_KEY = 'teacherAvailabilityRealtimeMap';
 
 var AVAILABILITY_STATUS = {
   PENDING: 'pending',            // ⚪ no response yet this week
@@ -743,9 +803,13 @@ var CTA_AVAIL_ALT_LABELS_ = { parent_teacher_arranged: 'Parent-Teacher Arranged'
 
 var CLASS_ROLE_RANK_ = { TEACHER: 1, PRIMARY_TEACHER: 1, VP: 2, HM: 3, ADMIN: 4 };
 
+var CLASS_ROLE_LABEL_ = { PRIMARY_TEACHER: 'Primary Teacher', TEACHER: 'Teacher', VP: 'VP', HM: 'HM' };
+
 var CLASS_MEET_DETECTED_SHEET_ = 'Course_Meet_Link_Detected';
 
 var CLASS_MEET_CACHE_KEY_ = 'aps_class_meet_links_v2';
+
+var CLASS_MEET_ENDED_PROP_KEY = 'classMeetEndedMarkMap';
 
 var APPRECIATION_CERTIFICATE_AUDIT_SHEET_NAME = 'Appreciation_Certificate_Audit';
 
@@ -927,6 +991,8 @@ var ADS_HEADER_ = ['Request_ID', 'Requested_At', 'Requested_By', 'Requested_By_R
   'Status', 'Verification_Status', 'Sheet_Update_Status', 'Email_Status', 'Email_Recipients', 'Result_Message', 'Error', 'Completed_At', 'Zoho_Student_ID'];
 
 var ADS_MULTI_ACK_ = 'I understand this student will be enrolled in more than one Regular Academic Classroom.';
+
+var CLS_LIVE_BOX_CACHE_KEY_ = 'aps_cls_live_box_v1', CLS_LIVE_BOX_CACHE_SECONDS_ = 30;
 
 var CCT_SHEET_ = 'Class_Coverage_Tracking';
 
@@ -1210,9 +1276,11 @@ var MHG_KIND_LABEL_ = { NOT_GRADED: 'Not graded', DRAFT_NOT_RETURNED: 'Draft gra
 
 var MHG_TZ_ = 'America/New_York';
 
-var APC_KEYS_ = {};
+var APC_KEYS_ = {}; APC_KEYS_[LAST_LOGIN_PROP_KEY] = 'll'; APC_KEYS_[ONBOARDED_STUDENTS_PROP_KEY] = 'ob';
 
 var APC_DOMAIN_ = '@avvaiyarpadasalai.org';
+
+var APC_ISO_RE_ = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 var APC_LL_SLOTS_ = ['gc', 'gm', 'db'];
 
@@ -1225,6 +1293,8 @@ var UC_CACHE_KEY_ = 'aps_user_country_v1';
 var UC_MEMO_ = null;
 
 var APS_REQ_MEMO_ = null;
+
+var APS_RT_RECENT_KEY_ = 'aps_rt_recent_v1';
 
 function extractMeetCode_(input) {
   var s = String(input || '').trim();
@@ -7192,6 +7262,504 @@ function ctaBuildReport_(now, opts) {
   };
 }
 
+function getRealtimeStatusSnapshot(sessionToken) {
+  var session = requireValidSession_(sessionToken);
+  APS_REQ_MEMO_ = {}; // r121: request-scoped memo
+  try {
+  var liveStatus = null; // r64: class-card "Status" box (null on any error → the browser keeps what it shows)
+  try { liveStatus = apsClassLiveBoxesForViewer_(session); } catch (eLs) { console.warn('[LiveStatusBox] ' + (eLs && eLs.message)); }
+  // r121: only what this viewer can see (their classes / people) and only RECENT person activity (shared 20-s map) —
+  // was every person's full last-login / presence / activity map (~240 KB) on every poll, for every role.
+  var scope = null; try { scope = apsViewerScope_(session); } catch (eSc) { scope = { all: true }; }
+  var rec = apsRecentActivity_();
+  return {
+    liveStatus: liveStatus,
+    // All user-actioned operational status stores are intentionally returned
+    // together so every open dashboard can mirror changes made by ANY role.
+    // These are tiny Script Property maps; this endpoint does not call
+    // Classroom/Meet APIs or rebuild the full dashboard.
+    live: apsScopeById_(getLiveMap_(), scope),
+    teacherNotInClass: apsScopeById_(getTeacherNotInClassMap_(), scope),
+    needsTechSupport: apsScopeById_(getNeedsTechSupportMap_(), scope),
+    classStatusManual: apsScopeById_(getClassStatusOverrideMap_(), scope),
+    weeklyAvailability: apsScopeById_(rec.weeklyAvailability || {}, scope, true),
+    externalActivity: apsScopeByEmail_(rec.externalActivity, scope),
+    presence: apsScopeByEmail_(rec.presence, scope),
+    lastLogin: apsScopeByEmail_(rec.lastLogin, scope),
+    chatVersion: chatVersion_(), // r96: the browser reloads the chat only when this changes (no separate chat poll)
+    pollMs: liveStatus && Object.keys(liveStatus).length ? 45000 : APS_IDLE_POLL_MS_, // r96: 45 s while a class is in its live window, slower otherwise
+    serverTime: new Date().toISOString()
+  };
+  } finally { APS_REQ_MEMO_ = null; }
+}
+
+function applyRosterHiddenStaffFilter_(courses) {
+  if (getRosterHiddenStaffVisible_()) return; // toggle currently set to "Show" — nothing to filter
+  (courses || []).forEach(function (course) {
+    if (course.teachers && course.teachers.length) {
+      // a person named in the Course Description / Room (t.apsRoles) is always shown with their (VP)/(HM) tag
+      course.teachers = course.teachers.filter(function (t) { return (t.apsRoles && t.apsRoles.length) || classesAlwaysShowEmail_(t.email) || !isRosterHiddenStaffEmail_(t.email); });
+    }
+    if (course.students && course.students.length) {
+      course.students = course.students.filter(function (s) { return !isRosterHiddenStaffEmail_(s.email); });
+    }
+    course.noTeacher = course.teachers.length === 0;
+    course.noStudents = course.students.length === 0;
+    course.studentCount = course.students.length;
+  });
+}
+
+function applyLivePresence_(courses) {
+  var presenceMap = getPresenceMap_();
+  var now = Date.now();
+  courses.forEach(function (c) {
+    (c.teachers || []).concat(c.students || []).forEach(function (p) {
+      var key = normalizeEmail_(p.email);
+      var entry = key ? presenceMap[key] : null;
+      var heartbeatOnline = !!(entry && (now - new Date(entry.lastSeen).getTime()) <= PRESENCE_ONLINE_WINDOW_MINUTES * 60000);
+      p.online = heartbeatOnline || !!p.inMeet || !!p.classroomActivitySince;
+      p.onlineSince = heartbeatOnline ? entry.loginAt : (p.inMeet ? (p.meetSince || null) : (p.classroomActivitySince || null));
+    });
+  });
+  return courses;
+}
+
+function applyLastLogin_(courses) {
+  var lastLoginMap = getLastLoginMap_();
+  courses.forEach(function (c) {
+    (c.teachers || []).concat(c.students || []).forEach(function (p) {
+      var key = normalizeEmail_(p.email);
+      var entry = key ? normalizeLastLoginEntry_(lastLoginMap[key]) : {};
+      var summary = summarizeLastLogin_(entry);
+      p.apsId = extractAPSID_(p.email); // shown next to the name in the roster (Dashboard.html renderPeople) — 'NA' when not applicable, never guessed
+      p.lastLoginAt = summary.at;
+      p.lastLoginSource = summary.sources;
+      p.lastLoginDisplay = summary.display;
+      p.lastLoginBySource = { gc: entry.gc || null, gm: entry.gm || null, db: entry.db || null };
+    });
+  });
+  return courses;
+}
+
+function applyStudentOnboardedFlag_(courses) {
+  var map = apsBigJson_(ONBOARDED_STUDENTS_PROP_KEY);
+  var changed = false;
+  var nowIso = new Date().toISOString();
+
+  courses.forEach(function (c) {
+    (c.students || []).forEach(function (s) {
+      var key = normalizeEmail_(s.email);
+      if (key && !map[key] && s.online) {
+        map[key] = nowIso;
+        changed = true;
+      }
+      s.onboarded = !!(key && map[key]);
+      s.onboardedAt = (key && map[key]) || null;
+    });
+  });
+
+  if (changed) apsBigSetSafe_(ONBOARDED_STUDENTS_PROP_KEY, JSON.stringify(map), 'Onboarded students');
+  return courses;
+}
+
+function applyClassStatus_(courses) {
+  var overrideMap = getClassStatusOverrideMap_();
+  var props = PropertiesService.getScriptProperties();
+  var startedMarkRaw = props.getProperty(CLASS_STARTED_MARK_PROP_KEY);
+  var startedMark = startedMarkRaw ? JSON.parse(startedMarkRaw) : {};
+  var startedMarkChanged = false;
+  var now = new Date();
+  // r35 — live Google Meet status for today's classes (see LIVE CLASS MEET STATUS). Never throws.
+  var liveCache = null, liveSnapshot = { at: 0, byCourse: {} }, endedMark = {};
+  try {
+    liveCache = CacheService.getScriptCache();
+    liveSnapshot = classMeetLiveSnapshot_(courses, now, false);
+    endedMark = JSON.parse(props.getProperty(CLASS_MEET_ENDED_PROP_KEY) || '{}');
+  } catch (eLive) { console.warn('[Class Meet Live] ' + (eLive && eLive.message)); liveCache = null; }
+
+  courses.forEach(function (c) {
+    var schedule = parseCourseSchedule_(c.name);
+    c.classSchedule = schedule ? { dayOfWeek: schedule.dayOfWeek, start: schedule.start, end: schedule.end, timezoneRaw: schedule.timezoneRaw } : null;
+
+    var override = overrideMap[c.id];
+    if (override && (override.status === 'cancelled' || override.status === 'rescheduled')) {
+      c.classStatus = override.status;
+      c.classStatusManual = true;
+      c.classStatusUpdatedAt = override.updatedAt || null;
+      c.classStatusUpdatedBy = override.updatedBy || null;
+      c.scheduledStartDisplay = '';
+      c.classStatusLabel = CLASS_STATUS_LABELS[override.status];
+      c.classStatusColorCategory = CLASS_STATUS_COLOR_CATEGORY[override.status];
+      return;
+    }
+
+    var anyoneInMeet = (c.teachers || []).some(function (t) { return t.inMeet; }) ||
+      (c.students || []).some(function (s) { return s.inMeet; });
+    var result = computeAutomaticClassStatus_(schedule, now, anyoneInMeet);
+    c.classMeetDetail = null;
+    if (liveCache && result.scheduledStartIso) {
+      // Today's occurrence: the class-specific live Meet signals replace the old per-email,
+      // sync-time "anyone was in some Meet" guess (which is what kept running classes on Scheduled).
+      var live = null;
+      try { live = classMeetApplyLive_(c, schedule, now, liveSnapshot, liveCache, startedMark, endedMark); } catch (eOne) { live = null; }
+      if (startedMark.__changed) { delete startedMark.__changed; startedMarkChanged = true; }
+      if (live) {
+        c.classStatus = live.code;
+        c.classStatusManual = false;
+        c.classStatusUpdatedAt = null;
+        c.classStatusUpdatedBy = null;
+        c.scheduledStartDisplay = formatLastLoginTimestamp_(result.scheduledStartIso);
+        c.classStatusLabel = CLASS_STATUS_LABELS[live.code];
+        c.classStatusColorCategory = CLASS_STATUS_COLOR_CATEGORY[live.code];
+        c.classMeetDetail = live.detail;
+        return;
+      }
+    }
+
+    if (result.scheduledStartIso) {
+      if (result.code === 'started') {
+        if (startedMark[c.id] !== result.scheduledStartIso) {
+          startedMark[c.id] = result.scheduledStartIso;
+          startedMarkChanged = true;
+        }
+      } else if (result.code === 'yet_to_start' && startedMark[c.id] === result.scheduledStartIso) {
+        result.code = 'started'; // already seen "started" this occurrence — don't flicker back on a brief Meet disconnect
+      }
+    } else if (startedMark[c.id]) {
+      // No active occurrence today (or unparseable) — nothing to remember anymore.
+      delete startedMark[c.id];
+      startedMarkChanged = true;
+    }
+
+    c.classStatus = result.code;
+    c.classStatusManual = false;
+    c.classStatusUpdatedAt = null;
+    c.classStatusUpdatedBy = null;
+    c.scheduledStartDisplay = result.scheduledStartIso ? formatLastLoginTimestamp_(result.scheduledStartIso) : '';
+    c.classStatusLabel = CLASS_STATUS_LABELS[result.code];
+    c.classStatusColorCategory = CLASS_STATUS_COLOR_CATEGORY[result.code];
+  });
+
+  if (startedMarkChanged) {
+    props.setProperty(CLASS_STARTED_MARK_PROP_KEY, JSON.stringify(startedMark));
+  }
+  if (endedMark.__changed) {
+    delete endedMark.__changed;
+    Object.keys(endedMark).forEach(function (id) { if (Date.now() - new Date(endedMark[id]).getTime() > 86400000) delete endedMark[id]; }); // keep only today's
+    try { props.setProperty(CLASS_MEET_ENDED_PROP_KEY, JSON.stringify(endedMark)); } catch (eEnd) { /* best effort */ }
+  }
+  return courses;
+}
+
+function getOnCallTeachers_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(ON_CALL_TEACHERS_PROP_KEY);
+  if (!raw) return [];
+  try {
+    var teachers = JSON.parse(raw);
+    return Array.isArray(teachers) ? teachers : [];
+  } catch (e) {
+    return []; // A malformed optional display cache must never block the dashboard.
+  }
+}
+
+function getRosterHiddenStaffVisible_() {
+  return apsReqMemo_('hiddenStaffVisible', function () { return PropertiesService.getScriptProperties().getProperty(ROSTER_HIDDEN_STAFF_VISIBLE_PROP_KEY) === 'true'; }); // r121
+}
+
+function classesAlwaysShowEmail_(email) { var e = normalizeEmail_(email); return !!e && !!classesAlwaysShowEmails_()[e]; }
+
+function getPresenceMap_() {
+  return apsBigJson_(PRESENCE_PROP_KEY);
+}
+
+function getLastLoginMap_() {
+  return apsBigJson_(LAST_LOGIN_PROP_KEY);
+}
+
+function normalizeLastLoginEntry_(entry) {
+  if (!entry) return {};
+  if (entry.ts && entry.source) { // legacy single-source shape
+    return entry.source === 'DB' ? { db: entry.ts } : {};
+  }
+  var out = {};
+  if (entry.gc) out.gc = entry.gc;
+  if (entry.gm) out.gm = entry.gm;
+  if (entry.db) out.db = entry.db;
+  return out;
+}
+
+function summarizeLastLogin_(entry) {
+  if (!entry) return { at: null, sources: null, display: '' };
+
+  var present = LAST_LOGIN_SOURCE_ORDER.filter(function (key) { return !!entry[key]; });
+  if (!present.length) return { at: null, sources: null, display: '' };
+
+  var latestIso = present.reduce(function (latest, key) {
+    return (!latest || new Date(entry[key]).getTime() > new Date(latest).getTime()) ? entry[key] : latest;
+  }, null);
+
+  var sourceLabel = present.map(function (key) { return LAST_LOGIN_SOURCE_LABELS[key]; }).join('/');
+  return {
+    at: latestIso,
+    sources: sourceLabel,
+    display: formatLastLoginTimestamp_(latestIso) + ' (' + sourceLabel + ')'
+  };
+}
+
+function apsBigJson_(key) { var raw = apsBigGetStored_(key); if (!raw) return {}; try { var o = JSON.parse(raw) || {}; return APC_KEYS_[key] ? apcDecodeObj_(o) : o; } catch (e) { return {}; } }
+
+function apsBigSetSafe_(key, value, label) {
+  try { apsBigSet_(key, value); return true; }
+  catch (e) { console.warn('[Storage] ' + (label || key) + ' not saved: ' + (e && e.message)); return false; }
+}
+
+function getClassStatusOverrideMap_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(CLASS_STATUS_PROP_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function computeAutomaticClassStatus_(schedule, now, anyoneInMeet) {
+  if (!schedule || !schedule.start || !schedule.end) {
+    return { code: 'scheduled', scheduledStartIso: null };
+  }
+  if (easternDayOfWeek_(now) !== schedule.dayOfWeek) {
+    return { code: 'scheduled', scheduledStartIso: null };
+  }
+
+  var todayStr = Utilities.formatDate(now, LAST_LOGIN_TIMEZONE, 'yyyy-MM-dd');
+  var startDate = easternWallTimeToDate_(todayStr, schedule.start.hour, schedule.start.minute);
+  var completionDate = new Date(startDate.getTime() + CLASS_STATUS_COMPLETION_MINUTES * 60000);
+
+  if (now.getTime() < startDate.getTime()) {
+    return { code: 'scheduled', scheduledStartIso: startDate.toISOString() };
+  }
+  if (now.getTime() >= completionDate.getTime()) {
+    return { code: 'completed', scheduledStartIso: startDate.toISOString() };
+  }
+  return { code: anyoneInMeet ? 'started' : 'yet_to_start', scheduledStartIso: startDate.toISOString() };
+}
+
+function formatLastLoginTimestamp_(isoUtc) {
+  if (!isoUtc) return '';
+  var d = new Date(isoUtc);
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, LAST_LOGIN_TIMEZONE, 'MM/dd HH:mm');
+}
+
+function classesAlwaysShowEmails_() {
+  if (CLASSES_ALWAYS_SHOW_CACHE_) return CLASSES_ALWAYS_SHOW_CACHE_;
+  var raw = PropertiesService.getScriptProperties().getProperty('APS_CLASSES_ALWAYS_SHOW_EMAILS');
+  var list = ['vsugadev@avvaiyarpadasalai.org'];
+  if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+    try { list = JSON.parse(raw); if (!Array.isArray(list)) throw new Error('not an array'); } catch (e) { list = String(raw).split(/[;,\s]+/); }
+  }
+  var out = {};
+  list.forEach(function (e) { e = normalizeEmail_(e); if (e) out[e] = true; });
+  CLASSES_ALWAYS_SHOW_CACHE_ = out;
+  return out;
+}
+
+function apsBigSet_(key, value) {
+  if (APC_KEYS_[key]) value = apcEncodeRaw_(key, value); // r119: compact; any problem → the original text is stored unchanged
+  apsBigStore_().setProperty(key, value);
+  if (APS_BIG_MOVED_[key]) return;
+  try { var sp = PropertiesService.getScriptProperties(); if (sp.getProperty(key) !== null) sp.deleteProperty(key); } catch (e) { /* the old copy is removed next time */ }
+  APS_BIG_MOVED_[key] = true;
+}
+
+function apcEncodeRaw_(key, value) {
+  try {
+    var kind = APC_KEYS_[key], o = JSON.parse(value);
+    if (!o || typeof o !== 'object' || Array.isArray(o) || apcIsC_(o)) return value;
+    var keys = Object.keys(o);
+    if (keys.some(function (k) { return k.charAt(k.length - 1) === '@' || k === '_c'; })) return value;
+    var e = {};
+    keys.forEach(function (k) {
+      var ck = k.length > APC_DOMAIN_.length && k.slice(-APC_DOMAIN_.length) === APC_DOMAIN_ ? k.slice(0, -APC_DOMAIN_.length + 1) : k;
+      if (Object.prototype.hasOwnProperty.call(e, ck)) throw new Error('key clash');
+      e[ck] = apcValIn_(kind, o[k]);
+    });
+    var c = { _c: 2, k: kind, e: e };
+    if (JSON.stringify(apcDecodeObj_(c)) !== JSON.stringify(o)) return value; // must round-trip exactly
+    var out = JSON.stringify(c);
+    return out.length < value.length ? out : value;
+  } catch (err) { console.warn('[Storage] compact skipped for ' + key + ': ' + saSafeErr_(err)); return value; }
+}
+
+function apcValIn_(kind, v) { // original → compact (or [original])
+  var c = null;
+  if (kind === 'ob') c = apcT_(v);
+  else if (v && typeof v === 'object' && !Array.isArray(v)) {
+    var parts = APC_LL_SLOTS_.map(function (s) { return v[s] ? apcT_(v[s]) : ''; });
+    if (parts.indexOf(null) === -1) c = parts.join(',').replace(/,+$/, '');
+  }
+  if (c !== null && JSON.stringify(apcVal_(kind, c)) === JSON.stringify(v)) return c;
+  return [v];
+}
+
+function apcT_(iso) { if (typeof iso !== 'string' || !APC_ISO_RE_.test(iso)) return null; var ms = new Date(iso).getTime(); return isNaN(ms) || new Date(ms).toISOString() !== iso ? null : ms.toString(36); }
+
+function apsClassLiveBoxesForViewer_(session) {
+  var cache = CacheService.getScriptCache(), all = null;
+  try { all = JSON.parse(cache.get(CLS_LIVE_BOX_CACHE_KEY_) || 'null'); } catch (e) { all = null; }
+  // r96 (simultaneous executions): when the 30-s map expires, ONE request rebuilds it; the others reuse the last map
+  // (kept 10 min) instead of all re-reading the course list and recomputing at the same moment.
+  if (!all) {
+    var building = null; try { building = cache.get(CLS_LIVE_BOX_CACHE_KEY_ + '_b'); } catch (eB) { building = null; }
+    if (building) { try { all = JSON.parse(cache.get(CLS_LIVE_BOX_CACHE_KEY_ + '_s') || 'null'); } catch (eS) { all = null; } }
+    if (!all) { try { cache.put(CLS_LIVE_BOX_CACHE_KEY_ + '_b', '1', 20); } catch (eM) { /* best effort */ } }
+  }
+  if (!all) {
+    var courses = readAllCoursesFromCache_();
+    applyRosterHiddenStaffFilter_(courses);
+    applyLivePresence_(courses);
+    applyClassStatus_(courses);
+    all = {};
+    courses.forEach(function (c) { var b = apsClassLiveBox_(c); if (b) all[String(c.id)] = b; });
+    try { var allJson = JSON.stringify(all); cache.put(CLS_LIVE_BOX_CACHE_KEY_, allJson, CLS_LIVE_BOX_CACHE_SECONDS_); cache.put(CLS_LIVE_BOX_CACHE_KEY_ + '_s', allJson, 600); cache.remove(CLS_LIVE_BOX_CACHE_KEY_ + '_b'); } catch (eP) { /* cache full / unavailable: compute next time */ }
+  }
+  // r68 performance (every open tab calls this every 45 s): Admin / Super Admin / HM / BOD see every class
+  // (getViewerContext_ returns the full list for them), so they get the whole map without re-reading and parsing the
+  // ~400 KB course list. Teachers / students: the list of class ids they may see is cached per person under the
+  // course-memo generation — every write to the Courses sheet invalidates the memo, a new generation follows, so a
+  // roster change (re-map, removal, sync) is picked up on the very next poll. Same result as before, far less work.
+  var role = session.role;
+  if (role === SUPERADMIN_ROLE || role === 'admin' || role === 'headmaster' || role === VCFO_AMCHSTS_BOD_ROLE) {
+    var everyone = {};
+    Object.keys(all).forEach(function (id) { everyone[id] = all[id]; });
+    return everyone;
+  }
+  var ids = apsViewerScope_(session).ids || []; // r121: shared with the realtime poll (same per-person cache as r68)
+  var out = {};
+  ids.forEach(function (id) { if (all[id]) out[id] = all[id]; });
+  return out;
+}
+
+function apsViewerScope_(session) {
+  return apsReqMemo_('scope', function () {
+    var role = session.role;
+    if (apsAllViewRole_(role)) return { all: true };
+    var cache = CacheService.getScriptCache(), gen = apsCoursesMemoGen_();
+    var key = gen ? 'aps_vsc1_' + gen + '_' + String(role) + '_' + normalizeEmail_(session.email) : '', sc = null;
+    if (key) { try { sc = JSON.parse(cache.get(key) || 'null'); } catch (e) { sc = null; } }
+    if (!sc || !Array.isArray(sc.ids) || !Array.isArray(sc.em)) {
+      var cs = getViewerContext_(readAllCoursesFromCache_(), { email: session.email, role: role }).courses || [], em = {};
+      cs.forEach(function (c) { (c.teachers || []).concat(c.students || []).forEach(function (p) { var e = normalizeEmail_(p && p.email); if (e) em[e] = 1; }); });
+      var me = normalizeEmail_(session.email); if (me) em[me] = 1;
+      sc = { ids: cs.map(function (c) { return String(c.id); }), em: Object.keys(em) };
+      if (key && key.length < 240) { try { var txt = JSON.stringify(sc); if (txt.length < 90000) cache.put(key, txt, COURSES_MEMO_SECONDS_); } catch (eP) { /* optimisation only */ } }
+    }
+    var set = {}, ids = {}; sc.em.forEach(function (e) { set[e] = 1; }); sc.ids.forEach(function (id) { ids[id] = 1; });
+    return { all: false, ids: sc.ids, idSet: ids, em: set };
+  });
+}
+
+function apsRecentActivity_() {
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); var hit = cache.get(APS_RT_RECENT_KEY_); if (hit) return JSON.parse(hit); } catch (e) { cache = null; }
+  var now = Date.now(), t = function (x) { var v = x ? new Date(x).getTime() : NaN; return isNaN(v) ? 0 : v; };
+  var out = { presence: {}, externalActivity: {}, lastLogin: {}, weeklyAvailability: {} };
+  var av = {}; try { av = getRealtimeAvailabilityMap_(); } catch (eA) { av = {}; }
+  Object.keys(av).forEach(function (k) { if (t(av[k] && av[k].updatedAt) >= now - 900000) out.weeklyAvailability[k] = av[k]; }); // answers changed in the last 15 min
+  var pr = getPresenceMap_(); Object.keys(pr).forEach(function (e) { if (pr[e] && t(pr[e].lastSeen) >= now - 600000) out.presence[e] = pr[e]; });
+  var ex = {}; try { ex = getExternalActivityRealtimeMap_(); } catch (eX) { ex = {}; }
+  Object.keys(ex).forEach(function (e) { var v = ex[e] || {}; if (t(v.gm) >= now - 185 * 60000 || t(v.gc) >= now - 25 * 60000) out.externalActivity[e] = v; });
+  var ll = getLastLoginMap_(); Object.keys(ll).forEach(function (e) { var n = normalizeLastLoginEntry_(ll[e]); if (Math.max(t(n.gc), t(n.gm), t(n.db)) >= now - 900000) out.lastLogin[e] = n; });
+  try { var txt = JSON.stringify(out); if (cache && Utilities.newBlob(txt).getBytes().length < 95000) cache.put(APS_RT_RECENT_KEY_, txt, 20); } catch (eP) { /* computed next time */ }
+  return out;
+}
+
+function apsScopeById_(map, scope, byWeekKey) {
+  if (!map || !scope || scope.all) return map || {};
+  var out = {};
+  Object.keys(map).forEach(function (k) { var id = byWeekKey ? String(k).split('|').pop() : String(k); if (scope.idSet[id]) out[k] = map[k]; });
+  return out;
+}
+
+function getLiveMap_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(LIVE_PROP_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function getTeacherNotInClassMap_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(TEACHER_NOT_IN_CLASS_PROP_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function getNeedsTechSupportMap_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(NEEDS_TECH_SUPPORT_PROP_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function apsScopeByEmail_(map, scope) {
+  if (!map || !scope || scope.all) return map || {};
+  var out = {}; Object.keys(map).forEach(function (e) { if (scope.em[e]) out[e] = map[e]; }); return out;
+}
+
+function apsClassLiveBox_(c) {
+  if (!c || (c.classStatus !== 'started' && c.classStatus !== 'yet_to_start')) return null;
+  var teacherIn = (c.teachers || []).some(function (t) { return t.inMeet; });
+  var inMeet = (c.students || []).filter(function (x) { return x.inMeet; }).length, total = (c.students || []).length;
+  var detail = c.classMeetDetail && c.classMeetDetail.text ? String(c.classMeetDetail.text) : '';
+  var unknown = !!(c.classMeetDetail && c.classMeetDetail.statusUnknown) && !teacherIn && inMeet === 0; // r65: grey, never a false red
+  return {
+    live: c.classStatus === 'started', tone: unknown ? 'unknown' : teacherIn ? 'ok' : 'alert', teacherInMeet: teacherIn, notStarted: !unknown && !teacherIn && inMeet === 0, unknown: unknown,
+    line1: unknown ? '👩‍🏫 Teacher: not known · 👥 Students: not known (' + total + ' on roster)' : (teacherIn ? '👩‍🏫 Teacher in Meet' : '👩‍🏫 Teacher not in Meet') + ' · 👥 ' + inMeet + ' of ' + total + ' students',
+    line2: detail ? (c.classStatusLabel ? c.classStatusLabel + ' — ' : '') + detail : String(c.classStatusLabel || '')
+  };
+}
+
+function apsAllViewRole_(r) { return r === SUPERADMIN_ROLE || r === 'admin' || r === 'headmaster' || r === VCFO_AMCHSTS_BOD_ROLE; }
+
+function apsCoursesMemoGen_() {
+  try { var h = CacheService.getScriptCache().get(COURSES_MEMO_KEY_); return h ? String(JSON.parse(h).gen || '') : ''; } catch (e) { return ''; }
+}
+
+function getViewerContext_(courses, viewer) {
+  if (viewer.role === SUPERADMIN_ROLE || viewer.role === 'admin' || viewer.role === 'headmaster' || viewer.role === VCFO_AMCHSTS_BOD_ROLE) {
+    return { email: viewer.email, role: viewer.role, courses: courses };
+  }
+  if (viewer.role === 'teacher') {
+    var asTeacherOrStudent = courses.filter(function (c) {
+      return userHasCourseAccess_(viewer.email, c) || courseHasStudentEmail_(c, viewer.email);
+    });
+    asTeacherOrStudent.forEach(function (c) { c.viewerAccess = classAccessFor_(c, viewer.email); }); // "VP · Class Support" etc. on the card
+    return { email: viewer.email, role: 'teacher', courses: asTeacherOrStudent };
+  }
+  if (viewer.role === 'student') {
+    var asStudent = courses.filter(function (c) { return courseHasStudentEmail_(c, viewer.email); });
+    return { email: viewer.email, role: 'student', courses: asStudent };
+  }
+  if (viewer.role === AUTHORIZED_ROLE) {
+    return { email: viewer.email, role: AUTHORIZED_ROLE, courses: [] };
+  }
+
+  return { email: viewer.email, role: 'none', courses: [] };
+}
+
+function getRealtimeAvailabilityMap_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(TEACHER_AVAILABILITY_REALTIME_PROP_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function getExternalActivityRealtimeMap_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(EXTERNAL_ACTIVITY_REALTIME_PROP_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function classAccessFor_(course, email) {
+  var e = normalizeEmail_(email);
+  var s = (course.classSupport || []).filter(function (x) { return x.email === e && classSupportGrantsAccess_(x); })[0];
+  if (s) {
+    var support = s.roles.indexOf('VP') > -1 || s.roles.indexOf('HM') > -1;
+    return { roles: s.roles.slice(), apsRole: classRolesPrimary_(s.roles), label: classRolesLabel_(s.roles), permission: support ? 'CLASS_SUPPORT' : 'CLASS_TEACHER', source: s.sources.join('+') };
+  }
+  if (courseHasTeacherEmail_(course, e)) return { roles: ['TEACHER'], apsRole: 'TEACHER', label: 'Teacher', permission: 'CLASS_TEACHER', source: 'CLASSROOM' };
+  return null;
+}
+
+function classRolesLabel_(roles) { return (roles && roles.length ? roles : ['TEACHER']).map(function (r) { return CLASS_ROLE_LABEL_[r] || r; }).join(' + '); }
+
 function applyUserCountry_(courses) {
   var map = apsCountryOn_() ? getUserCountryMap_() : {}; // r119: switched off — every flag blank, the map is not read
   courses.forEach(function (c) {
@@ -7256,7 +7824,7 @@ function ucPref_(email) {
 function apsCountryOn_() { return apsReqMemo_('countryOn', function () { return String(rosterProp_('APS_COUNTRY_FEATURE', 'on')).trim().toLowerCase() !== 'off'; }); }
 
   APS_REQ_MEMO_ = {};
-  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, apcIso_, acItem_, apcKeyOut_, apcVal_, rosterSheet_, acOverridesRaw_, scNorm_, scCodeOf_, scDate_, scTime_, scSafeUrl_, scParseOptions_, apsBigStore_, apcIsC_, apcDecodeObj_, srmFmt_, amDefaults_, amDayStart_, amDayEnd_, amOvRows_, rosterLoadTable_, rosterGet_, canViewAllDashboardFilters_, examQpStudentTeacherAccessEnabled_, rosterEnabled_, classRolesPrimary_, acOverrides_, acSwitchable_, acCell_, acProtected_, isNilai4To8Grade_, parseConfiguredClockTime_, cctStatus_, tccDateLabel_, tccZoned_, tccTzAbbrev_, tccTimeText_, tccApsIdNumber_, tccAnnouncementTitle_, getDashboardEnvironment_, examQpGenKey_, examQpComputeWindow_, examQpHmText_, examQpDayOf_, examQpHm_, scSheet_, scParseRow_, isPermissionDeniedError_, apsBigGetStored_, apcDecodeRaw_, getGoogleReviewEmailFooter, saSafeErr_, ttmRemovalReached_, zhProp_, mhgDefaults_, mhgEmails_, lvIsDate_, taMinutes_, taExpectedFor_, taBand_, taHighlights_, examLessonNames_, taMdY_, getOrCreateGradeTimeChangeSheet_, gtrRowToObject_, lvRoleLabel_, teacherDisplayName_, adsSchedule_, lvFmt_, ttmFmtTs_, amAccessFlag_, amSanitize_, amWindow_, amOverrides_, rosterDataset_, gradesForCourses_, amCounts_, amClassify_, amTypeOf_, amDueLabel_, amStatus_, amTsMs_, amAdd_, adsApsId_, amRates_, amPct_, amEscalate_, resolveViewerBadgeName_, canViewMonitoringFilters_, canViewMonitoringTotals_, examinationAccessForRole_, rosterAccessForRole_, apsRoleFor_, acEffectiveForRole_, getAllowedTimingsForGrade_, scheduleMatchesTimingOption_, timingOptionLabel_, cctAvailability_, cctPublicRecord_, parseAPSClassroomName, tccMinutes_, tkClassChain_, tccDateParts_, tccSession_, tccPublicRecord_, apsMailMode_, tccEmailHtml_, tccIsLive_, tccMeetFor_, tccDestContext_, tccDecorateDest_, tccDestRank_, tccMarkRecommended_, tccRecipients_, tccClassMax_, tccAnnouncementText_, tccSubject_, examQpConfig_, examQpSpreadsheet_, examQpTs_, examQpRecordCacheKey_, examQpAutoState_, examQpWindowOf_, examQpScheduleModeOf_, examQpExamStatus_, examQpLongLabel_, examQpTimeLabel_, examQpMissingFields_, examQpTeacherCopyTeachers_, examQpTeacherCopyLeadOk_, getOrCreateReferenceLetterSheet_, rlRowToObject_, srmPublic_, adsRows_, adsPublic_, slDays_, scRecords_, openSpreadsheetByIdWithRetry_, scSpreadsheetId_, scEnrSheet_, scText_, scState_, scLabelOf_, scRangeLabel_, scTimeMinutes_, getGoogleReviewUrl, apsBigGet_, grMonth_, taEmailHistory_, htmlEscape_, taMonthLabelEn_, apsEmailShell_, taSafeErr_, taFirstName_, taMonthLabelTa_, taSign_, taPick_, classesPrimaryOnlyPrefix_, ttmTcsList_, attNameFromEmail_, ttmDisplayStatus_, tkParticipantsFor_, tkSheet_, tkCleanEmails_, classPrimaryNameFromEmail_, zhSheetId_, zhJobRunning_, zhJsonProp_, tkCourseById_, zhNorm_, zhGradeLabel_, zhEmail_, mhgSanitize_, mhgToday_, ccwExcludeRe_, mhgSafeLink_, mhgCode_, mhgDays_, mhgMdY_, taInt_, taToday_, taDow_, taTeacherLeaveIndex_, isAPSSchoolHoliday, taScoreOccurrence_, taDateMs_, gradesCategory_, taScoreTeacher_, taTs_, getTargetSpreadsheetId_, taViewer_, taReadTable_, taRowToTeacher_, taWeekBounds_, taWeekLabel_, acRequireAdmin_, readAllGtrRequests_, appendEstLabel_, getOrCreateAssignmentAuditSheet_, lvViewer_, lvRows_, lvAddDays_, lvMaxPastDays_, lvMaxSpanDays_, lvClasses_, lvClassLine_, lvPublic_, canSendTeacherAppreciation_, appreciationTeacherCourses_, amViewer_, amConfig_, amBuild_, amSummary_, amTeachers_, rosterAcademicYear_, rosterLabel_, gradesLastSync_, amHistoryFor_, buildAuthenticatedUserPayload_, requireSuperAdminViewer_, parseClassroomTitle_, isTimingChangeWindowOpen_, deriveApsId_, findTimingChangeCandidates_, getAllKnownGrades_, normalizeGradeName_, hasActiveGtrRequest_, isInEmailList_, cctViewer_, cctWeeks_, cctReadRecords_, cctAuditCounts_, cctRowFor_, getOrCreateMeetLinkMapSheet_, tccViewer_, tccCanUseOriginal_, tccSchedule_, tccPrimary_, tccUpcomingDates_, tccHistory_, attMailConfigured_, tccPublicPlan_, tccPlan_, getOrCreateUserRoleSheet_, examQpViewer_, examQpSheet_, examQpObjectFromRow_, examQpReadRecords_, examQpNormDownloadKey_, examQpReadEvents_, examQpLastSentMap_, examQpAutoStatusMap_, examQpClientRecord_, examQpStaffPaperBlock_, examQpTeacherCopyAccess_, examQpTeacherCopyBlock_, examQpBool_, examQpLabel_, examQpParseTs_, examQpSuspicious_, examQpRequireManage_, examQpFindRecord_, examRequireAccess_, getOrCreateExaminationAuditSheet_, findGradeChangeCandidates_, readAllReferenceLetterRequests_, srmViewer_, srmAudit_, adsAudit_, courseNameMatches_, srmRows_, srmClassTeacher_, slAdmin_, slPublic_, slLists_, slProfile_, scRequireAdmin_, scLoad_, scEnrollments_, scToday_, scSettings_, scAudienceAllows_, scPublic_, scSort_, scMyPrograms_, scFmtDate_, scTo24_, scClassroomName_, scSheetName_, grPromptState_, taStoredWeek_, taAdminReport_, taEmailsOn_, taMonthly_, taMonthOf_, taConfig_, taMonthlyEmail_, taWeeklyEmail_, taRound_, ttmViewer_, ttmTeachers_, ttmPublic_, ttmRemovalHour_, ttmHourLabel_, ttmClassInfo_, tkViewer_, tkLoad_, tkRead_, tkReadOnly_, tkConfig_, tkIsAdmin_, tkIsStaffRole_, tkDeptName_, tkMailMode_, tkMailFrom_, apsRequireCountryAdmin_, zhRequireAdmin_, zhSheet_, zhBook_, zhJobPublic_, zhJobGet_, tkAccess_, tkPublicRow_, zhApsStudents_, mhgConfig_, mhgCollect_, mhgEmail_, mhgCsv_, taClone_, taValidateConfig_, taCompletedWeek_, taEvaluate_, personDisplayNameServer_, tkStudentScope_, tkNameFor_, exportTeacherAppreciation, exportUserCountry, getAccessControlHistory, getAdminAssignmentAuditLog, getAdminClassroomAssignments, getApplyLeaveData, getAppreciationLetterAudit, getAssignmentHealthCard, getAssignmentMonitoring, getAssignmentMonitoringClass, getAssignmentMonitoringHistory, getAuthenticatedAPSUser, getAuthorizedEmailsForGroupSync, getCacheSheetUrl, getClassChangeContext, getClassChangeRequestsForApprover, getClassCoverageHistory, getClassCoverageTracking, getCourseMeetLinkMappings, getCourseNameSuffix, getCoverageBootstrap, getCoveragePlan, getDashboardRolePermissions, getDashboardUserRoles, getExamQuestionPaperAuditLog, getExamQuestionPaperMonitoring, getExamQuestionPaperPublishPreview, getExaminationHistory, getGradeChangeApproverInfo, getGradeChangeTimingOptions, getKnowledgeBaseVideos, getLastSyncError, getLastSyncInfo, getMyClassChangeRequests, getMyReferenceLetterRequests, getReferenceLetterAccessInfo, getReferenceLetterRequestsForApprover, getRemovalContext, getSchoolLeaveAdminData, getSchoolLeaveHistory, getShowContactPhone, getSpecialClassEnrollments, getSpecialClasses, getSpecialClassesAdmin, getStudentLoginNoticeStatus, getTeacherAppreciationAdminReport, getTeacherAppreciationEmailPreview, getTeacherAppreciationHistory, getTempTeacherData, getTicket, getTicketBootstrap, getTicketReports, getTicketSettings, getUserCountryAdmin, getZohoSyncHistory, getZohoSyncJob, listTickets, loadZohoSyncStudents, previewMissingGrading, previewTeacherAppreciation, searchTamilThadamStudents, searchTicketStudents, getAttendanceCourseAwkMap, defaultDashboardRolePermissions_, getEffectiveClassMinutes, attAttendedPct_, attScoreForPct_, attStatusForScore_, readDashboardRolePermissionsRaw_, attApplyClassDurationRule_, getConfigString_, readDashboardRolePermissions_, attColumnLetter_, attRowToRecord_, attReadSheetRecords_, attWeekIdForDateStr_, attShiftDateStr_, getDashboardRolePermission_, attSummaryKey_, attStudentOverallKey_, attSummaryOverall_, attWeekSheetNameForDate_, attReadRecordsForSheets_, attEffectiveScore_, ensureSheetHeader_, getAttendanceWeek1Start_, attListWeekSheets_, attWeekIdForNumber_, classSupportElevated_, courseHasStudentEmail_, requireDashboardMutationPermission_, readAttendanceSummaryMap_, getAPSIdFromEmail, attReadRecordsForFilters_, attOverallFor_, attCompareRecords_, attCountedMinutes_, attWeekNumberForWeekId_, formatAwkSheetName_, getOrCreateAttendanceAuditLogSheet_, attCellToText_, getAttendanceRecordsForViewer, getOnCallTeacherAttendance, getAttendanceWeekOptions, getAttendanceAuditLog, getAttendanceSyncDiagnostics, getAttendanceLastSyncInfo, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, APC_DOMAIN_, APC_LL_SLOTS_, AC_CACHE_KEY_, AC_SHEET_, AC_HEADER_, AM_OV_SHEET_, AM_OV_HEADER_, AC_PROTECTED_, NILAI_4_TO_8_GRADE_NAMES, TCC_MONTHS_, APS_ENV_PROPERTY, SC_FIELDS_, GRADE_TIME_CHANGE_SHEET_NAME, GTR_FIELD_KEYS, AM_STAGES_, AM_NUM_LIMITS_, ROSTER_MEMO_, ROSTER_CONFIG, ROSTER_CLASSROOM_HEADER, ROSTER_TEACHER_HEADER, ROSTER_STUDENT_HEADER, GRADES_MEMO_, GRADES_CONFIG, GRADES_WORK_HEADER, GRADES_SUB_HEADER, CLASS_ROLE_RANK_, AC_CATALOG_, AVAILABILITY_ALTERNATIVE_LABELS, TCC_DAY_NAMES_, TCC_MAX_DAYS_AHEAD_, TCC_DAY_FULL_, CTA_AVAIL_ALT_LABELS_, EXAM_QP_AUTO_HEADER_, EXAM_QP_EXAM_STATUS, REFERENCE_LETTER_SHEET_NAME, REFERENCE_LETTER_DATE_TIME_COLUMNS_, REFERENCE_LETTER_FIELD_KEYS, ADS_SHEET_, ADS_HEADER_, SC_CACHE_KEY_, SC_SPREADSHEET_ID_DEFAULT_, SC_ENR_SHEET_, SC_STATES_, GR_URL_DEFAULT_, APC_KEYS_, TA_EMAIL_SHEET_, TA_EMAIL_HEADER_, DS_EN_MONTHS_, APS_SCHOOL_LOGO_URL, DS_TA_MONTHS_, CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_, TTM_TCS_SHEET_, ZOHO_SYNC_SPREADSHEET_ID_DEFAULT_, MHG_TZ_, CCW_EXCLUDE_DEFAULT_, GRADES_CATEGORY_PREFIXES_, APPRECIATION_MIN_WORDS, APPRECIATION_MAX_WORDS, GTR_STATUS, EXAMINATION_HELP_LINKS_, TA_TZ_, GTR_COLUMNS, APS_TIMEZONE_LABEL, ASSIGN_CLASSROOM_AUDIT_SHEET_NAME, LV_SHEET_, LV_HEADER_, LV_STATUS_, APPRECIATION_MSG_, AM_OFF_MSG_, AM_MEMO_, AM_CONFIG_PROP_, ROSTER_STATUS, AM_LOG_SHEET_, AM_LOG_HEADER_, ON_CALL_COORDINATOR_LABEL_, GTR_ACTIVE_STATUSES, CCT_WEEKS_BACK_, CCT_SHEET_, CCT_HEADER_, TCC_DAY_INDEX_, EXAM_QP_MEMO_, EXAM_QP_PAPER_HEADER, EXAM_QP_DOWNLOAD_HEADER, EXAM_QP_SEND_SHEET_, EXAM_QP_SEND_HEADER_, EXAM_QP_AUTO_REASON_, EXAM_QP_AUTO_, EXAM_QP_MESSAGES_, EXAM_QP_TCOPY_MSG_, EXAM_QP_TCOPY_, REFERENCE_LETTER_COLUMNS, SRM_SHEET_, SRM_HEADER_, SL_LISTS_DEFAULT_, SC_ENR_CACHE_KEY_, SC_ENR_HEADER_, SC_CACHE_SECONDS_, SC_SETTINGS_PROPS_, SC_STATE_RANK_, SC_MONTHS_, SC_SHEET_DEFAULT_, GR_MESSAGE_, GR_PROMPT_PROP_PREFIX_, TA_BAND_, TA_RUNS_HEADER_, TA_METRICS_, TA_METRIC_LABELS_, TA_EMAILS_PROP_, TA_DEFAULTS_, TA_CONFIG_SHEET_, TA_CONFIG_HEADER_, TA_HIGHLIGHT_TA_, TA_OPENINGS_TA_, TA_CLOSINGS_TA_, TTM_MSG_, TTM_OPEN_, TK_SHEETS_, TK_DEFAULT_RULES_, TK_EMAIL_RE_, ZH_JOB_PROP_, ZH_DAY_NAMES_, ZH_SOURCES_, MHG_PROP_, MHG_CATS_, MHG_KIND_LABEL_, TA_ITEM_PREFIX_, TA_CLASS_STATUS_, EXAMINATION_TOPICS, EXAMINATION_ASSIGNMENT_NAMES, EXAMINATION_CLASSWORK_TYPES, EXAMINATION_PRESETS, TA_SCORES_SHEET_, TA_SCORES_HEADER_, TA_BAND_LABEL_, TA_HIGHLIGHT_EN_, AC_AUDIT_SHEET_, AC_AUDIT_HEADER_, AC_ROLE_LABELS_, APS_CLASS_TIMINGS, APPRECIATION_CERTIFICATE_AUDIT_SHEET_NAME, AM_MAX_ITEMS_, AM_GRADE_STEPS_, AM_STATUS_LABEL_, TARGET_SPREADSHEET_ID, CACHE_SHEET_ID_KEY, GTR_MESSAGES, GRADE_CHANGE_APPROVER_EMAILS, CCT_AUDIT_SHEET_, CCT_AUDIT_HEADER_, CCT_STATUSES_, CCT_ACTION_MAX_, EXAM_QP_CONFIG, EXAM_QP_AUDIT_HEADER, EXAM_QP_DOWNLOAD_STATUS, EXAM_QP_STATUS, EXAM_QP_STUDENT_STATUS, EXAM_QP_APS_DOMAIN_, EXAMINATION_CONFIG, EXAMINATION_AUDIT_HEADER, EXAM_AUDIT_COL, FINAL_APPROVER_EMAIL, KNOWLEDGE_BASE_VIDEOS, LAST_SYNC_ERROR_KEY, LAST_SYNC_KEY, REFERENCE_LETTER_SOURCE, REFERENCE_LETTER_APPROVER_EMAILS, REFERENCE_LETTER_FINAL_APPROVER_EMAIL, SRM_MIN_WORDS_, ADS_MULTI_ACK_, SL_TYPES_, SL_EMAIL_SHEET_, SL_EMAIL_HEADER_, SHOW_CONTACT_PHONE, SC_UNAVAILABLE_MSG_, SC_ENR_STATUSES_, SC_PAY_STATUSES_, AC_ROLES_, AC_OFF_MSG_, SC_AUDIENCES_, SC_MODES_, STUDENT_NOTICE_EXPIRY, STUDENT_NOTICE_PROP_PREFIX, APS_ALLOWED_DOMAINS, TTM_MIN_WORDS_, TK_TYPE_ICON_, TK_STATUSES_, TK_TYPES_, TK_PRIORITIES_, TK_ACTIVE_STATUSES_, TK_CHAIN_TYPES_, TK_EVENTS_, ZH_LOG_SHEET_, ZH_LOG_HEADER_, ATTENDANCE_EFFECTIVE_CAP_FROM_MIN, ATTENDANCE_EFFECTIVE_CAP_MIN, ATTENDANCE_SCORE_TIERS_, ATTENDANCE_STATUS, ROLE_PERMISSION_CACHE_KEY, ROLE_PERMISSION_PROP_KEY, ROLE_PERMISSION_CACHE_SECONDS, ATTENDANCE_COL_, ATTENDANCE_HEADER_ROW, ATTENDANCE_SPREADSHEET_ID, ATTENDANCE_OVERRIDE_SCORES_, ATTENDANCE_WEEK1_START_DEFAULT_, ATTENDANCE_WEEK_SHEET_PATTERN_, ATTENDANCE_SUMMARY_SHEET_NAME, ATTENDANCE_SUMMARY_HEADER_ROW, ATTENDANCE_SHEET_PREFIX, ATTENDANCE_AUDIT_LOG_SHEET_NAME, ATTENDANCE_ROLE, ATTENDANCE_SOURCE, ATTENDANCE_AUDIT_LOG_HEADER_ROW, ATTENDANCE_SYNC_DIAGNOSTIC_KEY, ATTENDANCE_LAST_SYNC_SUMMARY_KEY, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
+  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, apcIso_, acItem_, apcKeyOut_, apcVal_, rosterSheet_, acOverridesRaw_, scNorm_, scCodeOf_, scDate_, scTime_, scSafeUrl_, scParseOptions_, apsBigStore_, apcIsC_, apcDecodeObj_, srmFmt_, amDefaults_, amDayStart_, amDayEnd_, amOvRows_, rosterLoadTable_, rosterGet_, canViewAllDashboardFilters_, examQpStudentTeacherAccessEnabled_, rosterEnabled_, classRolesPrimary_, acOverrides_, acSwitchable_, acCell_, acProtected_, isNilai4To8Grade_, parseConfiguredClockTime_, cctStatus_, tccDateLabel_, tccZoned_, tccTzAbbrev_, tccTimeText_, tccApsIdNumber_, tccAnnouncementTitle_, getDashboardEnvironment_, examQpGenKey_, examQpComputeWindow_, examQpHmText_, examQpDayOf_, examQpHm_, scSheet_, scParseRow_, isPermissionDeniedError_, apsBigGetStored_, apcDecodeRaw_, getGoogleReviewEmailFooter, saSafeErr_, ttmRemovalReached_, zhProp_, mhgDefaults_, mhgEmails_, lvIsDate_, taMinutes_, taExpectedFor_, taBand_, taHighlights_, examLessonNames_, taMdY_, getOrCreateGradeTimeChangeSheet_, gtrRowToObject_, lvRoleLabel_, teacherDisplayName_, adsSchedule_, lvFmt_, ttmFmtTs_, amAccessFlag_, amSanitize_, amWindow_, amOverrides_, rosterDataset_, gradesForCourses_, amCounts_, amClassify_, amTypeOf_, amDueLabel_, amStatus_, amTsMs_, amAdd_, adsApsId_, amRates_, amPct_, amEscalate_, resolveViewerBadgeName_, canViewMonitoringFilters_, canViewMonitoringTotals_, examinationAccessForRole_, rosterAccessForRole_, apsRoleFor_, acEffectiveForRole_, getAllowedTimingsForGrade_, scheduleMatchesTimingOption_, timingOptionLabel_, cctAvailability_, cctPublicRecord_, parseAPSClassroomName, tccMinutes_, tkClassChain_, tccDateParts_, tccSession_, tccPublicRecord_, apsMailMode_, tccEmailHtml_, tccIsLive_, tccMeetFor_, tccDestContext_, tccDecorateDest_, tccDestRank_, tccMarkRecommended_, tccRecipients_, tccClassMax_, tccAnnouncementText_, tccSubject_, examQpConfig_, examQpSpreadsheet_, examQpTs_, examQpRecordCacheKey_, examQpAutoState_, examQpWindowOf_, examQpScheduleModeOf_, examQpExamStatus_, examQpLongLabel_, examQpTimeLabel_, examQpMissingFields_, examQpTeacherCopyTeachers_, examQpTeacherCopyLeadOk_, getOrCreateReferenceLetterSheet_, rlRowToObject_, srmPublic_, adsRows_, adsPublic_, slDays_, scRecords_, openSpreadsheetByIdWithRetry_, scSpreadsheetId_, scEnrSheet_, scText_, scState_, scLabelOf_, scRangeLabel_, scTimeMinutes_, getGoogleReviewUrl, apsBigGet_, grMonth_, taEmailHistory_, htmlEscape_, taMonthLabelEn_, apsEmailShell_, taSafeErr_, taFirstName_, taMonthLabelTa_, taSign_, taPick_, classesPrimaryOnlyPrefix_, ttmTcsList_, attNameFromEmail_, ttmDisplayStatus_, tkParticipantsFor_, tkSheet_, tkCleanEmails_, classPrimaryNameFromEmail_, zhSheetId_, zhJobRunning_, zhJsonProp_, tkCourseById_, zhNorm_, zhGradeLabel_, zhEmail_, mhgSanitize_, mhgToday_, ccwExcludeRe_, mhgSafeLink_, mhgCode_, mhgDays_, mhgMdY_, taInt_, taToday_, taDow_, taTeacherLeaveIndex_, isAPSSchoolHoliday, taScoreOccurrence_, taDateMs_, gradesCategory_, taScoreTeacher_, taTs_, getTargetSpreadsheetId_, taViewer_, taReadTable_, taRowToTeacher_, taWeekBounds_, taWeekLabel_, acRequireAdmin_, readAllGtrRequests_, appendEstLabel_, getOrCreateAssignmentAuditSheet_, lvViewer_, lvRows_, lvAddDays_, lvMaxPastDays_, lvMaxSpanDays_, lvClasses_, lvClassLine_, lvPublic_, canSendTeacherAppreciation_, appreciationTeacherCourses_, amViewer_, amConfig_, amBuild_, amSummary_, amTeachers_, rosterAcademicYear_, rosterLabel_, gradesLastSync_, amHistoryFor_, buildAuthenticatedUserPayload_, requireSuperAdminViewer_, parseClassroomTitle_, isTimingChangeWindowOpen_, deriveApsId_, findTimingChangeCandidates_, getAllKnownGrades_, normalizeGradeName_, hasActiveGtrRequest_, isInEmailList_, cctViewer_, cctWeeks_, cctReadRecords_, cctAuditCounts_, cctRowFor_, getOrCreateMeetLinkMapSheet_, tccViewer_, tccCanUseOriginal_, tccSchedule_, tccPrimary_, tccUpcomingDates_, tccHistory_, attMailConfigured_, tccPublicPlan_, tccPlan_, getOrCreateUserRoleSheet_, examQpViewer_, examQpSheet_, examQpObjectFromRow_, examQpReadRecords_, examQpNormDownloadKey_, examQpReadEvents_, examQpLastSentMap_, examQpAutoStatusMap_, examQpClientRecord_, examQpStaffPaperBlock_, examQpTeacherCopyAccess_, examQpTeacherCopyBlock_, examQpBool_, examQpLabel_, examQpParseTs_, examQpSuspicious_, examQpRequireManage_, examQpFindRecord_, examRequireAccess_, getOrCreateExaminationAuditSheet_, findGradeChangeCandidates_, readAllReferenceLetterRequests_, srmViewer_, srmAudit_, adsAudit_, courseNameMatches_, srmRows_, srmClassTeacher_, slAdmin_, slPublic_, slLists_, slProfile_, scRequireAdmin_, scLoad_, scEnrollments_, scToday_, scSettings_, scAudienceAllows_, scPublic_, scSort_, scMyPrograms_, scFmtDate_, scTo24_, scClassroomName_, scSheetName_, grPromptState_, taStoredWeek_, taAdminReport_, taEmailsOn_, taMonthly_, taMonthOf_, taConfig_, taMonthlyEmail_, taWeeklyEmail_, taRound_, ttmViewer_, ttmTeachers_, ttmPublic_, ttmRemovalHour_, ttmHourLabel_, ttmClassInfo_, tkViewer_, tkLoad_, tkRead_, tkReadOnly_, tkConfig_, tkIsAdmin_, tkIsStaffRole_, tkDeptName_, tkMailMode_, tkMailFrom_, apsRequireCountryAdmin_, zhRequireAdmin_, zhSheet_, zhBook_, zhJobPublic_, zhJobGet_, tkAccess_, tkPublicRow_, zhApsStudents_, mhgConfig_, mhgCollect_, mhgEmail_, mhgCsv_, taClone_, taValidateConfig_, taCompletedWeek_, taEvaluate_, personDisplayNameServer_, tkStudentScope_, tkNameFor_, exportTeacherAppreciation, exportUserCountry, getAccessControlHistory, getAdminAssignmentAuditLog, getAdminClassroomAssignments, getApplyLeaveData, getAppreciationLetterAudit, getAssignmentHealthCard, getAssignmentMonitoring, getAssignmentMonitoringClass, getAssignmentMonitoringHistory, getAuthenticatedAPSUser, getAuthorizedEmailsForGroupSync, getCacheSheetUrl, getClassChangeContext, getClassChangeRequestsForApprover, getClassCoverageHistory, getClassCoverageTracking, getCourseMeetLinkMappings, getCourseNameSuffix, getCoverageBootstrap, getCoveragePlan, getDashboardRolePermissions, getDashboardUserRoles, getExamQuestionPaperAuditLog, getExamQuestionPaperMonitoring, getExamQuestionPaperPublishPreview, getExaminationHistory, getGradeChangeApproverInfo, getGradeChangeTimingOptions, getKnowledgeBaseVideos, getLastSyncError, getLastSyncInfo, getMyClassChangeRequests, getMyReferenceLetterRequests, getReferenceLetterAccessInfo, getReferenceLetterRequestsForApprover, getRemovalContext, getSchoolLeaveAdminData, getSchoolLeaveHistory, getShowContactPhone, getSpecialClassEnrollments, getSpecialClasses, getSpecialClassesAdmin, getStudentLoginNoticeStatus, getTeacherAppreciationAdminReport, getTeacherAppreciationEmailPreview, getTeacherAppreciationHistory, getTempTeacherData, getTicket, getTicketBootstrap, getTicketReports, getTicketSettings, getUserCountryAdmin, getZohoSyncHistory, getZohoSyncJob, listTickets, loadZohoSyncStudents, previewMissingGrading, previewTeacherAppreciation, searchTamilThadamStudents, searchTicketStudents, getAttendanceCourseAwkMap, defaultDashboardRolePermissions_, getEffectiveClassMinutes, attAttendedPct_, attScoreForPct_, attStatusForScore_, readDashboardRolePermissionsRaw_, attApplyClassDurationRule_, getConfigString_, readDashboardRolePermissions_, attColumnLetter_, attRowToRecord_, attReadSheetRecords_, attWeekIdForDateStr_, attShiftDateStr_, getDashboardRolePermission_, attSummaryKey_, attStudentOverallKey_, attSummaryOverall_, attWeekSheetNameForDate_, attReadRecordsForSheets_, attEffectiveScore_, ensureSheetHeader_, getAttendanceWeek1Start_, attListWeekSheets_, attWeekIdForNumber_, classSupportElevated_, courseHasStudentEmail_, requireDashboardMutationPermission_, readAttendanceSummaryMap_, getAPSIdFromEmail, attReadRecordsForFilters_, attOverallFor_, attCompareRecords_, attCountedMinutes_, attWeekNumberForWeekId_, formatAwkSheetName_, getOrCreateAttendanceAuditLogSheet_, attCellToText_, getAttendanceRecordsForViewer, getOnCallTeacherAttendance, getAttendanceWeekOptions, getAttendanceAuditLog, getAttendanceSyncDiagnostics, getAttendanceLastSyncInfo, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, getRealtimeStatusSnapshot, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_, applyClassStatus_, getOnCallTeachers_, getRosterHiddenStaffVisible_, classesAlwaysShowEmail_, getPresenceMap_, getLastLoginMap_, normalizeLastLoginEntry_, summarizeLastLogin_, apsBigJson_, apsBigSetSafe_, getClassStatusOverrideMap_, computeAutomaticClassStatus_, formatLastLoginTimestamp_, classesAlwaysShowEmails_, apsBigSet_, apcEncodeRaw_, apcValIn_, apcT_, apsClassLiveBoxesForViewer_, apsViewerScope_, apsRecentActivity_, apsScopeById_, getLiveMap_, getTeacherNotInClassMap_, getNeedsTechSupportMap_, apsScopeByEmail_, apsClassLiveBox_, apsAllViewRole_, apsCoursesMemoGen_, getViewerContext_, getRealtimeAvailabilityMap_, getExternalActivityRealtimeMap_, classAccessFor_, classRolesLabel_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, CLASS_ROLE_LABEL_, COURSES_MEMO_KEY_, TEACHER_AVAILABILITY_REALTIME_PROP_KEY, EXTERNAL_ACTIVITY_REALTIME_PROP_KEY, CLS_LIVE_BOX_CACHE_KEY_, COURSES_MEMO_SECONDS_, APS_RT_RECENT_KEY_, LIVE_PROP_KEY, TEACHER_NOT_IN_CLASS_PROP_KEY, NEEDS_TECH_SUPPORT_PROP_KEY, APS_IDLE_POLL_MS_, APC_ISO_RE_, CLASSES_ALWAYS_SHOW_CACHE_, APS_BIG_MOVED_, PRESENCE_PROP_KEY, LAST_LOGIN_PROP_KEY, LAST_LOGIN_SOURCE_ORDER, LAST_LOGIN_SOURCE_LABELS, CLASS_STATUS_PROP_KEY, CLASS_STATUS_COMPLETION_MINUTES, PRESENCE_ONLINE_WINDOW_MINUTES, ONBOARDED_STUDENTS_PROP_KEY, CLASS_STARTED_MARK_PROP_KEY, CLASS_MEET_ENDED_PROP_KEY, CLASS_STATUS_LABELS, CLASS_STATUS_COLOR_CATEGORY, ON_CALL_TEACHERS_PROP_KEY, ROSTER_HIDDEN_STAFF_VISIBLE_PROP_KEY, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, APC_DOMAIN_, APC_LL_SLOTS_, AC_CACHE_KEY_, AC_SHEET_, AC_HEADER_, AM_OV_SHEET_, AM_OV_HEADER_, AC_PROTECTED_, NILAI_4_TO_8_GRADE_NAMES, TCC_MONTHS_, APS_ENV_PROPERTY, SC_FIELDS_, GRADE_TIME_CHANGE_SHEET_NAME, GTR_FIELD_KEYS, AM_STAGES_, AM_NUM_LIMITS_, ROSTER_MEMO_, ROSTER_CONFIG, ROSTER_CLASSROOM_HEADER, ROSTER_TEACHER_HEADER, ROSTER_STUDENT_HEADER, GRADES_MEMO_, GRADES_CONFIG, GRADES_WORK_HEADER, GRADES_SUB_HEADER, CLASS_ROLE_RANK_, AC_CATALOG_, AVAILABILITY_ALTERNATIVE_LABELS, TCC_DAY_NAMES_, TCC_MAX_DAYS_AHEAD_, TCC_DAY_FULL_, CTA_AVAIL_ALT_LABELS_, EXAM_QP_AUTO_HEADER_, EXAM_QP_EXAM_STATUS, REFERENCE_LETTER_SHEET_NAME, REFERENCE_LETTER_DATE_TIME_COLUMNS_, REFERENCE_LETTER_FIELD_KEYS, ADS_SHEET_, ADS_HEADER_, SC_CACHE_KEY_, SC_SPREADSHEET_ID_DEFAULT_, SC_ENR_SHEET_, SC_STATES_, GR_URL_DEFAULT_, APC_KEYS_, TA_EMAIL_SHEET_, TA_EMAIL_HEADER_, DS_EN_MONTHS_, APS_SCHOOL_LOGO_URL, DS_TA_MONTHS_, CLASSES_PRIMARY_ONLY_PREFIXES_CACHE_, TTM_TCS_SHEET_, ZOHO_SYNC_SPREADSHEET_ID_DEFAULT_, MHG_TZ_, CCW_EXCLUDE_DEFAULT_, GRADES_CATEGORY_PREFIXES_, APPRECIATION_MIN_WORDS, APPRECIATION_MAX_WORDS, GTR_STATUS, EXAMINATION_HELP_LINKS_, TA_TZ_, GTR_COLUMNS, APS_TIMEZONE_LABEL, ASSIGN_CLASSROOM_AUDIT_SHEET_NAME, LV_SHEET_, LV_HEADER_, LV_STATUS_, APPRECIATION_MSG_, AM_OFF_MSG_, AM_MEMO_, AM_CONFIG_PROP_, ROSTER_STATUS, AM_LOG_SHEET_, AM_LOG_HEADER_, ON_CALL_COORDINATOR_LABEL_, GTR_ACTIVE_STATUSES, CCT_WEEKS_BACK_, CCT_SHEET_, CCT_HEADER_, TCC_DAY_INDEX_, EXAM_QP_MEMO_, EXAM_QP_PAPER_HEADER, EXAM_QP_DOWNLOAD_HEADER, EXAM_QP_SEND_SHEET_, EXAM_QP_SEND_HEADER_, EXAM_QP_AUTO_REASON_, EXAM_QP_AUTO_, EXAM_QP_MESSAGES_, EXAM_QP_TCOPY_MSG_, EXAM_QP_TCOPY_, REFERENCE_LETTER_COLUMNS, SRM_SHEET_, SRM_HEADER_, SL_LISTS_DEFAULT_, SC_ENR_CACHE_KEY_, SC_ENR_HEADER_, SC_CACHE_SECONDS_, SC_SETTINGS_PROPS_, SC_STATE_RANK_, SC_MONTHS_, SC_SHEET_DEFAULT_, GR_MESSAGE_, GR_PROMPT_PROP_PREFIX_, TA_BAND_, TA_RUNS_HEADER_, TA_METRICS_, TA_METRIC_LABELS_, TA_EMAILS_PROP_, TA_DEFAULTS_, TA_CONFIG_SHEET_, TA_CONFIG_HEADER_, TA_HIGHLIGHT_TA_, TA_OPENINGS_TA_, TA_CLOSINGS_TA_, TTM_MSG_, TTM_OPEN_, TK_SHEETS_, TK_DEFAULT_RULES_, TK_EMAIL_RE_, ZH_JOB_PROP_, ZH_DAY_NAMES_, ZH_SOURCES_, MHG_PROP_, MHG_CATS_, MHG_KIND_LABEL_, TA_ITEM_PREFIX_, TA_CLASS_STATUS_, EXAMINATION_TOPICS, EXAMINATION_ASSIGNMENT_NAMES, EXAMINATION_CLASSWORK_TYPES, EXAMINATION_PRESETS, TA_SCORES_SHEET_, TA_SCORES_HEADER_, TA_BAND_LABEL_, TA_HIGHLIGHT_EN_, AC_AUDIT_SHEET_, AC_AUDIT_HEADER_, AC_ROLE_LABELS_, APS_CLASS_TIMINGS, APPRECIATION_CERTIFICATE_AUDIT_SHEET_NAME, AM_MAX_ITEMS_, AM_GRADE_STEPS_, AM_STATUS_LABEL_, TARGET_SPREADSHEET_ID, CACHE_SHEET_ID_KEY, GTR_MESSAGES, GRADE_CHANGE_APPROVER_EMAILS, CCT_AUDIT_SHEET_, CCT_AUDIT_HEADER_, CCT_STATUSES_, CCT_ACTION_MAX_, EXAM_QP_CONFIG, EXAM_QP_AUDIT_HEADER, EXAM_QP_DOWNLOAD_STATUS, EXAM_QP_STATUS, EXAM_QP_STUDENT_STATUS, EXAM_QP_APS_DOMAIN_, EXAMINATION_CONFIG, EXAMINATION_AUDIT_HEADER, EXAM_AUDIT_COL, FINAL_APPROVER_EMAIL, KNOWLEDGE_BASE_VIDEOS, LAST_SYNC_ERROR_KEY, LAST_SYNC_KEY, REFERENCE_LETTER_SOURCE, REFERENCE_LETTER_APPROVER_EMAILS, REFERENCE_LETTER_FINAL_APPROVER_EMAIL, SRM_MIN_WORDS_, ADS_MULTI_ACK_, SL_TYPES_, SL_EMAIL_SHEET_, SL_EMAIL_HEADER_, SHOW_CONTACT_PHONE, SC_UNAVAILABLE_MSG_, SC_ENR_STATUSES_, SC_PAY_STATUSES_, AC_ROLES_, AC_OFF_MSG_, SC_AUDIENCES_, SC_MODES_, STUDENT_NOTICE_EXPIRY, STUDENT_NOTICE_PROP_PREFIX, APS_ALLOWED_DOMAINS, TTM_MIN_WORDS_, TK_TYPE_ICON_, TK_STATUSES_, TK_TYPES_, TK_PRIORITIES_, TK_ACTIVE_STATUSES_, TK_CHAIN_TYPES_, TK_EVENTS_, ZH_LOG_SHEET_, ZH_LOG_HEADER_, ATTENDANCE_EFFECTIVE_CAP_FROM_MIN, ATTENDANCE_EFFECTIVE_CAP_MIN, ATTENDANCE_SCORE_TIERS_, ATTENDANCE_STATUS, ROLE_PERMISSION_CACHE_KEY, ROLE_PERMISSION_PROP_KEY, ROLE_PERMISSION_CACHE_SECONDS, ATTENDANCE_COL_, ATTENDANCE_HEADER_ROW, ATTENDANCE_SPREADSHEET_ID, ATTENDANCE_OVERRIDE_SCORES_, ATTENDANCE_WEEK1_START_DEFAULT_, ATTENDANCE_WEEK_SHEET_PATTERN_, ATTENDANCE_SUMMARY_SHEET_NAME, ATTENDANCE_SUMMARY_HEADER_ROW, ATTENDANCE_SHEET_PREFIX, ATTENDANCE_AUDIT_LOG_SHEET_NAME, ATTENDANCE_ROLE, ATTENDANCE_SOURCE, ATTENDANCE_AUDIT_LOG_HEADER_ROW, ATTENDANCE_SYNC_DIAGNOSTIC_KEY, ATTENDANCE_LAST_SYNC_SUMMARY_KEY, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
 }
 export const SCOPE_SOURCE_MD5 = '44ef1e4219409858c968276a3738f1ce';
-export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"reads2":["apcIso_","acItem_","apcKeyOut_","apcVal_","rosterSheet_","acOverridesRaw_","scNorm_","scCodeOf_","scDate_","scTime_","scSafeUrl_","scParseOptions_","apsBigStore_","apcIsC_","apcDecodeObj_","srmFmt_","amDefaults_","amDayStart_","amDayEnd_","amOvRows_","rosterLoadTable_","rosterGet_","canViewAllDashboardFilters_","examQpStudentTeacherAccessEnabled_","rosterEnabled_","classRolesPrimary_","acOverrides_","acSwitchable_","acCell_","acProtected_","isNilai4To8Grade_","parseConfiguredClockTime_","cctStatus_","tccDateLabel_","tccZoned_","tccTzAbbrev_","tccTimeText_","tccApsIdNumber_","tccAnnouncementTitle_","getDashboardEnvironment_","examQpGenKey_","examQpComputeWindow_","examQpHmText_","examQpDayOf_","examQpHm_","scSheet_","scParseRow_","isPermissionDeniedError_","apsBigGetStored_","apcDecodeRaw_","getGoogleReviewEmailFooter","saSafeErr_","ttmRemovalReached_","zhProp_","mhgDefaults_","mhgEmails_","lvIsDate_","taMinutes_","taExpectedFor_","taBand_","taHighlights_","examLessonNames_","taMdY_","getOrCreateGradeTimeChangeSheet_","gtrRowToObject_","lvRoleLabel_","teacherDisplayName_","adsSchedule_","lvFmt_","ttmFmtTs_","amAccessFlag_","amSanitize_","amWindow_","amOverrides_","rosterDataset_","gradesForCourses_","amCounts_","amClassify_","amTypeOf_","amDueLabel_","amStatus_","amTsMs_","amAdd_","adsApsId_","amRates_","amPct_","amEscalate_","resolveViewerBadgeName_","canViewMonitoringFilters_","canViewMonitoringTotals_","examinationAccessForRole_","rosterAccessForRole_","apsRoleFor_","acEffectiveForRole_","getAllowedTimingsForGrade_","scheduleMatchesTimingOption_","timingOptionLabel_","cctAvailability_","cctPublicRecord_","parseAPSClassroomName","tccMinutes_","tkClassChain_","tccDateParts_","tccSession_","tccPublicRecord_","apsMailMode_","tccEmailHtml_","tccIsLive_","tccMeetFor_","tccDestContext_","tccDecorateDest_","tccDestRank_","tccMarkRecommended_","tccRecipients_","tccClassMax_","tccAnnouncementText_","tccSubject_","examQpConfig_","examQpSpreadsheet_","examQpTs_","examQpRecordCacheKey_","examQpAutoState_","examQpWindowOf_","examQpScheduleModeOf_","examQpExamStatus_","examQpLongLabel_","examQpTimeLabel_","examQpMissingFields_","examQpTeacherCopyTeachers_","examQpTeacherCopyLeadOk_","getOrCreateReferenceLetterSheet_","rlRowToObject_","srmPublic_","adsRows_","adsPublic_","slDays_","scRecords_","openSpreadsheetByIdWithRetry_","scSpreadsheetId_","scEnrSheet_","scText_","scState_","scLabelOf_","scRangeLabel_","scTimeMinutes_","getGoogleReviewUrl","apsBigGet_","grMonth_","taEmailHistory_","htmlEscape_","taMonthLabelEn_","apsEmailShell_","taSafeErr_","taFirstName_","taMonthLabelTa_","taSign_","taPick_","classesPrimaryOnlyPrefix_","ttmTcsList_","attNameFromEmail_","ttmDisplayStatus_","tkParticipantsFor_","tkSheet_","tkCleanEmails_","classPrimaryNameFromEmail_","zhSheetId_","zhJobRunning_","zhJsonProp_","tkCourseById_","zhNorm_","zhGradeLabel_","zhEmail_","mhgSanitize_","mhgToday_","ccwExcludeRe_","mhgSafeLink_","mhgCode_","mhgDays_","mhgMdY_","taInt_","taToday_","taDow_","taTeacherLeaveIndex_","isAPSSchoolHoliday","taScoreOccurrence_","taDateMs_","gradesCategory_","taScoreTeacher_","taTs_","getTargetSpreadsheetId_","taViewer_","taReadTable_","taRowToTeacher_","taWeekBounds_","taWeekLabel_","acRequireAdmin_","readAllGtrRequests_","appendEstLabel_","getOrCreateAssignmentAuditSheet_","lvViewer_","lvRows_","lvAddDays_","lvMaxPastDays_","lvMaxSpanDays_","lvClasses_","lvClassLine_","lvPublic_","canSendTeacherAppreciation_","appreciationTeacherCourses_","amViewer_","amConfig_","amBuild_","amSummary_","amTeachers_","rosterAcademicYear_","rosterLabel_","gradesLastSync_","amHistoryFor_","buildAuthenticatedUserPayload_","requireSuperAdminViewer_","parseClassroomTitle_","isTimingChangeWindowOpen_","deriveApsId_","findTimingChangeCandidates_","getAllKnownGrades_","normalizeGradeName_","hasActiveGtrRequest_","isInEmailList_","cctViewer_","cctWeeks_","cctReadRecords_","cctAuditCounts_","cctRowFor_","getOrCreateMeetLinkMapSheet_","tccViewer_","tccCanUseOriginal_","tccSchedule_","tccPrimary_","tccUpcomingDates_","tccHistory_","attMailConfigured_","tccPublicPlan_","tccPlan_","getOrCreateUserRoleSheet_","examQpViewer_","examQpSheet_","examQpObjectFromRow_","examQpReadRecords_","examQpNormDownloadKey_","examQpReadEvents_","examQpLastSentMap_","examQpAutoStatusMap_","examQpClientRecord_","examQpStaffPaperBlock_","examQpTeacherCopyAccess_","examQpTeacherCopyBlock_","examQpBool_","examQpLabel_","examQpParseTs_","examQpSuspicious_","examQpRequireManage_","examQpFindRecord_","examRequireAccess_","getOrCreateExaminationAuditSheet_","findGradeChangeCandidates_","readAllReferenceLetterRequests_","srmViewer_","srmAudit_","adsAudit_","courseNameMatches_","srmRows_","srmClassTeacher_","slAdmin_","slPublic_","slLists_","slProfile_","scRequireAdmin_","scLoad_","scEnrollments_","scToday_","scSettings_","scAudienceAllows_","scPublic_","scSort_","scMyPrograms_","scFmtDate_","scTo24_","scClassroomName_","scSheetName_","grPromptState_","taStoredWeek_","taAdminReport_","taEmailsOn_","taMonthly_","taMonthOf_","taConfig_","taMonthlyEmail_","taWeeklyEmail_","taRound_","ttmViewer_","ttmTeachers_","ttmPublic_","ttmRemovalHour_","ttmHourLabel_","ttmClassInfo_","tkViewer_","tkLoad_","tkRead_","tkReadOnly_","tkConfig_","tkIsAdmin_","tkIsStaffRole_","tkDeptName_","tkMailMode_","tkMailFrom_","apsRequireCountryAdmin_","zhRequireAdmin_","zhSheet_","zhBook_","zhJobPublic_","zhJobGet_","tkAccess_","tkPublicRow_","zhApsStudents_","mhgConfig_","mhgCollect_","mhgEmail_","mhgCsv_","taClone_","taValidateConfig_","taCompletedWeek_","taEvaluate_","personDisplayNameServer_","tkStudentScope_","tkNameFor_","exportTeacherAppreciation","exportUserCountry","getAccessControlHistory","getAdminAssignmentAuditLog","getAdminClassroomAssignments","getApplyLeaveData","getAppreciationLetterAudit","getAssignmentHealthCard","getAssignmentMonitoring","getAssignmentMonitoringClass","getAssignmentMonitoringHistory","getAuthenticatedAPSUser","getAuthorizedEmailsForGroupSync","getCacheSheetUrl","getClassChangeContext","getClassChangeRequestsForApprover","getClassCoverageHistory","getClassCoverageTracking","getCourseMeetLinkMappings","getCourseNameSuffix","getCoverageBootstrap","getCoveragePlan","getDashboardRolePermissions","getDashboardUserRoles","getExamQuestionPaperAuditLog","getExamQuestionPaperMonitoring","getExamQuestionPaperPublishPreview","getExaminationHistory","getGradeChangeApproverInfo","getGradeChangeTimingOptions","getKnowledgeBaseVideos","getLastSyncError","getLastSyncInfo","getMyClassChangeRequests","getMyReferenceLetterRequests","getReferenceLetterAccessInfo","getReferenceLetterRequestsForApprover","getRemovalContext","getSchoolLeaveAdminData","getSchoolLeaveHistory","getShowContactPhone","getSpecialClassEnrollments","getSpecialClasses","getSpecialClassesAdmin","getStudentLoginNoticeStatus","getTeacherAppreciationAdminReport","getTeacherAppreciationEmailPreview","getTeacherAppreciationHistory","getTempTeacherData","getTicket","getTicketBootstrap","getTicketReports","getTicketSettings","getUserCountryAdmin","getZohoSyncHistory","getZohoSyncJob","listTickets","loadZohoSyncStudents","previewMissingGrading","previewTeacherAppreciation","searchTamilThadamStudents","searchTicketStudents"],"attendance":["getAttendanceCourseAwkMap","defaultDashboardRolePermissions_","getEffectiveClassMinutes","attAttendedPct_","attScoreForPct_","attStatusForScore_","readDashboardRolePermissionsRaw_","attApplyClassDurationRule_","getConfigString_","readDashboardRolePermissions_","attColumnLetter_","attRowToRecord_","attReadSheetRecords_","attWeekIdForDateStr_","attShiftDateStr_","getDashboardRolePermission_","attSummaryKey_","attStudentOverallKey_","attSummaryOverall_","attWeekSheetNameForDate_","attReadRecordsForSheets_","attEffectiveScore_","ensureSheetHeader_","getAttendanceWeek1Start_","attListWeekSheets_","attWeekIdForNumber_","classSupportElevated_","courseHasStudentEmail_","requireDashboardMutationPermission_","readAttendanceSummaryMap_","getAPSIdFromEmail","attReadRecordsForFilters_","attOverallFor_","attCompareRecords_","attCountedMinutes_","attWeekNumberForWeekId_","formatAwkSheetName_","getOrCreateAttendanceAuditLogSheet_","attCellToText_","getAttendanceRecordsForViewer","getOnCallTeacherAttendance","getAttendanceWeekOptions","getAttendanceAuditLog","getAttendanceSyncDiagnostics","getAttendanceLastSyncInfo"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};
+export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"reads2":["apcIso_","acItem_","apcKeyOut_","apcVal_","rosterSheet_","acOverridesRaw_","scNorm_","scCodeOf_","scDate_","scTime_","scSafeUrl_","scParseOptions_","apsBigStore_","apcIsC_","apcDecodeObj_","srmFmt_","amDefaults_","amDayStart_","amDayEnd_","amOvRows_","rosterLoadTable_","rosterGet_","canViewAllDashboardFilters_","examQpStudentTeacherAccessEnabled_","rosterEnabled_","classRolesPrimary_","acOverrides_","acSwitchable_","acCell_","acProtected_","isNilai4To8Grade_","parseConfiguredClockTime_","cctStatus_","tccDateLabel_","tccZoned_","tccTzAbbrev_","tccTimeText_","tccApsIdNumber_","tccAnnouncementTitle_","getDashboardEnvironment_","examQpGenKey_","examQpComputeWindow_","examQpHmText_","examQpDayOf_","examQpHm_","scSheet_","scParseRow_","isPermissionDeniedError_","apsBigGetStored_","apcDecodeRaw_","getGoogleReviewEmailFooter","saSafeErr_","ttmRemovalReached_","zhProp_","mhgDefaults_","mhgEmails_","lvIsDate_","taMinutes_","taExpectedFor_","taBand_","taHighlights_","examLessonNames_","taMdY_","getOrCreateGradeTimeChangeSheet_","gtrRowToObject_","lvRoleLabel_","teacherDisplayName_","adsSchedule_","lvFmt_","ttmFmtTs_","amAccessFlag_","amSanitize_","amWindow_","amOverrides_","rosterDataset_","gradesForCourses_","amCounts_","amClassify_","amTypeOf_","amDueLabel_","amStatus_","amTsMs_","amAdd_","adsApsId_","amRates_","amPct_","amEscalate_","resolveViewerBadgeName_","canViewMonitoringFilters_","canViewMonitoringTotals_","examinationAccessForRole_","rosterAccessForRole_","apsRoleFor_","acEffectiveForRole_","getAllowedTimingsForGrade_","scheduleMatchesTimingOption_","timingOptionLabel_","cctAvailability_","cctPublicRecord_","parseAPSClassroomName","tccMinutes_","tkClassChain_","tccDateParts_","tccSession_","tccPublicRecord_","apsMailMode_","tccEmailHtml_","tccIsLive_","tccMeetFor_","tccDestContext_","tccDecorateDest_","tccDestRank_","tccMarkRecommended_","tccRecipients_","tccClassMax_","tccAnnouncementText_","tccSubject_","examQpConfig_","examQpSpreadsheet_","examQpTs_","examQpRecordCacheKey_","examQpAutoState_","examQpWindowOf_","examQpScheduleModeOf_","examQpExamStatus_","examQpLongLabel_","examQpTimeLabel_","examQpMissingFields_","examQpTeacherCopyTeachers_","examQpTeacherCopyLeadOk_","getOrCreateReferenceLetterSheet_","rlRowToObject_","srmPublic_","adsRows_","adsPublic_","slDays_","scRecords_","openSpreadsheetByIdWithRetry_","scSpreadsheetId_","scEnrSheet_","scText_","scState_","scLabelOf_","scRangeLabel_","scTimeMinutes_","getGoogleReviewUrl","apsBigGet_","grMonth_","taEmailHistory_","htmlEscape_","taMonthLabelEn_","apsEmailShell_","taSafeErr_","taFirstName_","taMonthLabelTa_","taSign_","taPick_","classesPrimaryOnlyPrefix_","ttmTcsList_","attNameFromEmail_","ttmDisplayStatus_","tkParticipantsFor_","tkSheet_","tkCleanEmails_","classPrimaryNameFromEmail_","zhSheetId_","zhJobRunning_","zhJsonProp_","tkCourseById_","zhNorm_","zhGradeLabel_","zhEmail_","mhgSanitize_","mhgToday_","ccwExcludeRe_","mhgSafeLink_","mhgCode_","mhgDays_","mhgMdY_","taInt_","taToday_","taDow_","taTeacherLeaveIndex_","isAPSSchoolHoliday","taScoreOccurrence_","taDateMs_","gradesCategory_","taScoreTeacher_","taTs_","getTargetSpreadsheetId_","taViewer_","taReadTable_","taRowToTeacher_","taWeekBounds_","taWeekLabel_","acRequireAdmin_","readAllGtrRequests_","appendEstLabel_","getOrCreateAssignmentAuditSheet_","lvViewer_","lvRows_","lvAddDays_","lvMaxPastDays_","lvMaxSpanDays_","lvClasses_","lvClassLine_","lvPublic_","canSendTeacherAppreciation_","appreciationTeacherCourses_","amViewer_","amConfig_","amBuild_","amSummary_","amTeachers_","rosterAcademicYear_","rosterLabel_","gradesLastSync_","amHistoryFor_","buildAuthenticatedUserPayload_","requireSuperAdminViewer_","parseClassroomTitle_","isTimingChangeWindowOpen_","deriveApsId_","findTimingChangeCandidates_","getAllKnownGrades_","normalizeGradeName_","hasActiveGtrRequest_","isInEmailList_","cctViewer_","cctWeeks_","cctReadRecords_","cctAuditCounts_","cctRowFor_","getOrCreateMeetLinkMapSheet_","tccViewer_","tccCanUseOriginal_","tccSchedule_","tccPrimary_","tccUpcomingDates_","tccHistory_","attMailConfigured_","tccPublicPlan_","tccPlan_","getOrCreateUserRoleSheet_","examQpViewer_","examQpSheet_","examQpObjectFromRow_","examQpReadRecords_","examQpNormDownloadKey_","examQpReadEvents_","examQpLastSentMap_","examQpAutoStatusMap_","examQpClientRecord_","examQpStaffPaperBlock_","examQpTeacherCopyAccess_","examQpTeacherCopyBlock_","examQpBool_","examQpLabel_","examQpParseTs_","examQpSuspicious_","examQpRequireManage_","examQpFindRecord_","examRequireAccess_","getOrCreateExaminationAuditSheet_","findGradeChangeCandidates_","readAllReferenceLetterRequests_","srmViewer_","srmAudit_","adsAudit_","courseNameMatches_","srmRows_","srmClassTeacher_","slAdmin_","slPublic_","slLists_","slProfile_","scRequireAdmin_","scLoad_","scEnrollments_","scToday_","scSettings_","scAudienceAllows_","scPublic_","scSort_","scMyPrograms_","scFmtDate_","scTo24_","scClassroomName_","scSheetName_","grPromptState_","taStoredWeek_","taAdminReport_","taEmailsOn_","taMonthly_","taMonthOf_","taConfig_","taMonthlyEmail_","taWeeklyEmail_","taRound_","ttmViewer_","ttmTeachers_","ttmPublic_","ttmRemovalHour_","ttmHourLabel_","ttmClassInfo_","tkViewer_","tkLoad_","tkRead_","tkReadOnly_","tkConfig_","tkIsAdmin_","tkIsStaffRole_","tkDeptName_","tkMailMode_","tkMailFrom_","apsRequireCountryAdmin_","zhRequireAdmin_","zhSheet_","zhBook_","zhJobPublic_","zhJobGet_","tkAccess_","tkPublicRow_","zhApsStudents_","mhgConfig_","mhgCollect_","mhgEmail_","mhgCsv_","taClone_","taValidateConfig_","taCompletedWeek_","taEvaluate_","personDisplayNameServer_","tkStudentScope_","tkNameFor_","exportTeacherAppreciation","exportUserCountry","getAccessControlHistory","getAdminAssignmentAuditLog","getAdminClassroomAssignments","getApplyLeaveData","getAppreciationLetterAudit","getAssignmentHealthCard","getAssignmentMonitoring","getAssignmentMonitoringClass","getAssignmentMonitoringHistory","getAuthenticatedAPSUser","getAuthorizedEmailsForGroupSync","getCacheSheetUrl","getClassChangeContext","getClassChangeRequestsForApprover","getClassCoverageHistory","getClassCoverageTracking","getCourseMeetLinkMappings","getCourseNameSuffix","getCoverageBootstrap","getCoveragePlan","getDashboardRolePermissions","getDashboardUserRoles","getExamQuestionPaperAuditLog","getExamQuestionPaperMonitoring","getExamQuestionPaperPublishPreview","getExaminationHistory","getGradeChangeApproverInfo","getGradeChangeTimingOptions","getKnowledgeBaseVideos","getLastSyncError","getLastSyncInfo","getMyClassChangeRequests","getMyReferenceLetterRequests","getReferenceLetterAccessInfo","getReferenceLetterRequestsForApprover","getRemovalContext","getSchoolLeaveAdminData","getSchoolLeaveHistory","getShowContactPhone","getSpecialClassEnrollments","getSpecialClasses","getSpecialClassesAdmin","getStudentLoginNoticeStatus","getTeacherAppreciationAdminReport","getTeacherAppreciationEmailPreview","getTeacherAppreciationHistory","getTempTeacherData","getTicket","getTicketBootstrap","getTicketReports","getTicketSettings","getUserCountryAdmin","getZohoSyncHistory","getZohoSyncJob","listTickets","loadZohoSyncStudents","previewMissingGrading","previewTeacherAppreciation","searchTamilThadamStudents","searchTicketStudents"],"attendance":["getAttendanceCourseAwkMap","defaultDashboardRolePermissions_","getEffectiveClassMinutes","attAttendedPct_","attScoreForPct_","attStatusForScore_","readDashboardRolePermissionsRaw_","attApplyClassDurationRule_","getConfigString_","readDashboardRolePermissions_","attColumnLetter_","attRowToRecord_","attReadSheetRecords_","attWeekIdForDateStr_","attShiftDateStr_","getDashboardRolePermission_","attSummaryKey_","attStudentOverallKey_","attSummaryOverall_","attWeekSheetNameForDate_","attReadRecordsForSheets_","attEffectiveScore_","ensureSheetHeader_","getAttendanceWeek1Start_","attListWeekSheets_","attWeekIdForNumber_","classSupportElevated_","courseHasStudentEmail_","requireDashboardMutationPermission_","readAttendanceSummaryMap_","getAPSIdFromEmail","attReadRecordsForFilters_","attOverallFor_","attCompareRecords_","attCountedMinutes_","attWeekNumberForWeekId_","formatAwkSheetName_","getOrCreateAttendanceAuditLogSheet_","attCellToText_","getAttendanceRecordsForViewer","getOnCallTeacherAttendance","getAttendanceWeekOptions","getAttendanceAuditLog","getAttendanceSyncDiagnostics","getAttendanceLastSyncInfo"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"live":["getRealtimeStatusSnapshot","applyRosterHiddenStaffFilter_","applyLivePresence_","applyLastLogin_","applyStudentOnboardedFlag_","applyClassStatus_","getOnCallTeachers_","getRosterHiddenStaffVisible_","classesAlwaysShowEmail_","getPresenceMap_","getLastLoginMap_","normalizeLastLoginEntry_","summarizeLastLogin_","apsBigJson_","apsBigSetSafe_","getClassStatusOverrideMap_","computeAutomaticClassStatus_","formatLastLoginTimestamp_","classesAlwaysShowEmails_","apsBigSet_","apcEncodeRaw_","apcValIn_","apcT_","apsClassLiveBoxesForViewer_","apsViewerScope_","apsRecentActivity_","apsScopeById_","getLiveMap_","getTeacherNotInClassMap_","getNeedsTechSupportMap_","apsScopeByEmail_","apsClassLiveBox_","apsAllViewRole_","apsCoursesMemoGen_","getViewerContext_","getRealtimeAvailabilityMap_","getExternalActivityRealtimeMap_","classAccessFor_","classRolesLabel_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};

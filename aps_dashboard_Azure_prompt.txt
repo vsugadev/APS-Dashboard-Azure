@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 5549a4e1fa9fdc2ad4f3925842517eab
+#   Part B md5    : 4429eda76563a1bde29437233b2b46ff
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -840,7 +840,7 @@ not retyped by hand.
 | `SpreadsheetApp` reads | Sheets API `values.batchGet` + TTL cache with in-flight de-duplication |
 | `SpreadsheetApp` writes | Sheets API `batchUpdate` / `values.batchUpdate` — one batched call per action |
 | `CacheService` | In-process TTL cache now; Azure Cache for Redis only if scale requires it |
-| `PropertiesService` | Planned per phase (Key Vault for secrets; table/Sheet storage for data) |
+| `PropertiesService` | Secrets: Key Vault. Live data (Phase 3): read through the Apps Script bridge (`AzureBridge.gs`, allow-listed snapshot) until a later phase moves the stores |
 | `LockService` | Planned per phase (single-instance lock now; distributed lock before scale-out) |
 | Time triggers | Planned: Azure Functions timer triggers (one scheduler, same schedules) |
 | `MailApp` / `GmailApp` | Gmail API via the service account, same templates and branding |
@@ -907,6 +907,7 @@ Before finishing, confirm:
 - [ ] Parity test seeds REAL rows for every new part and asserts each part actually appeared (not "empty = empty").
 - [ ] Anything that writes (save buttons, emails, test sends) is switched off on Azure or reported as NOT_ON_AZURE_YET.
 - [ ] Settings / secrets the user must add are listed with the exact command (PowerShell-safe quoting).
+- [ ] Every property key the copied code reads is classified in both allow-list copies (Azure + AzureBridge.gs).
 
 ---
 
@@ -917,15 +918,16 @@ Before finishing, confirm:
    - pure rules (no Apps Script service) → `tools/gen-gas-helpers.js` → `src/gas/classes.generated.ts`;
    - Sheet readers / whole read endpoints → add the function to a feature list in `tools/gen-gas-scope.js` and run
      `npm run gen-gas`. The tool lists every name used but neither copied nor provided; add those until it passes.
-     It refuses Classroom / Gmail / Drive / triggers / locks / setProperty. It indexes top-level `function`, `var`,
-     `const` and `let`.
+     It refuses Classroom / Gmail / Drive / triggers / locks. It indexes top-level `function`, `var`, `const` and `let`,
+     and copies a var together with the top-level lines that fill it in (`NAME[...] = …`).
 3. **Read-only runtime** (`src/gas/runtime.ts`) run by `gasRun` / `runGas` (`src/gas/run.ts`): sheets are a snapshot read
    through the Sheets API (cached 60 s, Apps Script value types incl. Date cells in the spreadsheet time zone), LOADED ON
    DEMAND — a missing sheet / `Sheets.batchGet` range is recorded (even if Code.gs catches the error), loaded, and the
    read runs again (max 30 loads). Every Apps Script service used must be provided read-only by the runtime (the
    generator checks). Writes to existing sheets or settings throw `READ_ONLY`; a sheet that does not exist in Google
    exists only in memory; a sheet that exists but is not loaded yet is loaded on demand (`MAIN_SHEETS` /
-   `ATTENDANCE_SHEETS` are only the first-run preload). Session / tab checks:
+   `ATTENDANCE_SHEETS` are only the first-run preload). PropertiesService = App Service settings over Apps Script's live
+   Script / User Properties (bridge snapshot, Phase 3); a property write stays in the request only. Session / tab checks:
    Azure checks the token (`requireSession`), the copied code gets the same session and the same Access Control
    switches. Settings come from App Service (same names as Script Properties; never secrets) + the role lists.
 4. **Register the endpoint** with the Code.gs name in `src/api/endpoints/…`; switch off anything that writes
@@ -934,6 +936,10 @@ Before finishing, confirm:
    endpoint on the same seeded Sheets for every role (incl. refusals); compare the full result; assert every new part
    had real data. Add a browser check in `tools/e2e-browser.js`.
 6. **Docs:** `docs/PHASE2.md`, `docs/APS_Dashboard_Azure_Guide.md`, README; list any new app setting.
+
+Live data (Phase 3): a copied function that reads a Script / User Property must have that key in BOTH allow-list copies
+(`src/live/allowlist.ts` and Apps Script `AzureBridge.gs`) — or in the Azure-setting / never lists. The parity tests fail
+on an unclassified key. Never allow a key that holds a secret, a role list or a spreadsheet ID.
 
 Known Apps Script mock limit: new mock sheets have 26 columns — widen them in the test (`sh.maxCols`) when a
 header is longer, or Code.gs fails quietly in the mock.
@@ -950,6 +956,9 @@ header is longer, or Code.gs fails quietly in the mock.
   `editable: false`), and 62 more read-only calls (`READS2` in `src/api/endpoints/reads.ts`: Admin Control lists,
   Teacher Appreciation, Assignment Monitoring, class / grade change, Leave, Coverage, Examination, Reference letters,
   Special Classes, Temp Teacher, Tickets, Zoho history, Tamil Thadam search) — v0.7.0.
+- Phase 3 step 1 (v0.8.0): live data through the Apps Script bridge (`AzureBridge.gs` r122 in the live project, routed
+  by `PortalBridge.gs` doPost `azure:1`; Azure `src/live/`). The Code.gs live passes and `getRealtimeStatusSnapshot` run
+  on Azure; the Phase 2 stand-ins are gone. Not yet: live Meet status, heartbeat from Azure, chat. See `docs/PHASE3.md`.
 - Other spreadsheets: only the IDs from the copied code's own ID functions (`EXTRA_BOOK_ID_FNS` in `src/gas/run.ts`:
   `scSpreadsheetId_`, `zhSheetId_`) can be opened, read-only, on demand. Add a function there (never a hard-coded ID)
   when another reader opens its own spreadsheet. `setNumberFormat` is a no-op (never sent to Google).
@@ -958,4 +967,4 @@ header is longer, or Code.gs fails quietly in the mock.
 - Live-data passes (presence / last login / onboarded / hidden staff) have ONE Azure implementation
   (`liveEmptyPasses`, provided to the copied code) — never write a second one.
 - Live Apps Script dashboard remains production for every user; Azure is not yet announced to users.
-- Phase 3 (live data in Script / User Properties) and every write still to come.
+- Still to come: live Meet status (Meet / Reports APIs), the blocked Phase 2 reads, and every write.

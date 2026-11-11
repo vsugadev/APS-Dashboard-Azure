@@ -9,6 +9,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
+import { AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
 import { serviceAccountTokenProvider } from './google/serviceAccount';
 import { MemorySessionStore } from './auth/sessions';
 import { googleAuth, StateNonces } from './auth/google';
@@ -28,9 +29,26 @@ export function buildRegistry(): Registry {
   return reg;
 }
 
+/** The bridge is used only with the real /exec address and a long enough secret (config warnings say why not). */
+export function bridgeUsable(cfg: AppConfig): boolean {
+  return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl) && cfg.appsScriptBridgeSecret.length >= 32;
+}
+
 export function createContext(cfg: AppConfig): AppContext {
   const data = cfg.dataMode === 'fixture' ? FixtureDataSource.fromFile(cfg.fixturePath) : new SheetsDataSource(cfg, serviceAccountTokenProvider(cfg));
-  return { cfg, data, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+  const live = cfg.dataMode === 'fixture' ? FixtureLiveSource.fromFile(cfg.fixturePath)
+    : bridgeUsable(cfg) ? new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new EmptyLiveSource();
+  return { cfg, data, live, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+}
+
+/** Start-up self-check of the Apps Script live-data bridge (Phase 3): key counts only, never names' values. */
+export async function checkLiveBridge(ctx: AppContext, log: (m: string) => void = console.log): Promise<boolean> {
+  if (ctx.cfg.dataMode === 'fixture') return true;
+  if (!bridgeUsable(ctx.cfg)) { log('[Live] Apps Script bridge not configured — live data (online now, last login, class status, on-call banner) is empty.'); return false; }
+  const s = await ctx.live.get(); const st = ctx.live.status();
+  if (st.ok) log(`[Live] Apps Script bridge OK — ${Object.keys(s.script).length} Script + ${Object.keys(s.user).length} User Properties (allow-listed).`);
+  else log('[Live] Apps Script bridge FAILED: ' + (st.error || 'unknown') + ' — see the guide, section Logs.');
+  return st.ok;
 }
 
 /** Start-up self-check: one read of the class list, so the log says at once whether Google access works and, if not,
@@ -130,7 +148,8 @@ if (require.main === module) {
   const ctx = createContext(cfg);
   const app = createApp(ctx, page);
   app.listen(cfg.port, () => {
-    console.log(`[Server] APS Dashboard (Azure, Phase 1) listening on ${cfg.port} — data: ${cfg.dataMode}`);
+    console.log(`[Server] APS Dashboard (Azure) listening on ${cfg.port} — data: ${cfg.dataMode}`);
     void checkGoogleAccess(ctx);
+    void checkLiveBridge(ctx);
   });
 }

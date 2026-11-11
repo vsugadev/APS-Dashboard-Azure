@@ -9,6 +9,9 @@ import * as path from 'path';
 import { buildClassesView, countryPreference, gasScopeFor, MAIN_SHEETS, ATTENDANCE_SHEETS } from '../src/api/endpoints/classes';
 import { testContext, testConfig } from './helpers';
 import { FixtureDataSource } from '../src/data/sources';
+import { scriptSettingsFrom } from '../src/config';
+import { FixtureLiveSource } from '../src/live/liveSource';
+import { LIVE_KEYS, LIVE_PREFIXES, AZURE_SETTING_KEYS, NEVER_KEYS, NEVER_RE } from '../src/live/allowlist';
 
 const ROOT = path.join(__dirname, '..', '..');
 const GAS = path.resolve(process.env.APS_GAS_PROJECT || path.join(ROOT, 'gas-source'));
@@ -16,7 +19,7 @@ const have = fs.existsSync(path.join(GAS, 'test', 'coveragefixture.js'));
 const J = (x: unknown) => JSON.parse(JSON.stringify(x));
 
 // Top-level fields that come in later Phase 2 steps / Phase 3 (see CLASSES_NOT_YET and the header of classes.ts).
-const SKIP_TOP = ['assignMonAccess', 'examinationAccess', 'gradingAccess', 'onCallTeacher', 'onCallTeacherCount', 'name'];
+const SKIP_TOP = ['assignMonAccess', 'examinationAccess', 'gradingAccess', 'name'];
 const SKIP_COURSE = /^$/; // every card field is compared since step 2
 
 /** Rows for the Sheets the copied Code.gs readers read, so every step-2 part has real data (dates as Date cells). */
@@ -50,6 +53,22 @@ function seedSheets(F: any) {
   ['aps_whatsapp_map_v1', G.SL_CACHE_KEY_, G.TCC_CACHE_KEY_, G.TTM_CARD_CACHE_, G.UC_CACHE_KEY_, G.CLASS_MEET_CACHE_KEY_].forEach((k: string) => cache.remove(k));
   G.SL_MEMO_ = { list: null, enabled: null, seen: {} }; G.UC_MEMO_ = null;
 }
+/** Phase 3 live data in Apps Script's stores, written with Code.gs's own helpers (same encoding as production):
+ *  people online now, last login, an onboarded student, a cancelled class, one on-call teacher. */
+function seedLive(F: any) {
+  const G = F.G, now = new Date(), iso = now.toISOString();
+  const ids = J(G.readAllCoursesFromCache_()).map((c: any) => String(c.id));
+  const kav = 'kavitha_aps8130@avvaiyarpadasalai.org', stu = 'sa0_aps6650@avvaiyarpadasalai.org';
+  G.apsBigSet_(G.PRESENCE_PROP_KEY, JSON.stringify({ [kav]: { lastSeen: iso, loginAt: iso }, [stu]: { lastSeen: iso, loginAt: iso } }));
+  G.apsBigSet_(G.LAST_LOGIN_PROP_KEY, JSON.stringify({ [kav]: { gc: '2026-11-01T14:00:00.000Z', gm: null, db: iso }, [stu]: { db: '2026-11-09T22:00:00.000Z' } }));
+  G.apsBigSet_(G.ONBOARDED_STUDENTS_PROP_KEY, JSON.stringify({ [stu]: '2026-10-01T12:00:00.000Z' }));
+  const sp = G.PropertiesService.getScriptProperties();
+  sp.setProperty(G.CLASS_STATUS_PROP_KEY, JSON.stringify({ [ids[4]]: { status: 'cancelled', updatedAt: iso, updatedBy: 'admin@aps.org' } }));
+  sp.setProperty(G.ON_CALL_TEACHERS_PROP_KEY, JSON.stringify([{ email: kav, name: 'Kavitha', apsId: 'APS8130' }]));
+}
+/** Apps Script's live Script / User Properties as the bridge would send them (the mock's stores, allow-listed by
+ *  FixtureLiveSource exactly like the real bridge). The App Service settings are only the plain APS_/TCC_… names. */
+function liveFromMock(F: any) { return new FixtureLiveSource({ script: F.env.props, user: F.env.userProps }); }
 /** The same Sheets as the Azure fixture data source sees them (both workbooks are the one mock workbook). */
 function sheetsFromMock(F: any) {
   // The mock has ONE workbook for both spreadsheets: every sheet is visible in both (loaded on demand by the runner).
@@ -81,31 +100,34 @@ function diffs(a: any, b: any, at = ''): string[] {
 test('Classes view (getDashboardData) matches Code.gs for every role — cards, rosters, schedule/status, filters, order', { skip: !have && 'Apps Script fixture not found' }, async () => {
   const F = loadFixture(); const G = F.G;
   seedSheets(F);
-  G.recordHeartbeat_ = () => {}; // Code.gs writes the viewer's heartbeat (live data — Phase 3; Azure writes nothing)
+  G.recordHeartbeat_ = () => {}; // Code.gs writes the viewer's heartbeat; Azure writes nothing yet (Phase 3 reads only)
+  seedLive(F);
   G.getGoogleProfileName_ = () => null; // Admin Directory profile names: not on Azure (badge falls back like Code.gs)
   const list = (k: string) => J(G.getConfigList_(k, []));
   const cfg = testConfig({
     superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
     onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
-    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock',
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT',
   });
-  const seen = { avail: 0, alt: 0, wa: 0, meet: 0, flag: 0, covO: 0, covD: 0, ttm: 0, leave: 0, covAccess: 0, ttmAccess: 0 };
+  const seen = { avail: 0, alt: 0, wa: 0, meet: 0, flag: 0, covO: 0, covD: 0, ttm: 0, leave: 0, covAccess: 0, ttmAccess: 0, online: 0, lastLogin: 0, onboarded: 0, cancelled: 0, onCall: 0 };
   const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], [F.vpEmail, 'teacher'],
     ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student'], ['someone@namaps.org', 'authorized']];
   let compared = 0;
   for (const [email, role] of viewers) {
     const courses = J(G.readAllCoursesFromCache_());
-    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses, userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses, userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
     const now = new Date();
     const gas = J(G.getDashboardData(F.tok(email, role)));
     const az = J(await buildClassesView(ctx, { email, role }, J(courses), now));
     for (const k of SKIP_TOP) { delete gas[k]; delete az[k]; }
     if (az.schoolLeave && az.schoolLeave.isSchoolLeave) seen.leave++;
+    if (az.onCallTeacher && az.onCallTeacherCount === 1) seen.onCall++;
     if (az.coverageAccess) seen.covAccess++; if (az.tempTeacherAccess) seen.ttmAccess++;
     for (const c of az.courses) {
       if (c.teacherAvailabilityStatus !== 'Not Set') seen.avail++; if (c.teacherAvailabilityAlt) seen.alt++; if (c.whatsappLink) seen.wa++; if (c.meetLink) seen.meet++;
       if (c.coverageToday && c.coverageToday.role === 'original') seen.covO++; if (c.coverageToday && c.coverageToday.role === 'destination') seen.covD++; if (c.tempTeacherNote) seen.ttm++;
-      for (const p of (c.teachers || []).concat(c.students || [])) if (p.countryFlag) seen.flag++;
+      for (const p of (c.teachers || []).concat(c.students || [])) { if (p.countryFlag) seen.flag++; if (p.online) seen.online++; if (p.lastLoginAt) seen.lastLogin++; if (p.onboarded) seen.onboarded++; }
+      if (c.classStatus === 'cancelled' && c.classStatusManual) seen.cancelled++;
     }
     assert.deepEqual(az.courses.map((c: any) => c.id), gas.courses.map((c: any) => c.id), role + ': same classes, same order');
     az.courses.forEach((c: any, i: number) => {
@@ -119,7 +141,7 @@ test('Classes view (getDashboardData) matches Code.gs for every role — cards, 
   }
   assert.ok(compared >= 20, 'compared ' + compared + ' class cards');
   // every step-2 part really had data on both sides (not just "empty = empty")
-  for (const [k, n] of Object.entries(seen)) assert.ok(n > 0, 'step-2 part exercised: ' + k);
+  for (const [k, n] of Object.entries(seen)) assert.ok(n > 0, 'part exercised (step 2 / Phase 3 live data): ' + k);
 });
 
 test('getMyCountryPreference matches Code.gs (USER_COUNTRY row, no row, feature off) — never asks for a country', { skip: !have && 'Apps Script fixture not found' }, async () => {
@@ -147,12 +169,12 @@ test('Teacher Availability view (getClassTeacherAvailabilityView) matches Code.g
   const list = (k: string) => J(G.getConfigList_(k, []));
   const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
     onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
-    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT' });
   const reg = (await import('../src/server')).buildRegistry();
   const viewers: [string, string][] = [['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student']];
   let reports = 0;
   for (const [email, role] of viewers) {
-    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
     const token = await ctx.sessions.create({ email, role });
     let gas: any; try { gas = J(G.getClassTeacherAvailabilityView(F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
     const az: any = await reg.call(ctx, 'getClassTeacherAvailabilityView', [token]);
@@ -172,16 +194,17 @@ test('Teacher Availability view (getClassTeacherAvailabilityView) matches Code.g
 test('Active Directory (getDirectoryIndex) matches Code.gs — full tier (staff, teacher) and basic tier (student, authorized)', { skip: !have && 'Apps Script fixture not found' }, async () => {
   const F = loadFixture(); const G = F.G;
   seedSheets(F);
+  seedLive(F); // Phase 3: online now / last login / onboarded come from Apps Script's stores (bridge snapshot)
   const list = (k: string) => J(G.getConfigList_(k, []));
   const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
     onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
-    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT' });
   const reg = (await import('../src/server')).buildRegistry();
   const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'],
     ['sa0_aps6650@avvaiyarpadasalai.org', 'student'], ['someone@namaps.org', 'authorized']];
-  const tiers: Record<string, number> = {};
+  const tiers: Record<string, number> = {}; let live = 0;
   for (const [email, role] of viewers) {
-    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
     const token = await ctx.sessions.create({ email, role });
     let gas: any; try { gas = J(G.getDirectoryIndex(F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
     const az: any = await reg.call(ctx, 'getDirectoryIndex', [token]);
@@ -191,9 +214,11 @@ test('Active Directory (getDirectoryIndex) matches Code.gs — full tier (staff,
     const d = diffs(az.ok, gas);
     assert.deepEqual(d, [], role + ' differences:\n' + d.slice(0, 15).join('\n'));
     tiers[gas.tier] = (tiers[gas.tier] || 0) + 1;
+    for (const c of az.ok.classes) for (const p of (c.teachers || []).concat(c.students || [])) if (p.online || p.lastLoginAt) live++;
     if (gas.tier === 'basic') assert.ok(az.ok.classes.every((c: any) => c.students.every((p: any) => !p.email || p.email.toLowerCase() === email)), 'basic tier: no other student emails');
   }
   assert.ok(tiers.full >= 3 && tiers.basic >= 1, 'both tiers compared: ' + JSON.stringify(tiers));
+  assert.ok(live > 0, 'live data (online / last login) appeared in the Directory');
 });
 
 /** Two real weekly attendance sheets (AWKnnATT) + Attendance_Summary + Attendance_Audit_Log, some cells as Date cells. */
@@ -234,7 +259,7 @@ test('Attendance tab reads (7 functions) match Code.gs for every role — weekly
   const list = (k: string) => J(G.getConfigList_(k, []));
   const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
     onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
-    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT' });
   const reg = (await import('../src/server')).buildRegistry();
   const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], [F.vpEmail, 'teacher'],
     ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student'], ['someone@namaps.org', 'authorized']];
@@ -244,7 +269,7 @@ test('Attendance tab reads (7 functions) match Code.gs for every role — weekly
   let rows = 0, editableOnGas = 0, refusals = 0, awk = 0;
   for (const [email, role] of viewers) {
     for (const [fn, args] of calls) {
-      const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+      const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
       const token = await ctx.sessions.create({ email, role });
       let gas: any; try { gas = J(G[fn](F.tok(email, role), ...J(args))); } catch (e) { gas = { err: (e as Error).message }; }
       const az: any = await reg.call(ctx, fn, [token, ...J(args)]);
@@ -267,7 +292,7 @@ test('Remaining read-only calls (Phase 2 step 6, 62 functions) match Code.gs for
   const list = (k: string) => J(G.getConfigList_(k, []));
   const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
     onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
-    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT' });
   // Real rows for the parts that live in their own sheets / spreadsheets (so "same" is never "empty = empty").
   const put = (name: string, rows: unknown[][]) => { const sh = F.env.wb.getSheetByName(name) || F.env.wb.insertSheet(name); sh.maxCols = Math.max(sh.maxCols || 26, rows[0].length); sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows); };
   const kav = 'kavitha_aps8130@avvaiyarpadasalai.org';
@@ -287,12 +312,14 @@ test('Remaining read-only calls (Phase 2 step 6, 62 functions) match Code.gs for
     ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student']];
   const problems: string[] = []; let same = 0, refusals = 0, answers = 0;
   for (const name of Object.values(READS2).flat()) for (const [email, role] of viewers) {
-    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
     const token = await ctx.sessions.create({ email, role });
     let gas: any; try { gas = J(G[name](F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
     if (gas === undefined) gas = null;
     const az: any = await reg.call(ctx, name, [token]);
     const a = 'ok' in az ? (az.ok === undefined ? null : az.ok) : { err: az.err };
+    // mailReady: Code.gs checks its mail credentials; they never leave Apps Script and Azure sends no email yet → false.
+    if (gas && typeof gas === 'object' && 'mailReady' in gas && a && typeof a === 'object') { assert.equal(a.mailReady, false, name + ': no email on Azure'); a.mailReady = gas.mailReady; }
     if (name === 'getCacheSheetUrl' && gas === 'u' && typeof a === 'string' && /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+\/edit$/.test(a)) gas = a; // the mock's getUrl() is the literal 'u'
     const d = diffs(a, gas);
     if (d.length) problems.push(role + ' ' + name + ': ' + d.slice(0, 3).join(' | '));
@@ -300,11 +327,55 @@ test('Remaining read-only calls (Phase 2 step 6, 62 functions) match Code.gs for
   }
   assert.deepEqual(problems, [], problems.length + ' differences:\n' + problems.slice(0, 40).join('\n'));
   // the seeded parts really came back through Azure (other spreadsheets opened read-only by ID)
-  const one = async (name: string, email: string, role: string) => { const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); return (await reg.call(ctx, name, [await ctx.sessions.create({ email, role })]) as any).ok; };
+  const one = async (name: string, email: string, role: string) => { const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F); return (await reg.call(ctx, name, [await ctx.sessions.create({ email, role })]) as any).ok; };
   assert.equal((await one('getMyReferenceLetterRequests', kav, 'teacher')).length, 2, 'reference letters');
   assert.ok((await one('getReferenceLetterRequestsForApprover', 'admin@aps.org', 'admin')).length >= 2, 'approver queue');
   assert.ok(JSON.stringify(await one('getSpecialClassesAdmin', 'admin@aps.org', 'admin')).includes('SC-2026-010'), 'special classes (own spreadsheet)');
   assert.ok(JSON.stringify(await one('getSpecialClasses', 'sa0_aps6650@avvaiyarpadasalai.org', 'student')).includes('Tamil grammar camp'), 'special classes for a student');
   assert.equal((await one('getZohoSyncHistory', 'admin@aps.org', 'admin'))[0]['Log ID'], 'LOG-1', 'Zoho sync log (own spreadsheet)');
   assert.ok(answers > 100 && refusals > 20, JSON.stringify({ same, answers, refusals }));
+});
+
+test('Phase 3: realtime poll (getRealtimeStatusSnapshot) matches Code.gs for every role — online, last login, class status, live flags', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); seedLive(F);
+  const ids = J(G.readAllCoursesFromCache_()).map((c: any) => String(c.id)), iso = new Date().toISOString();
+  const sp = G.PropertiesService.getScriptProperties();
+  sp.setProperty(G.LIVE_PROP_KEY, JSON.stringify({ [ids[0]]: { live: true, updatedAt: iso, updatedBy: 'admin@aps.org' } }));
+  sp.setProperty(G.TEACHER_NOT_IN_CLASS_PROP_KEY, JSON.stringify({ [ids[1]]: { flagged: true, updatedAt: iso } }));
+  sp.setProperty(G.NEEDS_TECH_SUPPORT_PROP_KEY, JSON.stringify({ [ids[2]]: { flagged: true, updatedAt: iso } }));
+  G.chatVersion_ = () => ''; // chat is not on Azure: constant version (runtime) — same on both sides
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT' });
+  const reg = (await import('../src/server')).buildRegistry();
+  const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], [F.vpEmail, 'teacher'],
+    ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student'], ['someone@namaps.org', 'authorized']];
+  const seen = { presence: 0, lastLogin: 0, classStatusManual: 0, live: 0, teacherNotInClass: 0, needsTechSupport: 0 };
+  for (const [email, role] of viewers) {
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
+    G.CacheService.getScriptCache().remove(G.APS_RT_RECENT_KEY_);
+    let gas: any; try { gas = J(G.getRealtimeStatusSnapshot(F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
+    const az: any = await reg.call(ctx, 'getRealtimeStatusSnapshot', [await ctx.sessions.create({ email, role })]);
+    if (gas.err) { assert.deepEqual(az, { err: gas.err }, role + ': same refusal'); continue; }
+    const a = az.ok; delete a.serverTime; delete gas.serverTime;
+    const d = diffs(a, gas);
+    assert.deepEqual(d, [], role + ' differences:\n' + d.slice(0, 15).join('\n'));
+    for (const k of Object.keys(seen) as (keyof typeof seen)[]) if (a[k] && Object.keys(a[k]).length) seen[k]++;
+  }
+  for (const [k, n] of Object.entries(seen)) assert.ok(n > 0, 'realtime part had data: ' + k);
+});
+
+test('Phase 3: every Script / User Property the copied Code.gs code read in these tests is classified (live, Azure setting or never sent)', async () => {
+  const { PROPERTY_READS } = await import('../src/gas/runtime');
+  assert.ok(PROPERTY_READS.size > 50, 'property reads were recorded: ' + PROPERTY_READS.size);
+  const loose: string[] = [];
+  for (const tagged of PROPERTY_READS) {
+    const k = tagged.slice(2);
+    if (k === '*') { loose.push(tagged + ' (getProperties: list the keys it needs instead)'); continue; }
+    const known = LIVE_KEYS.includes(k) || LIVE_PREFIXES.some((p) => k.startsWith(p)) || AZURE_SETTING_KEYS.includes(k) || NEVER_KEYS.includes(k) || NEVER_RE.test(k);
+    if (!known) loose.push(tagged);
+  }
+  assert.deepEqual(loose, [], 'add these to src/live/allowlist.ts AND AzureBridge.gs (or to the never lists)');
 });

@@ -29,10 +29,12 @@ const FEATURES = {
   attendance: ['getAttendanceCourseAwkMap', 'defaultDashboardRolePermissions_', 'getEffectiveClassMinutes', 'attAttendedPct_', 'attScoreForPct_', 'attStatusForScore_', 'readDashboardRolePermissionsRaw_', 'attApplyClassDurationRule_', 'getConfigString_', 'readDashboardRolePermissions_', 'attColumnLetter_', 'attRowToRecord_', 'attReadSheetRecords_', 'attWeekIdForDateStr_', 'attShiftDateStr_', 'getDashboardRolePermission_', 'attSummaryKey_', 'attStudentOverallKey_', 'attSummaryOverall_', 'attWeekSheetNameForDate_', 'attReadRecordsForSheets_', 'attEffectiveScore_', 'ensureSheetHeader_', 'getAttendanceWeek1Start_', 'attListWeekSheets_', 'attWeekIdForNumber_', 'classSupportElevated_', 'courseHasStudentEmail_', 'requireDashboardMutationPermission_', 'readAttendanceSummaryMap_', 'getAPSIdFromEmail', 'attReadRecordsForFilters_', 'attOverallFor_', 'attCompareRecords_', 'attCountedMinutes_', 'attWeekNumberForWeekId_', 'formatAwkSheetName_', 'getOrCreateAttendanceAuditLogSheet_', 'attCellToText_', 'getAttendanceRecordsForViewer', 'getOnCallTeacherAttendance', 'getAttendanceWeekOptions', 'getAttendanceAuditLog', 'getAttendanceSyncDiagnostics', 'getAttendanceLastSyncInfo'],
   directory: ['getDirectoryIndex', 'classSupportGrantsAccess_', 'userHasCourseAccess_', 'directoryTierForRole_', 'applyNilaiAndClassTimeFilters_'],
   teacherAvailability: ['getClassTeacherAvailabilityView', 'attOnCallPrefixes_', 'parseClockTime_', 'inferMissingMeridiem_', 'attIsOnCallEmail_', 'getConfigList_', 'isSyntacticallyValidEmail_', 'slAudit_', 'parseCourseSchedule_', 'attIsExcludedEmail_', 'normalizeClassTimeText_', 'ctaProp_', 'attMailAdminCc_', 'attMailCc_', 'apsMailProfile_', 'extractAPSID_', 'apsLeaveSkip_', 'apsClassDateInWeek_', 'examQpParseClassName_', 'readConfiguredUserRoles_', 'ctaExcludeRule_', 'ctaExcluded_', 'isHiddenTeacherName_', 'extractNilaiFromCourseName_', 'extractClassTimeFromCourseName_', 'ctaRoleFlags_', 'ctaConfig_', 'getWeekLabel_', 'ctaNilaiOptions_', 'ctaTimeOptions_', 'isReadOnlyRole_', 'apsMailFrom_', 'ctaReadSelections_', 'findDisplayName_', 'localPartOfEmail_', 'ctaApsId_', 'ctaAyMatch_', 'courseHasTeacherEmail_', 'ctaFmtTs_', 'ctaBuildReport_',],
+  // Phase 3 — live data from Apps Script's Script / User Properties (bridge snapshot): the Code.gs passes themselves
+  live: ['getRealtimeStatusSnapshot', 'applyRosterHiddenStaffFilter_', 'applyLivePresence_', 'applyLastLogin_', 'applyStudentOnboardedFlag_', 'applyClassStatus_', 'getOnCallTeachers_', 'getRosterHiddenStaffVisible_', 'classesAlwaysShowEmail_', 'getPresenceMap_', 'getLastLoginMap_', 'normalizeLastLoginEntry_', 'summarizeLastLogin_', 'apsBigJson_', 'apsBigSetSafe_', 'getClassStatusOverrideMap_', 'computeAutomaticClassStatus_', 'formatLastLoginTimestamp_', 'classesAlwaysShowEmails_', 'apsBigSet_', 'apcEncodeRaw_', 'apcValIn_', 'apcT_', 'apsClassLiveBoxesForViewer_', 'apsViewerScope_', 'apsRecentActivity_', 'apsScopeById_', 'getLiveMap_', 'getTeacherNotInClassMap_', 'getNeedsTechSupportMap_', 'apsScopeByEmail_', 'apsClassLiveBox_', 'apsAllViewRole_', 'apsCoursesMemoGen_', 'getViewerContext_', 'getRealtimeAvailabilityMap_', 'getExternalActivityRealtimeMap_', 'classAccessFor_', 'classRolesLabel_'],
   country: ['applyUserCountry_', 'getUserCountryMap_', 'ucLegacyMap_', 'ucMap_', 'ucRows_', 'ucSheet_', 'ucPref_', 'apsCountryOn_'],
 };
 // Module-level vars copied (constants, memo state). Initialisers run per request inside the factory.
-const VARS = (process.env.GEN_VARS || '').split(',').filter(Boolean).concat([
+const VARS = (process.env.GEN_VARS || '').split(',').filter(Boolean).concat(['CLASS_ROLE_LABEL_', 'COURSES_MEMO_KEY_', 'TEACHER_AVAILABILITY_REALTIME_PROP_KEY', 'EXTERNAL_ACTIVITY_REALTIME_PROP_KEY', 'CLS_LIVE_BOX_CACHE_KEY_', 'COURSES_MEMO_SECONDS_', 'APS_RT_RECENT_KEY_', 'LIVE_PROP_KEY', 'TEACHER_NOT_IN_CLASS_PROP_KEY', 'NEEDS_TECH_SUPPORT_PROP_KEY', 'APS_IDLE_POLL_MS_', 'APC_ISO_RE_', 'CLASSES_ALWAYS_SHOW_CACHE_', 'APS_BIG_MOVED_', 'PRESENCE_PROP_KEY', 'LAST_LOGIN_PROP_KEY', 'LAST_LOGIN_SOURCE_ORDER', 'LAST_LOGIN_SOURCE_LABELS', 'CLASS_STATUS_PROP_KEY', 'CLASS_STATUS_COMPLETION_MINUTES', 'PRESENCE_ONLINE_WINDOW_MINUTES', 'ONBOARDED_STUDENTS_PROP_KEY', 'CLASS_STARTED_MARK_PROP_KEY', 'CLASS_MEET_ENDED_PROP_KEY', 'CLASS_STATUS_LABELS', 'CLASS_STATUS_COLOR_CATEGORY', 'ON_CALL_TEACHERS_PROP_KEY', 'ROSTER_HIDDEN_STAFF_VISIBLE_PROP_KEY', 
   'APS_REQ_MEMO_', 'LAST_LOGIN_TIMEZONE', 'APS_TZ', 'AVAILABILITY_STATUS', 'TEACHER_AVAILABILITY_SHEET_NAME', 'WHATSAPP_LINKS_SHEET_NAME',
   'CLASS_MEET_CACHE_KEY_', 'ATTENDANCE_MEET_LINK_MAP_SHEET_NAME', 'CLASS_MEET_DETECTED_SHEET_',
   'SL_MEMO_', 'SL_CACHE_KEY_', 'SL_SHEET_', 'SL_HEADER_', 'SL_STATUS_',
@@ -42,13 +44,15 @@ const VARS = (process.env.GEN_VARS || '').split(',').filter(Boolean).concat([
 // Supplied by src/gas/runtime.ts (Apps Script services, workbooks, Azure-side ports).
 const PROVIDED = ['apsDashboardUrl_', 'getGoogleProfileName_', 'Sheets', 'SpreadsheetApp', 'CacheService', 'PropertiesService', 'Utilities', 'Session', 'console', 'getWorkbook_', 'getAttendanceWorkbook_',
   'isRosterHiddenStaffEmail_', 'apsTabAllowed_', 'isOnCallCoordinatorEmail_', 'apsRequireTabForToken_', 'requireValidSession_', 'readAllCoursesFromCache_',
-  // live-data passes (Script / User Properties — Phase 3): Azure's versions with no stored maps, same as the Classes view
-  'applyRosterHiddenStaffFilter_', 'applyLivePresence_', 'applyLastLogin_', 'applyStudentOnboardedFlag_'];
+  // live Google Meet status (Meet / Reports APIs + script lock) — not on Azure yet; Code.gs's catch uses the schedule
+  'classMeetLiveSnapshot_', 'classMeetApplyLive_',
+  // chat is not on Azure yet: a constant chat version, so the page never reloads a chat it cannot load here
+  'chatVersion_'];
 // Writers that may be reached but are wrapped in try/catch in Code.gs (best-effort audit) — allowed: the runtime refuses the write.
 // (slAudit_ appends to APS_SCHOOL_LEAVE_AUDIT_LOG; Azure does not write it.)
 // Apps Script globals: any the copied code uses must be provided by the runtime (checked — nothing can be undefined).
 const APPS_SCRIPT_GLOBALS = ['Sheets', 'SpreadsheetApp', 'CacheService', 'PropertiesService', 'Utilities', 'Session', 'Logger', 'HtmlService', 'ContentService', 'Drive', 'People', 'Gmail', 'Calendar', 'XmlService', 'Charts', 'Maps', 'Classroom', 'ScriptApp', 'UrlFetchApp', 'DriveApp', 'GmailApp', 'MailApp', 'LockService', 'AdminDirectory', 'AdminReports'];
-const FORBIDDEN_CALLS = /ScriptApp|Classroom\.|UrlFetchApp|GmailApp|MailApp|DriveApp|LockService|AdminDirectory|AdminReports|\.setProperty|\.deleteProperty/;
+const FORBIDDEN_CALLS = /ScriptApp|Classroom\.|UrlFetchApp|GmailApp|MailApp|DriveApp|LockService|AdminDirectory|AdminReports/; // property writes are allowed: the runtime keeps them in the request only (Phase 3)
 
 /** True when a '/' at position j starts a regex literal (not division): previous non-space char is an operator/bracket or a keyword. */
 function regexStart(src, j) {
@@ -86,6 +90,18 @@ function blockAt(src, i) {
   }
   throw new Error('unterminated block at ' + i);
 }
+/** A top-level var plus the top-level statements that fill it in, e.g. `var APC_KEYS_ = {}; APC_KEYS_[LAST_LOGIN_PROP_KEY] = 'll';`
+ *  (same line) or `NAME.x = …;` / `NAME[k] = …;` starting a later line — without them the copy would be an empty object. */
+function varWithSetup(src, name, at) {
+  const decl = blockAt(src, at); let out = decl;
+  const esc = name.replace(/[$]/g, '\\$');
+  let j = at + decl.length;
+  const same = new RegExp('^[ \\t]*' + esc + '[\\[.]');
+  while (same.test(src.slice(j, src.indexOf('\n', j)))) { const k = src.slice(j).search(new RegExp(esc + '[\\[.]')) + j; const b = blockAt(src, k); out += ' ' + b; j = k + b.length; }
+  const later = new RegExp('^' + esc + '[\\[.][^\\n=]*=(?!=)', 'gm'); let m;
+  while ((m = later.exec(src))) if (m.index > at) out += '\n' + blockAt(src, m.index);
+  return out;
+}
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/g, "''");
 
 function main() {
@@ -96,7 +112,7 @@ function main() {
   const fns = Array.from(new Set(Object.values(FEATURES).flat()));
   const copied = new Set(fns.concat(VARS)), provided = new Set(PROVIDED), parts = [], missing = {};
   // Module-level names in Code.gs SOURCE ORDER (as Apps Script initialises them; top-level const/let must not be read early).
-  for (const v of VARS.slice().sort((a, b) => (defs[a] ?? 0) - (defs[b] ?? 0))) { if (!(v in defs)) throw new Error('var not found in Code.gs: ' + v); parts.push(blockAt(src, defs[v])); }
+  for (const v of VARS.slice().sort((a, b) => (defs[a] ?? 0) - (defs[b] ?? 0))) { if (!(v in defs)) throw new Error('var not found in Code.gs: ' + v); parts.push(varWithSetup(src, v, defs[v])); }
   for (const f of fns) {
     if (!(f in defs)) throw new Error('function not found in Code.gs: ' + f);
     const b = blockAt(src, defs[f]); const code = strip(b);
@@ -105,7 +121,7 @@ function main() {
     for (const id of new Set(code.match(/(?<![.\w$])[A-Za-z_$][\w$]*/g) || [])) if (id in defs && !copied.has(id) && !provided.has(id)) (missing[id] = missing[id] || []).push(f);
     parts.push(b);
   }
-  for (const v of VARS) for (const id of new Set(strip(blockAt(src, defs[v])).match(/(?<![.\w$])[A-Za-z_$][\w$]*/g) || [])) if (id in defs && !copied.has(id) && !provided.has(id) && id !== v) (missing[id] = missing[id] || []).push(v);
+  for (const v of VARS) for (const id of new Set(strip(varWithSetup(src, v, defs[v])).match(/(?<![.\w$])[A-Za-z_$][\w$]*/g) || [])) if (id in defs && !copied.has(id) && !provided.has(id) && id !== v) (missing[id] = missing[id] || []).push(v);
   if (Object.keys(missing).length) {
     console.error('[gen-gas-scope] used but neither copied nor provided:\n' + Object.entries(missing).map(([k, v]) => '  ' + k + '  ← ' + v.join(', ')).join('\n'));
     process.exit(1);

@@ -12,6 +12,14 @@ if (!fs.existsSync(process.env.APS_FIXTURE_PATH)) { // small sample school (same
   fs.mkdirSync(path.dirname(process.env.APS_FIXTURE_PATH), { recursive: true });
   fs.writeFileSync(process.env.APS_FIXTURE_PATH, JSON.stringify({ courses: require('../dist/test/helpers').testCourses(), userRoles: {}, accessOverrides: {} }, null, 1));
 }
+{ // Phase 3: a copy of the fixture with Apps Script live data (one teacher online now, a last login) — the local file is not changed
+  const fx = JSON.parse(fs.readFileSync(process.env.APS_FIXTURE_PATH, 'utf8')), now = new Date().toISOString();
+  const t = ((fx.courses || [])[0] && (fx.courses[0].teachers || [])[0] || {}).email || 'priya_aps8001@avvaiyarpadasalai.org';
+  fx.live = { script: { presenceMap: JSON.stringify({ [t]: { lastSeen: now, loginAt: now } }), ADMIN_EMAILS: '["never@x"]' }, user: { lastLoginMap: JSON.stringify({ [t]: { db: now } }) } };
+  const tmp = path.join(require('os').tmpdir(), 'aps-e2e-fixture-' + process.pid + '.json'); fs.writeFileSync(tmp, JSON.stringify(fx));
+  process.env.APS_FIXTURE_PATH = tmp; process.on('exit', () => { try { fs.unlinkSync(tmp); } catch { /* gone */ } });
+  global.__liveTeacher = t;
+}
 const { loadConfig } = require('../dist/src/config');
 const { createApp, createContext } = require('../dist/src/server');
 const { DashboardPage } = require('../dist/src/web/render');
@@ -40,8 +48,8 @@ const { DashboardPage } = require('../dist/src/web/render');
       assert.ok(tok && /^[0-9a-f-]{36}$/.test(tok), 'session token held by the page');
       const me = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getCurrentUser(tk)), tok);
       assert.strictEqual(me.role, 'admin'); assert.strictEqual(me.email, 'admin@avvaiyarpadasalai.org');
-      const err = await page.evaluate(() => new Promise((res) => google.script.run.withSuccessHandler(() => res('no error')).withFailureHandler((e, u) => res(e.message + '|' + u)).withUserObject('ctx').getRealtimeStatusSnapshot('x')));
-      assert.strictEqual(err, 'NOT_ON_AZURE_YET: getRealtimeStatusSnapshot|ctx', 'errors + user object reach the failure handler as in Apps Script');
+      const err = await page.evaluate(() => new Promise((res) => google.script.run.withSuccessHandler(() => res('no error')).withFailureHandler((e, u) => res(e.message + '|' + u)).withUserObject('ctx').getMaintenanceStatus('x')));
+      assert.strictEqual(err, 'NOT_ON_AZURE_YET: getMaintenanceStatus|ctx', 'errors + user object reach the failure handler as in Apps Script');
       console.log('   calls made by the page: ' + Array.from(new Set(calls)).join(', '));
     });
     await t('Phase 2: the Classes tab shows the class cards from Azure (getDashboardData)', async () => {
@@ -73,6 +81,16 @@ const { DashboardPage } = require('../dist/src/web/render');
         assert.ok(!r.err || !/NOT_ON_AZURE_YET/.test(r.err), fn + ' is on Azure: ' + JSON.stringify(r).slice(0, 200));
         assert.ok(!r.err, fn + ' answered: ' + JSON.stringify(r).slice(0, 200));
       }
+    });
+    await t('Phase 3: live data from Apps Script (bridge snapshot) — the teacher online now shows online with a last login; realtime poll', async () => {
+      const tok = await page.evaluate(() => apsSessionToken);
+      const d = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getDashboardData(tk)), tok);
+      const people = d.courses.flatMap((c) => (c.teachers || []).concat(c.students || []));
+      const me = people.find((p) => String(p.email).toLowerCase() === global.__liveTeacher);
+      assert.ok(me && me.online === true && me.lastLoginAt, 'online + last login: ' + JSON.stringify(me && { online: me.online, lastLoginAt: me.lastLoginAt }));
+      assert.ok(people.filter((p) => p.online).length === 1, 'only that person is online');
+      const rt = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getRealtimeStatusSnapshot(tk)), tok);
+      assert.ok(rt && rt.presence && rt.presence[global.__liveTeacher], 'realtime poll answered by Azure with the live presence');
     });
     await t('sign-out: endSession sent and the session is gone on the server', async () => {
       const tok = await page.evaluate(() => apsSessionToken);

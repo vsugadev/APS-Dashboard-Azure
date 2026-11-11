@@ -4,6 +4,7 @@
  */
 import type { AppConfig } from '../config';
 import type { DataSource } from '../data/types';
+import type { LiveSource } from '../live/liveSource';
 import type { SessionStore, Session } from '../auth/sessions';
 import { SESSION_EXPIRED_MSG } from '../auth/sessions';
 import type { GoogleAuth, VerifiedClaims } from '../auth/google';
@@ -17,6 +18,8 @@ import { describeGoogleError } from '../google/diagnose';
 export interface AppContext {
   cfg: AppConfig;
   data: DataSource;
+  /** Apps Script's live Script / User Properties (Phase 3 bridge); EmptyLiveSource when not configured. */
+  live: LiveSource;
   sessions: SessionStore;
   google: GoogleAuth;
   nonces: StateNonces;

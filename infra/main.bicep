@@ -28,6 +28,9 @@ param targetSpreadsheetId string = ''
 @description('ID of the Attendance spreadsheet (Script Property ATTENDANCE_SPREADSHEET_ID) — Meet link map sheets for the Classes view.')
 param attendanceSpreadsheetId string = ''
 
+@description('Phase 3: the LIVE Apps Script web app address (https://script.google.com/macros/s/…/exec) — the live-data bridge. Empty = no live data.')
+param appsScriptBridgeUrl string = ''
+
 var vaultName = take('kv-${replace(appName, '-', '')}${uniqueString(resourceGroup().id)}', 24)
 var kvRef = 'https://${vaultName}${environment().suffixes.keyvaultDns}/secrets'
 
@@ -93,6 +96,7 @@ resource web 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'ATTENDANCE_SPREADSHEET_ID', value: attendanceSpreadsheetId }
         { name: 'GOOGLE_IMPERSONATE_USER', value: googleImpersonateUser }
         { name: 'DASHBOARD_HTML_PATH', value: 'public/Dashboard.html' }
+        { name: 'APPS_SCRIPT_BRIDGE_URL', value: appsScriptBridgeUrl }
         // Secrets — Key Vault references, resolved by the managed identity. Add the secrets with the names below.
         { name: 'GOOGLE_OAUTH_CLIENT_ID', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/google-oauth-client-id/)' }
         { name: 'GOOGLE_OAUTH_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/google-oauth-client-secret/)' }
@@ -104,6 +108,8 @@ resource web 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'VCFO_AMCHATS_BOD_EMAILS', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/bod-emails/)' }
         { name: 'ON_CALL_COORDINATOR_EMAILS', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/on-call-coordinator-emails/)' }
         { name: 'ROLE_PERMISSIONS_JSON', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/role-permissions-json/)' }
+        // Phase 3: shared secret of the Apps Script live-data bridge (same value as Script Property AZURE_BRIDGE_SECRET)
+        { name: 'APPS_SCRIPT_BRIDGE_SECRET', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/apps-script-bridge-secret/)' }
       ]
     }
   }

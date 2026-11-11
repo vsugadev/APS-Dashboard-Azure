@@ -15,8 +15,8 @@
       "md5": "aff995cfc3bdad327f4835388b17f7cf"
     },
     "PortalBridge.gs": {
-      "bytes": 14962,
-      "md5": "3694dc8c1f3cf9ac14a9408bd16069bd"
+      "bytes": 15135,
+      "md5": "7b9198064cac5c68c20c9a2508ef707e"
     },
     "appsscript.json": {
       "bytes": 2075,
@@ -25,6 +25,10 @@
     "APS_PropertyQuota_Fix.gs": {
       "bytes": 9439,
       "md5": "4c5587bb83f6b1923d4cc3f2f9055d9e"
+    },
+    "AzureBridge.gs": {
+      "bytes": 8573,
+      "md5": "7b46c7e7c011c1f94353ca520343df95"
     }
   }
 }

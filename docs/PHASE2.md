@@ -162,8 +162,10 @@ last sync info through the page's `google.script.run`. `npm test` 34 pass; brows
 
 | Part | Source | When |
 |---|---|---|
-| Attendance sync status / diagnostics; editing attendance | Script Properties / writes | Phase 3 / write phase |
-| Online now (heartbeat), last login, stored onboarded list, manual class status, live Meet status, card Status box during class, on-call banner, Hide/Show | Script / User Properties | Phase 3 |
+| Attendance sync status / diagnostics | Script Properties | **done in Phase 3 step 1** |
+| Editing attendance | writes | write phase |
+| Online now (heartbeat), last login, stored onboarded list, manual class status, on-call banner, Hide/Show | Script / User Properties | **done in Phase 3 step 1** (`docs/PHASE3.md`) |
+| Live Meet status, card Status box during class | Meet / Reports APIs | later |
 | Admin / HM badge name from the Google profile | Admin Directory API | later (scope not approved yet) |
 
 ### Still Apps Script only

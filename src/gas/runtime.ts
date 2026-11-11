@@ -7,8 +7,8 @@
  *  - An EXISTING sheet can never be changed (any write throws READ_ONLY). A sheet that does not exist yet behaves as
  *    Code.gs's "create it" path in memory only: it is empty for this request and nothing is written to Google.
  *  - CacheService: nothing cached here (the data source caches whole sheets for 60 s).
- *  - PropertiesService: read-only view of the plain Code.gs settings given to App Service (never secrets);
- *    setProperty / deleteProperty throw.
+ *  - PropertiesService: Apps Script's live Script / User Properties (allow-listed, never secrets) under the plain App
+ *    Service settings; a write stays in the request only (in memory, like a sheet created in memory).
  */
 import { Utilities } from './utilities';
 import type { SheetGrid, WorkbookKey, ValuesRequest } from '../data/types';
@@ -98,7 +98,7 @@ export class SnapWorkbook {
 
 /** Expected, harmless messages from the copied code (an optional Script Property not set; an audit row Azure does not
  *  write) — not repeated in the App Service log on every request. Never prints a stored value. */
-function quiet(m: unknown): boolean { return /^\[Config\] Script Property "[^"]*" is not (set|valid)/.test(String(m)) || /audit not written: READ_ONLY/.test(String(m)) || /NEED_DATA/.test(String(m)); } // NEED_DATA: Azure loads it and runs again
+function quiet(m: unknown): boolean { return /^\[Config\] Script Property "[^"]*" is not (set|valid)/.test(String(m)) || /audit not written: READ_ONLY/.test(String(m)) || /NEED_DATA/.test(String(m)) || /^\[Class Meet Live\] Live Meet status is not on Azure yet/.test(String(m)); } // NEED_DATA: Azure loads it and runs again
 
 const noCache = { get: () => null, put: () => undefined, remove: () => undefined, getAll: () => ({}), putAll: () => undefined, removeAll: () => undefined };
 
@@ -107,10 +107,10 @@ export interface RuntimeDeps {
   session?: { email: string; role: string } | null;   // the session Azure already checked
   courses?: () => unknown[];                           // readAllCoursesFromCache_ (a fresh copy each call)
   tabAllowedForSession?: (key: string) => boolean;
-  /** Azure's versions of the Code.gs live-data passes (no stored Script / User Property maps yet — Phase 3). */
-  live?: { applyRosterHiddenStaffFilter_: (c: unknown[]) => unknown; applyLivePresence_: (c: unknown[]) => unknown; applyLastLogin_: (c: unknown[]) => unknown; applyStudentOnboardedFlag_: (c: unknown[]) => unknown };
   attendance: SnapWorkbook | null;
   settings: Record<string, string>;
+  /** Apps Script's live Script / User Properties (allow-listed snapshot from the Apps Script bridge — src/live). */
+  liveProps?: { script: Record<string, string>; user: Record<string, string> };
   /** Sheets advanced service answers already fetched for this request (key = valuesKey), and which book each ID is. */
   values?: Record<string, unknown>;
   bookIds?: Record<string, WorkbookKey>;
@@ -124,14 +124,37 @@ export interface RuntimeDeps {
   isOnCallCoordinatorEmail_: (email: unknown) => boolean;
 }
 
+/** Every property key the copied code asked for in this process ('S:' Script, 'U:' User) — tests use it to prove each
+ *  key is either a plain setting, in the live-data allow-list, or deliberately never exported (secrets). */
+export const PROPERTY_READS = new Set<string>();
+
 export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
-  const emptyProps = { getProperty: () => null, getProperties: () => ({}), setProperty: () => { throw new Error(READ_ONLY_MSG); }, deleteProperty: () => { throw new Error(READ_ONLY_MSG); } };
-  const props = {
-    getProperty: (k: string) => (Object.prototype.hasOwnProperty.call(d.settings, k) ? d.settings[k] : null),
-    getProperties: () => ({ ...d.settings }),
-    setProperty: () => { throw new Error(READ_ONLY_MSG); },
-    deleteProperty: () => { throw new Error(READ_ONLY_MSG); },
+  // Script Properties = Apps Script's live Script Properties (allow-listed snapshot, Phase 3) under the plain App Service
+  // settings (a setting set on Azure wins). User Properties = the deploying account's User Properties (Apps Script's
+  // second store: presence / last login / onboarded …), allow-listed. A write by the copied code (best-effort caches
+  // such as the onboarded list or the class "started" mark) stays in THIS request only — never sent anywhere.
+  const live = d.liveProps || { script: {}, user: {} };
+  const store = (base: () => Record<string, string>, tag: string) => {
+    const writes: Record<string, string | null> = {};
+    const get = (k: string): string | null => {
+      PROPERTY_READS.add(tag + k);
+      if (Object.prototype.hasOwnProperty.call(writes, k)) return writes[k];
+      const b = base();
+      return Object.prototype.hasOwnProperty.call(b, k) ? b[k] : null;
+    };
+    const all = () => { const o: Record<string, string> = { ...base() }; for (const [k, v] of Object.entries(writes)) { if (v === null) delete o[k]; else o[k] = v; } return o; };
+    const api: any = {
+      getProperty: get,
+      getProperties: () => { PROPERTY_READS.add(tag + '*'); return all(); },
+      getKeys: () => { PROPERTY_READS.add(tag + '*'); return Object.keys(all()); },
+      setProperty: (k: string, v: unknown) => { writes[String(k)] = String(v); return api; },
+      setProperties: (o: Record<string, unknown>) => { for (const [k, v] of Object.entries(o || {})) writes[k] = String(v); return api; },
+      deleteProperty: (k: string) => { writes[String(k)] = null; return api; },
+    };
+    return api;
   };
+  const props = store(() => ({ ...live.script, ...d.settings }), 'S:');
+  const userProps = store(() => ({ ...live.user }), 'U:');
   return {
     // openById: the two APS spreadsheets, plus the extra ones the copied code computes (read-only snapshots).
     SpreadsheetApp: { openById: (id: string) => {
@@ -160,8 +183,7 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
       throw new NeedData(n);
     } } } },
     CacheService: { getScriptCache: () => noCache, getUserCache: () => noCache },
-    // Script Properties = the plain settings; User Properties (Apps Script's second store of live data) = empty until Phase 3.
-    PropertiesService: { getScriptProperties: () => props, getUserProperties: () => emptyProps },
+    PropertiesService: { getScriptProperties: () => props, getUserProperties: () => userProps },
     Utilities,
     Session: { getActiveUser: () => ({ getEmail: () => '' }), getEffectiveUser: () => ({ getEmail: () => '' }) },
     console: { log: () => undefined, info: () => undefined, warn: (m: unknown) => quiet(m) || console.warn('[Gas] ' + String(m).slice(0, 200)), error: (m: unknown) => quiet(m) || console.error('[Gas] ' + String(m).slice(0, 200)) },
@@ -183,10 +205,13 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     getGoogleProfileName_: () => null,
     // Links in previews point to the LIVE dashboard (Apps Script) until cut-over: APS_DASHBOARD_URL, else Code.gs's fallback.
     apsDashboardUrl_: () => (d.settings.APS_DASHBOARD_URL || 'https://www.avvaiyarpadasalai.org'),
-    applyRosterHiddenStaffFilter_: (c: unknown[]) => (d.live ? d.live.applyRosterHiddenStaffFilter_(c) : c),
-    applyLivePresence_: (c: unknown[]) => (d.live ? d.live.applyLivePresence_(c) : c),
-    applyLastLogin_: (c: unknown[]) => (d.live ? d.live.applyLastLogin_(c) : c),
-    applyStudentOnboardedFlag_: (c: unknown[]) => (d.live ? d.live.applyStudentOnboardedFlag_(c) : c),
+    // Live Google Meet status (Code.gs fetches it with the Meet / Reports APIs under a script lock and keeps it in
+    // Apps Script's cache) is not on Azure yet: these throw, Code.gs's own catch then uses the schedule-based status.
+    classMeetLiveSnapshot_: () => { throw new Error('Live Meet status is not on Azure yet.'); },
+    classMeetApplyLive_: () => null,
+    // Chat is not on Azure yet: a constant version (Code.gs's own fallback value) so the realtime poll never asks the page
+    // to reload a chat it cannot load here.
+    chatVersion_: () => '',
   };
 }
 

@@ -9,14 +9,14 @@ project `APS-Classroom-Dashboard` (which is never changed by anything here).
 
 | Folder | What it holds |
 |---|---|
-| `src/` | Azure server code (TypeScript): sign-in, sessions, roles, Access Control, API, Google access, page renderer |
+| `src/` | Azure server code (TypeScript): sign-in, sessions, roles, Access Control, API, Google access, page renderer; `src/gas/` copied Code.gs code + read-only runtime; `src/live/` Apps Script live-data bridge (Phase 3) |
 | `test/` | Azure tests, incl. parity tests against `gas-source/Code.gs` |
 | `public/` | What the browser loads: `Dashboard.html` (copied from `gas-source/`) and `aps-gas-shim.js` |
 | `infra/` | Azure infrastructure (Bicep) |
 | `tools/` | `sync-gas`, `sync-dashboard`, `sync-prompt`, `gen-gas-helpers` + `gen-gas-scope` (copy Code.gs helpers / Sheet readers into `src/gas/`), `push-role-lists-to-keyvault.ps1` (copies the role-list Script Properties into Key Vault), Apps Script regression runner, browser check |
 | `gas-source/` | **Reference copy of the Apps Script project** (Code.gs, Dashboard.html, PdfLib.gs, PortalBridge.gs, appsscript.json, APS_PropertyQuota_Fix.gs) + its 119-file regression suite in `gas-source/test/`. Read-only: refresh it from the live project with `npm run sync-gas`. `SNAPSHOT.json` records the release and checksums. Secret files (`ENV_VARIABLE_*.gs`) are never copied. |
 | `src/gas/` | Code.gs code copied word for word (generated — `npm run gen-gas`): pure helpers (`classes.generated.ts`) and Sheet readers (`scope.generated.ts`) run in the **read-only Apps Script runtime** (`runtime.ts`: Sheets snapshot, no writes) |
-| `docs/` | Phase notes (`PHASE1.md`, `PHASE2.md`, `PHASE0_STATUS.md`); `docs/reference/` = Help Guide, architecture reference, generic development prompt; `docs/prompt/azure_prompt_addendum.txt` = Azure migration rules |
+| `docs/` | Phase notes (`PHASE1.md`, `PHASE2.md`, `PHASE3.md`, `PHASE0_STATUS.md`); `docs/reference/` = Help Guide, architecture reference, generic development prompt; `docs/prompt/azure_prompt_addendum.txt` = Azure migration rules |
 | `aps_dashboard_Azure_prompt.txt` | **Generated** master prompt for Azure work = generic prompt (word for word) + Azure rules. Rebuilt automatically on `npm install`, `npm run build`, `npm test`, `npm run dev`; `npm run sync-prompt` for one update, `npm run watch-prompt` to keep it updating. Edit the generic prompt or the addendum, never this file. |
 | `.github/workflows/` | Deploy pipeline (copy of it in `docs/azure-deploy.yml.txt`) |
 
@@ -123,5 +123,6 @@ Until it exists, Admin / Super Admin / HM / BOD (on the lists) can sign in; teac
 - `DEV_LOGIN` refuses to start in Azure.
 
 See `docs/PHASE1.md` for what Phase 1 covers, what is deferred, and the hand-over to Phase 2.
-Phase 2 (read-only screens over the Sheets API, steps 1–6, v0.7.0) is described in `docs/PHASE2.md`; what is on Azure today
+Phase 2 (read-only screens over the Sheets API, steps 1–6, v0.7.0) is described in `docs/PHASE2.md`; Phase 3 (live data
+from Apps Script through the read-only bridge, v0.8.0) in `docs/PHASE3.md`; what is on Azure today
 is in `docs/APS_Dashboard_Azure_Guide.md`.

@@ -16,12 +16,20 @@ test('read-only runtime: existing sheets can never be changed; a missing sheet i
   assert.throws(() => sh.getRange('A1'), /A1 ranges are not supported/);
 });
 
-test('runtime services: settings readable, never writable; no cache; workbooks are the snapshots', () => {
+test('runtime services: settings + Apps Script live properties readable; writes stay in the request; no cache; workbooks are the snapshots', () => {
   const main = new SnapWorkbook('m', {});
-  const rt: any = makeRuntime({ main, attendance: null, settings: { APS_X: '1' }, isRosterHiddenStaffEmail_: () => false, apsTabAllowed_: () => true, isOnCallCoordinatorEmail_: () => false });
+  const deps = { main, attendance: null, settings: { APS_X: '1' }, liveProps: { script: { APS_X: 'live', presenceMap: '{"a":1}' }, user: { lastLoginMap: '{}' } }, isRosterHiddenStaffEmail_: () => false, apsTabAllowed_: () => true, isOnCallCoordinatorEmail_: () => false };
+  const rt: any = makeRuntime(deps);
   const p = rt.PropertiesService.getScriptProperties();
-  assert.equal(p.getProperty('APS_X'), '1'); assert.equal(p.getProperty('MISSING'), null);
-  assert.throws(() => p.setProperty('APS_X', '2'), { message: READ_ONLY_MSG }); assert.throws(() => p.deleteProperty('APS_X'), { message: READ_ONLY_MSG });
+  assert.equal(p.getProperty('APS_X'), '1', 'an Azure setting wins over the Apps Script value'); assert.equal(p.getProperty('MISSING'), null);
+  assert.equal(p.getProperty('presenceMap'), '{"a":1}', 'Apps Script live Script Property');
+  assert.equal(rt.PropertiesService.getUserProperties().getProperty('lastLoginMap'), '{}', 'Apps Script User Property (second store)');
+  p.setProperty('presenceMap', '{}'); p.deleteProperty('APS_X');
+  assert.equal(p.getProperty('presenceMap'), '{}', 'a write is seen by the same request…'); assert.equal(p.getProperty('APS_X'), null);
+  assert.deepEqual(deps.liveProps.script, { APS_X: 'live', presenceMap: '{"a":1}' }, '…but never changes the snapshot');
+  const rt2: any = makeRuntime(deps);
+  assert.equal(rt2.PropertiesService.getScriptProperties().getProperty('presenceMap'), '{"a":1}', 'and is gone for the next request');
+  void READ_ONLY_MSG;
   const c = rt.CacheService.getScriptCache(); c.put('k', 'v'); assert.equal(c.get('k'), null);
   assert.equal(rt.getWorkbook_(), main); assert.throws(() => rt.getAttendanceWorkbook_(), /Attendance data/);
   assert.throws(() => rt.SpreadsheetApp.openById('x')); // only the APS spreadsheets (+ the extra IDs the copied code computes)

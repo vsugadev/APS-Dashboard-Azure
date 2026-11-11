@@ -1,11 +1,12 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-11 (v0.7.0, Phase 2 step 6). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-11 (v0.8.0, Phase 3 step 1). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
-show the same data. Nothing on Azure changes any data yet.
+show the same data. Live data Apps Script keeps in its Script / User Properties (online now, last login, class status …)
+reaches Azure through a signed, read-only bridge (Phase 3). Nothing on Azure changes any data yet.
 
 ---
 
@@ -20,10 +21,11 @@ show the same data. Nothing on Azure changes any data yet.
 | Classes → **Teacher Availability** | ✅ view | Teacher's own week; Admin / HM / BOD weekly report. **Save** and **Send test email** are off on Azure |
 | **Active Directory** → Directory Search | ✅ | Role-tiered on the server: staff / teachers see full details; students see names, classes and only their own details |
 | **Attendance** tab | ✅ view | Week list, records (by week / class / mine), on-call teacher attendance, audit log — all read-only (no edits). Sync status / diagnostics empty until Phase 3 |
-| Active Directory → Student Onboarding Status | ✅ | Built from the Classes data in the browser; "onboarded" = online now until Phase 3 |
+| Active Directory → Student Onboarding Status | ✅ | Built from the Classes data in the browser; onboarded list from Apps Script (Phase 3) |
 | **Other read-only screens** (Phase 2 step 6) | ✅ view | 62 more calls: Admin Control lists, Teacher Appreciation reports, Assignment Monitoring, Class change / grade change requests, Leave, Coverage, Examination history / monitoring, Reference letters, Special Classes, Temp Teacher, Tickets, Zoho sync history, Tamil Thadam search. Buttons that save / send / sync still say "not on Azure yet" |
 | Grading, Add Student, chat, Classroom / Drive / Gmail / Zoho previews and checks | ⏳ | Need Google services Azure does not use yet |
-| Online now, last login, live Meet status, manual class status, on-call banner | ⏳ Phase 3 | Live data kept in Apps Script properties — empty on Azure for now |
+| **Live data** (Phase 3): online now, last login, onboarded, manual class status, on-call banner, Hide/Show, realtime poll (live / Teacher NOT in Class / Needs Tech Support flags), sync status | ✅ view | From Apps Script's Script / User Properties through the bridge (refreshed every 20 s). Needs the bridge settings below |
+| Live Google Meet status on class cards, heartbeat from Azure page loads, chat | ⏳ | Meet / Reports APIs; writes |
 | Every save / email / sync | ⏳ | Shows "not on Azure yet" — use the Apps Script dashboard |
 
 ---
@@ -37,6 +39,10 @@ show the same data. Nothing on Azure changes any data yet.
 - **Read-only runtime:** the copied code runs against a **snapshot** of the Google Sheets read through the Sheets API
   (cached 60 s). It cannot change any existing sheet or setting (`READ_ONLY`). Sheets are **loaded on demand**: if the
   code needs a sheet (e.g. a weekly attendance sheet) that is not loaded yet, Azure loads it and runs the read again.
+- **Live data bridge (Phase 3):** Azure asks the live Apps Script web app (one signed POST, HMAC secret shared through Key
+  Vault and the Script Property `AZURE_BRIDGE_SECRET`) for an **allow-listed** snapshot of its Script / User Properties.
+  Secrets, role lists and spreadsheet IDs are never sent; Azure filters the answer again. Kept 20 s; if Apps Script cannot
+  be reached the last snapshot is used up to 5 min, then live data is empty (the page still works).
 - **Proved by tests:** every screen is compared with Code.gs itself (run in the Apps Script test mock) for every role.
 
 ---
@@ -50,7 +56,8 @@ show the same data. Nothing on Azure changes any data yet.
 | `google-oauth-client-id`, `google-oauth-client-secret` | Google sign-in client (type "Web application") |
 | `google-service-account-json` | The **service-account key** file (`{"type": "service_account", …}`) — not the OAuth client file |
 | `superadmin-emails`, `admin-emails`, `headmaster-emails`, `bod-emails`, `on-call-coordinator-emails` | JSON lists, copied from Script Properties (`tools\push-role-lists-to-keyvault.ps1`) |
-| `role-permissions-json` | Optional (`dashboardRolePermissions_v1`) |
+| `role-permissions-json` | Optional (`dashboardRolePermissions_v1`) — also used by the copied Code.gs screens |
+| `apps-script-bridge-secret` | Phase 3: random text, ≥ 32 characters — the SAME value as Script Property `AZURE_BRIDGE_SECRET` in the live Apps Script |
 
 **After changing any secret** (a restart alone is not enough):
 ```powershell
@@ -66,6 +73,8 @@ az webapp restart -g rg-aps-dashboard -n aps-dashboard-ap
 | `ATTENDANCE_SPREADSHEET_ID` | yes (for Meet links) | Attendance spreadsheet (Meet link map sheets) |
 | `GOOGLE_IMPERSONATE_USER` | yes | Account the app reads Sheets as (must open both spreadsheets) |
 | `PUBLIC_BASE_URL` | yes | `https://aps-dashboard-ap.azurewebsites.net` |
+| `APPS_SCRIPT_BRIDGE_URL` | yes (Phase 3) | The live Apps Script web app address `https://script.google.com/macros/s/…/exec` |
+| `APPS_SCRIPT_BRIDGE_SECRET` | yes (Phase 3) | Key Vault reference `@Microsoft.KeyVault(SecretUri=https://kv-apsdashboardapu7zau2j.vault.azure.net/secrets/apps-script-bridge-secret/)` |
 | `SPECIAL_CLASSES_SPREADSHEET_ID`, `SPECIAL_CLASSES_SHEET_NAME`, `ZOHO_SYNC_SPREADSHEET_ID` | optional | Only if Apps Script sets them (unset = Code.gs default). `GOOGLE_IMPERSONATE_USER` must be able to open the Special Classes and Zoho sync spreadsheets |
 | `APS_SCHOOL_LEAVE_ENABLED`, `APS_COUNTRY_FEATURE`, `APS_ENVIRONMENT`, `TCC_CLEANUP_GRACE_MINUTES`, `APS_CLASS_TEACHER_AVAILABILITY_*`, `ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS`, `APS_GRADING_TEAM_EMAILS`, `APS_CLASSES_ALWAYS_SHOW_EMAILS` | optional | Same meaning as in Apps Script; unset = Apps Script default |
 
@@ -75,6 +84,28 @@ az webapp config appsettings set -g rg-aps-dashboard -n aps-dashboard-ap --setti
 az webapp config appsettings list -g rg-aps-dashboard -n aps-dashboard-ap -o table | Select-String NAME
 ```
 Values containing `|` need `az --% …` (e.g. `--linux-fx-version "NODE|22-lts"`).
+
+### Phase 3 bridge — set up once
+
+1. **Make the secret** (PowerShell; the value goes to Key Vault and to the clipboard — never into a file or chat):
+   ```powershell
+   $b = New-Object byte[] 36; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+   $s = [Convert]::ToBase64String($b) -replace '[+/=]', ''
+   az keyvault secret set --vault-name kv-apsdashboardapu7zau2j -n apps-script-bridge-secret --value $s -o none
+   Set-Clipboard $s; Remove-Variable s, b
+   ```
+2. **Apps Script** (live project, editor): add the file `AzureBridge.gs`, apply the one-line change in `PortalBridge.gs`
+   `doPost`; **Project Settings → Script Properties → Add** `AZURE_BRIDGE_SECRET` = paste (Ctrl+V); then clear the
+   clipboard (`Set-Clipboard ' '`). **Deploy → Manage deployments → ✏️ edit the live web app → Version: New version →
+   Deploy** (the /exec address stays the same). Copy that /exec address.
+3. **Azure app settings**, then refresh secrets and restart:
+   ```powershell
+   az webapp config appsettings set -g rg-aps-dashboard -n aps-dashboard-ap -o none --settings "APPS_SCRIPT_BRIDGE_URL=https://script.google.com/macros/s/<ID>/exec" "APPS_SCRIPT_BRIDGE_SECRET=@Microsoft.KeyVault(SecretUri=https://kv-apsdashboardapu7zau2j.vault.azure.net/secrets/apps-script-bridge-secret/)"
+   az rest --method post --uri "https://management.azure.com/subscriptions/6a7feb18-766c-4257-b84c-8c920f499720/resourceGroups/rg-aps-dashboard/providers/Microsoft.Web/sites/aps-dashboard-ap/config/configreferences/appsettings/refresh?api-version=2022-03-01"
+   az webapp restart -g rg-aps-dashboard -n aps-dashboard-ap
+   ```
+4. Log: `[Live] Apps Script bridge OK — N Script + M User Properties (allow-listed).`
+   To change the secret later: repeat 1–2 (same value in both places), then the refresh + restart.
 
 ---
 
@@ -112,9 +143,16 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[Config] cannot start: …` | A required setting is missing (named, never its value) |
 | `[Config] X: Key Vault reference not resolved yet` | Secret missing or misspelled — check the green ticks under App Service → Environment variables |
 | `[Classes] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
+| `[Config] APPS_SCRIPT_BRIDGE_… ` | A bridge setting is missing / not the /exec address / secret too short (value never printed) |
 | `[Gas] … too many sheet loads` / `requested again after loading` | Developer: a read keeps asking for data the source cannot deliver — check the sheet name / range |
 | `[Gas] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
 | `[Gas] extra spreadsheet not readable` / page "Special Classes are temporarily unavailable" | `GOOGLE_IMPERSONATE_USER` cannot open the Special Classes or Zoho sync spreadsheet — share it (Viewer is enough) |
+| `[Live] Apps Script bridge not configured` | `APPS_SCRIPT_BRIDGE_URL` / `APPS_SCRIPT_BRIDGE_SECRET` missing (or Key Vault reference not resolved) — §3 |
+| `[Live] … FAILED: NOT_CONFIGURED` | Script Property `AZURE_BRIDGE_SECRET` missing / shorter than 32, or the new Apps Script version is not deployed |
+| `[Live] … FAILED: BAD_SIGNATURE` | The two secrets differ — set the same value in Key Vault and the Script Property, refresh + restart |
+| `[Live] … FAILED: STALE` | Server clock difference > 5 min (rare) — restart the app |
+| `[Live] … FAILED: NOT_JSON` / `HTTP_4xx` | `APPS_SCRIPT_BRIDGE_URL` is not the live web app `/exec` address, or the deployment does not allow "Anyone" |
+| Online dots / last login empty on Azure only | Bridge failing for > 5 min — see the `[Live]` lines |
 | Page: "This sign-in link has expired" | Open the site fresh and sign in again |
 | Page: "cannot read class data right now" | Google access problem — see the `[Google]` / `[SignIn]` line |
 | Chrome "Dangerous" label | Report a false positive at safebrowsing.google.com or verify the site in Search Console; long term use an APS domain |
@@ -147,3 +185,4 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.8.0 | 2026-11-11 | Phase 3 step 1: Apps Script live-data bridge (AzureBridge.gs, r122); Code.gs live passes + realtime poll on Azure; generator copies var set-up lines; `TARGET_SPREADSHEET_ID` / role permissions passed to copied screens |

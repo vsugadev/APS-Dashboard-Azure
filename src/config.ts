@@ -38,6 +38,8 @@ export interface AppConfig {
   countryFeatureOn: boolean;
   attendanceSpreadsheetId: string;     // ATTENDANCE_SPREADSHEET_ID (Meet link map sheets) — Script Property of the same name
   scriptSettings: Record<string, string>; // other Code.gs settings the copied readers read (APS_*, TCC_*, TTM_*, CTA_*, ROSTER_*, ATTENDANCE_*, SPECIAL_CLASSES_*, ZOHO_SYNC_SPREADSHEET_ID) — never secrets           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
+  appsScriptBridgeUrl: string;         // APPS_SCRIPT_BRIDGE_URL — the live Apps Script web app /exec address (Phase 3)
+  appsScriptBridgeSecret: string;      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
 }
@@ -109,6 +111,8 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     countryFeatureOn: String(env.APS_COUNTRY_FEATURE || 'on').trim().toLowerCase() !== 'off',
     attendanceSpreadsheetId: String(env.ATTENDANCE_SPREADSHEET_ID || ''),
     scriptSettings: scriptSettingsFrom(env),
+    appsScriptBridgeUrl: String(env.APPS_SCRIPT_BRIDGE_URL || '').trim(),
+    appsScriptBridgeSecret: String(env.APPS_SCRIPT_BRIDGE_SECRET || ''),
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };
@@ -136,6 +140,9 @@ export function configWarnings(cfg: AppConfig): string[] {
     if (!cfg.targetSpreadsheetId) w.push('TARGET_SPREADSHEET_ID is not set.');
     if (!cfg.serviceAccountJson) w.push('GOOGLE_SERVICE_ACCOUNT_JSON is not set — Google Sheet data is unavailable until the service account exists (Phase 0).');
     if (!cfg.impersonateUser) w.push('GOOGLE_IMPERSONATE_USER is not set.');
+    if (!cfg.appsScriptBridgeUrl || !cfg.appsScriptBridgeSecret) w.push('APPS_SCRIPT_BRIDGE_URL / APPS_SCRIPT_BRIDGE_SECRET not set — live data (online now, last login, class status, on-call banner) stays empty (Phase 3).');
+    else if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl)) w.push('APPS_SCRIPT_BRIDGE_URL must be the Apps Script web app address (https://script.google.com/macros/s/…/exec).');
+    else if (cfg.appsScriptBridgeSecret.length < 32) w.push('APPS_SCRIPT_BRIDGE_SECRET is shorter than 32 characters — the bridge is not used.');
   }
   return w;
 }
