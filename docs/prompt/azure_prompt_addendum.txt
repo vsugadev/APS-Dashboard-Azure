@@ -199,6 +199,9 @@ header is longer, or Code.gs fails quietly in the mock.
 - Azure web app `aps-dashboard-ap` (resource group `rg-aps-dashboard`, Key Vault `kv-apsdashboardapu7zau2j`),
   Node 22 LTS, deployed by GitHub Actions (`vsugadev/APS-Dashboard-Azure`, managed identity `id-aps-github`, OIDC).
 - On Azure (read-only): sign-in, sessions, roles, Access Control (view), Classes view (`getDashboardData`) incl.
-  Sheet-based card parts, `getMyCountryPreference`, Teacher Availability (`getClassTeacherAvailabilityView`).
+  Sheet-based card parts, `getMyCountryPreference`, Teacher Availability (`getClassTeacherAvailabilityView`),
+  Active Directory (`getDirectoryIndex`, role-tiered; Onboarding Status is browser-side).
+- Live-data passes (presence / last login / onboarded / hidden staff) have ONE Azure implementation
+  (`liveEmptyPasses`, provided to the copied code) — never write a second one.
 - Live Apps Script dashboard remains production for every user; Azure is not yet announced to users.
 - Phase 3 (live data in Script / User Properties) and every write still to come.

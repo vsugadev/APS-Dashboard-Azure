@@ -162,3 +162,30 @@ test('Teacher Availability view (getClassTeacherAvailabilityView) matches Code.g
   }
   assert.ok(reports >= 3, 'Admin / HM / BOD weekly report compared');
 });
+
+test('Active Directory (getDirectoryIndex) matches Code.gs — full tier (staff, teacher) and basic tier (student, authorized)', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F);
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+  const reg = (await import('../src/server')).buildRegistry();
+  const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'],
+    ['sa0_aps6650@avvaiyarpadasalai.org', 'student'], ['someone@namaps.org', 'authorized']];
+  const tiers: Record<string, number> = {};
+  for (const [email, role] of viewers) {
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const token = await ctx.sessions.create({ email, role });
+    let gas: any; try { gas = J(G.getDirectoryIndex(F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
+    const az: any = await reg.call(ctx, 'getDirectoryIndex', [token]);
+    if (gas.err) { assert.deepEqual(az, { err: gas.err }, role + ': same refusal'); continue; }
+    assert.ok(az.ok, role + ': Azure answered ' + JSON.stringify(az));
+    delete az.ok.builtAt; delete gas.builtAt;
+    const d = diffs(az.ok, gas);
+    assert.deepEqual(d, [], role + ' differences:\n' + d.slice(0, 15).join('\n'));
+    tiers[gas.tier] = (tiers[gas.tier] || 0) + 1;
+    if (gas.tier === 'basic') assert.ok(az.ok.classes.every((c: any) => c.students.every((p: any) => !p.email || p.email.toLowerCase() === email)), 'basic tier: no other student emails');
+  }
+  assert.ok(tiers.full >= 3 && tiers.basic >= 1, 'both tiers compared: ' + JSON.stringify(tiers));
+});

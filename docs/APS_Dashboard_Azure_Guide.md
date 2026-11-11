@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-11 (v0.4.0, Phase 2 step 3). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-11 (v0.5.0, Phase 2 step 4). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -18,6 +18,8 @@ show the same data. Nothing on Azure changes any data yet.
 | **Classes** tab — cards, rosters, filters | ✅ | Who sees which classes, Nilai / class-time filters, order, class schedule + automatic status |
 | Classes — card extras from Sheets | ✅ | Teacher availability, WhatsApp link, Google Meet link, country flags, Temporary Class Coverage banner, Temp Teacher note, School Leave banner |
 | Classes → **Teacher Availability** | ✅ view | Teacher's own week; Admin / HM / BOD weekly report. **Save** and **Send test email** are off on Azure |
+| **Active Directory** → Directory Search | ✅ | Role-tiered on the server: staff / teachers see full details; students see names, classes and only their own details |
+| Active Directory → Student Onboarding Status | ✅ | Built from the Classes data in the browser; "onboarded" = online now until Phase 3 |
 | Online now, last login, live Meet status, manual class status, on-call banner | ⏳ Phase 3 | Live data kept in Apps Script properties — empty on Azure for now |
 | Every other tab, every save / email / sync | ⏳ | Shows "not on Azure yet" — use the Apps Script dashboard |
 
@@ -135,3 +137,4 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.2.0 | 2026-11-11 | Phase 2 step 1: Classes view (cards, rosters, filters, automatic status), country preference |
 | 0.3.0 | 2026-11-11 | Phase 2 step 2: card extras from Sheets via the read-only Code.gs runtime |
 | 0.4.0 | 2026-11-11 | Phase 2 step 3: Teacher Availability view (read-only); generator indexes `const`/`let`; full Java date patterns |
+| 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |

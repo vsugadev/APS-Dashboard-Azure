@@ -85,6 +85,8 @@ export interface RuntimeDeps {
   session?: { email: string; role: string } | null;   // the session Azure already checked
   courses?: () => unknown[];                           // readAllCoursesFromCache_ (a fresh copy each call)
   tabAllowedForSession?: (key: string) => boolean;
+  /** Azure's versions of the Code.gs live-data passes (no stored Script / User Property maps yet — Phase 3). */
+  live?: { applyRosterHiddenStaffFilter_: (c: unknown[]) => unknown; applyLivePresence_: (c: unknown[]) => unknown; applyLastLogin_: (c: unknown[]) => unknown; applyStudentOnboardedFlag_: (c: unknown[]) => unknown };
   attendance: SnapWorkbook | null;
   settings: Record<string, string>;
   isRosterHiddenStaffEmail_: (email: unknown) => boolean;
@@ -120,6 +122,10 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
       return { email: d.session.email, role: d.session.role };
     },
     readAllCoursesFromCache_: () => (d.courses ? d.courses() : []),
+    applyRosterHiddenStaffFilter_: (c: unknown[]) => (d.live ? d.live.applyRosterHiddenStaffFilter_(c) : c),
+    applyLivePresence_: (c: unknown[]) => (d.live ? d.live.applyLivePresence_(c) : c),
+    applyLastLogin_: (c: unknown[]) => (d.live ? d.live.applyLastLogin_(c) : c),
+    applyStudentOnboardedFlag_: (c: unknown[]) => (d.live ? d.live.applyStudentOnboardedFlag_(c) : c),
   };
 }
 

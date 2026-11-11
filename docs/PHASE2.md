@@ -64,12 +64,28 @@ refuses to read a sheet that exists but was not in the snapshot list, so a reade
 Tests: parity for teacher (own saved week), Admin, HM, BOD reports and the student refusal (same message); browser
 check calls the endpoint through the page's `google.script.run`. `npm test` 30 pass; browser 6 pass.
 
+## Step 4 — Active Directory (v0.5.0, 2026-11-11)
+
+`getDirectoryIndex` — Active Directory → Directory Search: every class's teachers and students, **role-tiered on the
+server** exactly as Code.gs (copied function): FULL tier (Admin, Super Admin, HM, BOD, Teacher) gets name, APSID,
+APS email, Classroom link, online, last login, onboarded; BASIC tier (Student, Authorized) gets names, grades and
+classes, teachers' emails, only their OWN email / APSID, Classroom links only for their own classes.
+**Student Onboarding Status** needs no server call of its own (built in the browser from the Classes data).
+
+The Code.gs live-data passes (`applyRosterHiddenStaffFilter_`, `applyLivePresence_`, `applyLastLogin_`,
+`applyStudentOnboardedFlag_`) are now ONE shared Azure implementation (`liveEmptyPasses` in `classes.ts`) used by the
+Classes view and by every copied endpoint, so both screens always agree. Onboarded on Azure = online now (what Code.gs
+marks on a fresh map); the stored onboarded list arrives with Phase 3.
+
+Tests: parity for Admin, HM, BOD, teacher (full tier) and student, authorized (basic tier; no other student's email
+appears). `npm test` 31 pass; browser 7 pass.
+
 ### Not on Azure yet (Code.gs "nothing set" values meanwhile)
 
 | Part | Source | When |
 |---|---|---|
 | Assignment Monitoring tab access; Examination / Grading access | their modules | later in Phase 2 |
-| Online now, last login, onboarded, manual class status, live Meet status, card Status box during class, on-call banner, Hide/Show | Script / User Properties | Phase 3 |
+| Online now (heartbeat), last login, stored onboarded list, manual class status, live Meet status, card Status box during class, on-call banner, Hide/Show | Script / User Properties | Phase 3 |
 | Admin / HM badge name from the Google profile | Admin Directory API | later (scope not approved yet) |
 
 ### Still Apps Script only

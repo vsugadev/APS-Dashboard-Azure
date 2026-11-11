@@ -3,7 +3,7 @@
  * Code.gs Sheet readers copied word for word; run inside the read-only runtime (src/gas/runtime.ts). */
 /* eslint-disable */
 export function makeGasScope(rt: any): any {
-  const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_ } = rt;
+  const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_ } = rt;
 
 var APS_REQ_MEMO_ = null;
 
@@ -67,6 +67,8 @@ var UC_MEMO_ = null;
 var SUPERADMIN_ROLE = 'superadmin';
 
 var VCFO_AMCHSTS_BOD_ROLE = 'vcfo_amchsts_bod';
+
+var AUTHORIZED_ROLE = 'authorized';
 
 const EXAM_QP_DAY_TOKENS_ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
@@ -585,6 +587,62 @@ function ttmFmtDate_(ymd) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd 
 function ttmCanUse_(role, email) { return (isAdminRole_(role) || role === 'headmaster' || role === 'teacher' || ttmIsCoordinator_(role, normalizeEmail_(email))) && apsTabAllowed_(role, 'classes.tempTeacher'); }
 
 function ttmIsCoordinator_(role, email) { return role === VCFO_AMCHSTS_BOD_ROLE && isOnCallCoordinatorEmail_(email); }
+
+function getDirectoryIndex(sessionToken) {
+  var s = apsRequireTabForToken_(sessionToken, 'directory.search');
+  var tier = directoryTierForRole_(s.role);
+  if (!tier) throw new Error('Your account cannot use the Directory.');
+  var me = normalizeEmail_(s.email);
+  var courses = readAllCoursesFromCache_();
+  applyRosterHiddenStaffFilter_(courses);
+  if (tier === 'full') { applyLivePresence_(courses); applyLastLogin_(courses); applyStudentOnboardedFlag_(courses); }
+  applyNilaiAndClassTimeFilters_(courses);
+  courses.sort(function (a, b) { return naturalCompareJs_(a.name, b.name); });
+  var keys = {}, seq = 0;
+  var keyFor = function (email) { var e = normalizeEmail_(email); if (!keys[e]) keys[e] = 'p' + (++seq); return keys[e]; };
+  var classes = courses.map(function (c) {
+    var mine = (c.students || []).some(function (p) { return normalizeEmail_(p.email) === me; }) || userHasCourseAccess_(me, c);
+    var teachers = (c.teachers || []).filter(function (t) { return t && t.email; }).map(function (t) {
+      var o = { k: keyFor(t.email), name: t.name || '', email: String(t.email), isHeadmaster: !!t.isHeadmaster };
+      if (tier === 'full') { o.apsId = t.apsId || extractAPSID_(t.email); o.online = !!t.online; o.lastLoginDisplay = t.lastLoginDisplay || ''; }
+      return o;
+    });
+    var students = (c.students || []).filter(function (p) { return p && p.email; }).map(function (p) {
+      var self = normalizeEmail_(p.email) === me;
+      var o = { k: keyFor(p.email), name: p.name || '' };
+      if (tier === 'full' || self) { o.email = String(p.email); o.apsId = p.apsId || extractAPSID_(p.email); }
+      if (tier === 'full') { o.online = !!p.online; o.lastLoginDisplay = p.lastLoginDisplay || ''; if (p.onboarded !== undefined) o.onboarded = !!p.onboarded; }
+      return o;
+    });
+    return { id: String(c.id), name: c.name || '', nilai: c.nilai || '', link: (tier === 'full' || mine) ? (c.alternateLink || c.link || '') : '',
+      teacherNames: teachers.map(function (t) { return t.name; }).filter(Boolean).join(', '), teachers: teachers, students: students };
+  });
+  return { tier: tier, classes: classes, builtAt: Utilities.formatDate(new Date(), APS_TZ, 'MM/dd/yyyy h:mm a') + ' EST' };
+}
+
+function classSupportGrantsAccess_(s) { return !!s && (s.member === true || (s.roles || []).indexOf('PRIMARY_TEACHER') > -1); }
+
+function userHasCourseAccess_(userEmail, course) {
+  var e = normalizeEmail_(userEmail);
+  if (!course || !e) return false;
+  if (courseHasTeacherEmail_(course, e)) return true;
+  // Named in the Course Description (PRIMARY_TEACHER) or Room (VP / HM) AND a Classroom TEACHER — even when the
+  // account is hidden from the roster display (HIDDEN_TEACHER_EMAIL_PREFIXES / Hide toggle).
+  return (course.classSupport || []).some(function (s) { return s.email === e && classSupportGrantsAccess_(s); });
+}
+
+function directoryTierForRole_(role) {
+  if (role === 'student' || role === AUTHORIZED_ROLE) return 'basic';
+  if (isAdminOrHm_(role) || role === 'teacher' || role === VCFO_AMCHSTS_BOD_ROLE) return 'full';
+  return '';
+}
+
+function applyNilaiAndClassTimeFilters_(courses) {
+  (courses || []).forEach(function (course) {
+    course.nilai = extractNilaiFromCourseName_(course.name);
+    course.classTime = extractClassTimeFromCourseName_(course.name);
+  });
+}
 
 function getClassTeacherAvailabilityView(sessionToken) {
   apsRequireTabForToken_(sessionToken, 'classes.teacherAvail'); // r56: Admin Control → Access Control
@@ -1213,7 +1271,7 @@ function ucPref_(email) {
 function apsCountryOn_() { return apsReqMemo_('countryOn', function () { return String(rosterProp_('APS_COUNTRY_FEATURE', 'on')).trim().toLowerCase() !== 'off'; }); }
 
   APS_REQ_MEMO_ = {};
-  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
+  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
 }
 export const SCOPE_SOURCE_MD5 = '44ef1e4219409858c968276a3738f1ce';
-export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};
+export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};

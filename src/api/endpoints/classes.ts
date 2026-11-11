@@ -83,7 +83,7 @@ export async function gasScopeFor(ctx: AppContext, session: { email: string; rol
   const json = JSON.stringify(courses);
   return makeGasScope(makeRuntime({
     main: new SnapWorkbook('main', main.sheets, main.timeZone, main.titles), attendance, settings: gasSettings(ctx.cfg),
-    session, courses: () => JSON.parse(json), tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),
+    session, courses: () => JSON.parse(json), live: liveEmptyPasses(ctx.cfg) as any, tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),
     isRosterHiddenStaffEmail_: (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; },
     apsTabAllowed_: (r: string, key: string) => apsTabAllowed(r, key, ov),
     isOnCallCoordinatorEmail_: (e: unknown) => isOnCallCoordinator(ctx.cfg, e),
@@ -93,28 +93,47 @@ export async function gasScopeFor(ctx: AppContext, session: { email: string; rol
 type P = Person & Record<string, any>;
 type C = Course & Record<string, any>;
 
-/** The Code.gs decoration passes, in Code.gs order. `S` = the copied Sheet readers (gasScopeFor). Mutates `courses`. */
-export function decorateCourses(cfg: AppConfig, courses: C[], now: Date, S: any): C[] {
-  // applyRosterHiddenStaffFilter_ — toggle "Show" lives in a Script Property → default "Hide" on Azure
+/** Code.gs live-data passes as Azure runs them until Phase 3 (no stored heartbeat / last-login / onboarded maps):
+ *  the same fields, from what the course cache itself carries. Used by the Classes view and the copied endpoints. */
+export function liveEmptyPasses(cfg: AppConfig) {
   const hidden = hiddenStaffSet(cfg), always = classesAlwaysShowSet(cfg);
   const isHidden = (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; };
-  for (const c of courses) {
-    if (c.teachers && c.teachers.length) c.teachers = c.teachers.filter((t: P) => (t.apsRoles && t.apsRoles.length) || (G.normalizeEmail_(t.email) && always[G.normalizeEmail_(t.email)]) || !isHidden(t.email));
-    if (c.students && c.students.length) c.students = c.students.filter((s: P) => !isHidden(s.email));
-    c.noTeacher = (c.teachers || []).length === 0;
-    c.noStudents = (c.students || []).length === 0;
-    c.studentCount = (c.students || []).length;
-  }
   const people = (c: C): P[] => ((c.teachers || []) as P[]).concat((c.students || []) as P[]);
-  for (const c of courses) for (const p of people(c)) {
-    // applyLivePresence_ with no heartbeat map: online only from the synced Meet / Classroom signals on the roster
-    p.online = !!p.inMeet || !!p.classroomActivitySince;
-    p.onlineSince = p.inMeet ? (p.meetSince || null) : (p.classroomActivitySince || null);
-    // applyLastLogin_ with no last-login map
-    const sum = G.summarizeLastLogin_(G.normalizeLastLoginEntry_(undefined));
-    p.apsId = G.extractAPSID_(p.email);
-    p.lastLoginAt = sum.at; p.lastLoginDisplay = sum.display;
-  }
+  return {
+    /** applyRosterHiddenStaffFilter_ — the "Show" toggle lives in a Script Property → default "Hide" on Azure */
+    applyRosterHiddenStaffFilter_(courses: C[]) {
+      for (const c of courses) {
+        if (c.teachers && c.teachers.length) c.teachers = c.teachers.filter((t: P) => (t.apsRoles && t.apsRoles.length) || (G.normalizeEmail_(t.email) && always[G.normalizeEmail_(t.email)]) || !isHidden(t.email));
+        if (c.students && c.students.length) c.students = c.students.filter((s: P) => !isHidden(s.email));
+        c.noTeacher = (c.teachers || []).length === 0; c.noStudents = (c.students || []).length === 0; c.studentCount = (c.students || []).length;
+      }
+      return courses;
+    },
+    /** applyLivePresence_ with no heartbeat map: online only from the synced Meet / Classroom signals on the roster */
+    applyLivePresence_(courses: C[]) {
+      for (const c of courses) for (const p of people(c)) { p.online = !!p.inMeet || !!p.classroomActivitySince; p.onlineSince = p.inMeet ? (p.meetSince || null) : (p.classroomActivitySince || null); }
+      return courses;
+    },
+    /** applyLastLogin_ with no last-login map */
+    applyLastLogin_(courses: C[]) {
+      const sum = G.summarizeLastLogin_(G.normalizeLastLoginEntry_(undefined));
+      for (const c of courses) for (const p of people(c)) { p.apsId = G.extractAPSID_(p.email); p.lastLoginAt = sum.at; p.lastLoginSource = sum.sources; p.lastLoginDisplay = sum.display; p.lastLoginBySource = { gc: null, gm: null, db: null }; }
+      return courses;
+    },
+    /** applyStudentOnboardedFlag_ with no stored map: a student online now counts as onboarded (as Code.gs marks them) */
+    applyStudentOnboardedFlag_(courses: C[]) {
+      for (const c of courses) for (const s of (c.students || []) as P[]) { const key = G.normalizeEmail_(s.email); s.onboarded = !!(key && s.online); s.onboardedAt = null; }
+      return courses;
+    },
+  };
+}
+
+/** The Code.gs decoration passes, in Code.gs order. `S` = the copied Sheet readers (gasScopeFor). Mutates `courses`. */
+export function decorateCourses(cfg: AppConfig, courses: C[], now: Date, S: any): C[] {
+  const L = liveEmptyPasses(cfg);
+  L.applyRosterHiddenStaffFilter_(courses);
+  L.applyLivePresence_(courses);
+  L.applyLastLogin_(courses);
   S.applyUserCountry_(courses); // USER_COUNTRY sheet (copied reader)
   // applyClassStatus_ — automatic status from the class schedule; no manual override / live Meet / started mark yet
   for (const c of courses) {
@@ -128,7 +147,7 @@ export function decorateCourses(cfg: AppConfig, courses: C[], now: Date, S: any)
     c.classStatusLabel = G.CLASS_STATUS_LABELS[r.code];
     c.classStatusColorCategory = G.CLASS_STATUS_COLOR_CATEGORY[r.code];
   }
-  for (const c of courses) for (const s of (c.students || []) as P[]) s.onboarded = false; // applyStudentOnboardedFlag_ (map not on Azure yet)
+  L.applyStudentOnboardedFlag_(courses);
   // Teacher availability (Code.gs getDashboardDataInner_, same mapping)
   const avail: Record<string, string> = {}, alt: Record<string, string> = {};
   S.buildAvailabilityBoard_(courses, S.getCurrentWeekId_(now)).forEach((row: any) => {
@@ -224,6 +243,12 @@ export function registerClasses(reg: Registry): void {
     const out = S.getClassTeacherAvailabilityView(token);
     if (out) { out.canSubmit = false; out.canSendTest = false; out.azureReadOnly = true; } // save / test email: still in Apps Script
     return out;
+  });
+  /** getDirectoryIndex — Active Directory → Directory Search (Phase 2 step 4): every class's people, role-tiered on the
+   *  server exactly as Code.gs (copied code). Online / last login / onboarded follow the Classes view (Phase 3 for stored data). */
+  reg.register('getDirectoryIndex', async (ctx, [token]) => {
+    const s = await requireSession(ctx, token);
+    return (await gasScopeFor(ctx, { email: s.email, role: s.role })).getDirectoryIndex(token);
   });
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */
   reg.register('getDashboardData', async (ctx, [token]) => {

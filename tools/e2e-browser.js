@@ -56,6 +56,11 @@ const { DashboardPage } = require('../dist/src/web/render');
       const v = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getClassTeacherAvailabilityView(tk)), tok);
       assert.ok(v && v.report && v.weekId, 'weekly report returned'); assert.strictEqual(v.canSubmit, false); assert.strictEqual(v.canSendTest, false);
     });
+    await t('Phase 2 step 4: Active Directory index served by Azure (full tier for Admin)', async () => {
+      const tok = await page.evaluate(() => apsSessionToken);
+      const v = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getDirectoryIndex(tk)), tok);
+      assert.strictEqual(v.tier, 'full'); assert.ok(v.classes.length >= 2 && v.classes[0].students.length > 0, 'classes with people');
+    });
     await t('sign-out: endSession sent and the session is gone on the server', async () => {
       const tok = await page.evaluate(() => apsSessionToken);
       await page.evaluate(() => document.getElementById('apsSignOutBtn').click());

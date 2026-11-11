@@ -85,7 +85,7 @@ test('errors never reach the browser with tokens, keys or stack traces', async (
   const r = await reg.call(testContext(), 'boom', []);
   assert.deepEqual(r, { err: 'failed: Bearer [hidden] access_token=[hidden]' });
   assert.equal(safeErrorMessage('-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY----- x'), '[hidden] x');
-  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getMyCountryPreference', 'getStartupBundle']);
+  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'getStartupBundle']);
 });
 
 test('page renderer: fills exactly the five Code.gs template values, script-safe; refuses an unknown template value', () => {
