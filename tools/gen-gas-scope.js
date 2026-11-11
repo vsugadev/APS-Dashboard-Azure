@@ -24,6 +24,7 @@ const FEATURES = {
   schoolLeave: ['getAPSSchoolLeaveStatus', 'slCovering_', 'slEnabled_', 'slDateStr_', 'apsSchoolLeaves_', 'slReadAll_', 'slSheet_', 'dsShift_', 'dsDateParts_'],
   coverage: ['tccStampToday_', 'tccCoverageMap_', 'tccRows_', 'tccGraceMinutes_', 'tccCanUse_', 'courseHasSupportEmail_'],
   tempTeacher: ['ttmStampCards_', 'ttmCardMap_', 'ttmRows_', 'ttmToday_', 'ttmFmtDate_', 'ttmCanUse_', 'ttmIsCoordinator_'],
+  teacherAvailability: ['getClassTeacherAvailabilityView', 'attOnCallPrefixes_', 'parseClockTime_', 'inferMissingMeridiem_', 'attIsOnCallEmail_', 'getConfigList_', 'isSyntacticallyValidEmail_', 'slAudit_', 'parseCourseSchedule_', 'attIsExcludedEmail_', 'normalizeClassTimeText_', 'ctaProp_', 'attMailAdminCc_', 'attMailCc_', 'apsMailProfile_', 'extractAPSID_', 'apsLeaveSkip_', 'apsClassDateInWeek_', 'examQpParseClassName_', 'readConfiguredUserRoles_', 'ctaExcludeRule_', 'ctaExcluded_', 'isHiddenTeacherName_', 'extractNilaiFromCourseName_', 'extractClassTimeFromCourseName_', 'ctaRoleFlags_', 'ctaConfig_', 'getWeekLabel_', 'ctaNilaiOptions_', 'ctaTimeOptions_', 'isReadOnlyRole_', 'apsMailFrom_', 'ctaReadSelections_', 'findDisplayName_', 'localPartOfEmail_', 'ctaApsId_', 'ctaAyMatch_', 'courseHasTeacherEmail_', 'ctaFmtTs_', 'ctaBuildReport_',],
   country: ['applyUserCountry_', 'getUserCountryMap_', 'ucLegacyMap_', 'ucMap_', 'ucRows_', 'ucSheet_', 'ucPref_', 'apsCountryOn_'],
 };
 // Module-level vars copied (constants, memo state). Initialisers run per request inside the factory.
@@ -32,11 +33,13 @@ const VARS = (process.env.GEN_VARS || '').split(',').filter(Boolean).concat([
   'CLASS_MEET_CACHE_KEY_', 'ATTENDANCE_MEET_LINK_MAP_SHEET_NAME', 'CLASS_MEET_DETECTED_SHEET_',
   'SL_MEMO_', 'SL_CACHE_KEY_', 'SL_SHEET_', 'SL_HEADER_', 'SL_STATUS_',
   'TCC_CACHE_KEY_', 'TCC_SHEET_', 'TCC_HEADER_', 'TTM_CARD_CACHE_', 'TTM_SHEET_', 'TTM_HEADER_',
-  'UC_SHEET_', 'UC_HEADER_', 'UC_CACHE_KEY_', 'UC_MEMO_', 'SUPERADMIN_ROLE', 'VCFO_AMCHSTS_BOD_ROLE', 'COURSE_NAME_SUFFIX',
+  'UC_SHEET_', 'UC_HEADER_', 'UC_CACHE_KEY_', 'UC_MEMO_', 'SUPERADMIN_ROLE', 'VCFO_AMCHSTS_BOD_ROLE', 'EXAM_QP_DAY_TOKENS_', 'ATTENDANCE_ON_CALL_PREFIXES_MEMO_', 'ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_', 'SL_AUDIT_SHEET_', 'SL_AUDIT_HEADER_', 'CLASS_SCHEDULE_DAY_TOKENS', 'ATTENDANCE_EXCLUDED_MEMO_', 'ADMIN_EMAILS', 'HEADMASTER_EMAILS', 'ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_', 'VCFO_AMCHATS_BOD_EMAILS', 'ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_', 'APS_MAIL_PROFILES_', 'USER_ROLE_CACHE_KEY', 'USER_ROLE_SHEET_NAME', 'USER_ROLE_CACHE_SECONDS', 'DASHBOARD_ROLES', 'SUPERADMIN_EMAILS', 'CTA_EXCLUDE_ROLES_', 'APS_GRADING_TEAM_EMAILS_', 'HIDDEN_TEACHER_NAMES', 'HIDDEN_TEACHER_NAME_PREFIXES', 'HIDDEN_TEACHER_EMAIL_PREFIXES', 'CTA_DEFAULT_TO_', 'NILAI_FILTER_OPTIONS', 'CLASS_TIME_FILTER_OPTIONS', 'CTA_SELECTION_SHEET_', 'CTA_SELECTION_HEADER_', 'CTA_LABEL_', 'CTA_CODE_TO_LABEL_', 'CTA_DAY_NAMES_', 'COURSE_NAME_SUFFIX',
 ]);
 // Supplied by src/gas/runtime.ts (Apps Script services, workbooks, Azure-side ports).
 const PROVIDED = ['SpreadsheetApp', 'CacheService', 'PropertiesService', 'Utilities', 'Session', 'console', 'getWorkbook_', 'getAttendanceWorkbook_',
-  'isRosterHiddenStaffEmail_', 'apsTabAllowed_', 'isOnCallCoordinatorEmail_'];
+  'isRosterHiddenStaffEmail_', 'apsTabAllowed_', 'isOnCallCoordinatorEmail_', 'apsRequireTabForToken_', 'requireValidSession_', 'readAllCoursesFromCache_'];
+// Writers that may be reached but are wrapped in try/catch in Code.gs (best-effort audit) — allowed: the runtime refuses the write.
+// (slAudit_ appends to APS_SCHOOL_LEAVE_AUDIT_LOG; Azure does not write it.)
 const FORBIDDEN_CALLS = /ScriptApp|Classroom\.|UrlFetchApp|GmailApp|MailApp|DriveApp|LockService|AdminDirectory|AdminReports|\.setProperty|\.deleteProperty/;
 
 function blockAt(src, i) {
@@ -59,7 +62,7 @@ function main() {
   const src = fs.readFileSync(SRC, 'utf8');
   const defs = {}; let m;
   const reF = /^function ([A-Za-z_$][\w$]*)\s*\(/gm; while ((m = reF.exec(src))) defs[m[1]] = m.index;
-  const reV = /^var ([A-Za-z_$][\w$]*)\s*=/gm; while ((m = reV.exec(src))) if (!(m[1] in defs)) defs[m[1]] = m.index;
+  const reV = /^(?:var|const|let) ([A-Za-z_$][\w$]*)\s*=/gm; while ((m = reV.exec(src))) if (!(m[1] in defs)) defs[m[1]] = m.index; // every top-level name
   const fns = Array.from(new Set(Object.values(FEATURES).flat()));
   const copied = new Set(fns.concat(VARS)), provided = new Set(PROVIDED), parts = [], missing = {};
   for (const v of VARS) { if (!(v in defs)) throw new Error('var not found in Code.gs: ' + v); parts.push(blockAt(src, defs[v])); }

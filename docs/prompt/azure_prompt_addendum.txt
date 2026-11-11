@@ -159,3 +159,46 @@ Before finishing, confirm:
 - [ ] Sheet reads batched and cached by the existing freshness rules.
 - [ ] Bicep, workflow and engines agree on Node version and settings.
 - [ ] Docs updated (`README.md`, `docs/PHASE*.md`) to match the actual implementation.
+- [ ] `docs/APS_Dashboard_Azure_Guide.md` updated (what is on Azure, settings, deploy, troubleshooting, change log).
+- [ ] Generated files current (`npm run gen-gas`; `npm test` fails otherwise); new sheets added to the snapshot list.
+- [ ] Parity test seeds REAL rows for every new part and asserts each part actually appeared (not "empty = empty").
+- [ ] Anything that writes (save buttons, emails, test sends) is switched off on Azure or reported as NOT_ON_AZURE_YET.
+- [ ] Settings / secrets the user must add are listed with the exact command (PowerShell-safe quoting).
+
+---
+
+## B11. How a screen moves to Azure (Phase 2 method — use this, do not hand-port)
+
+1. **Find the Code.gs read function** the browser calls (same name, e.g. `getClassTeacherAvailabilityView`).
+2. **Copy, never retype, Code.gs logic:**
+   - pure rules (no Apps Script service) → `tools/gen-gas-helpers.js` → `src/gas/classes.generated.ts`;
+   - Sheet readers / whole read endpoints → add the function to a feature list in `tools/gen-gas-scope.js` and run
+     `npm run gen-gas`. The tool lists every name used but neither copied nor provided; add those until it passes.
+     It refuses Classroom / Gmail / Drive / triggers / locks / setProperty. It indexes top-level `function`, `var`,
+     `const` and `let`.
+3. **Read-only runtime** (`src/gas/runtime.ts`): sheets are a snapshot read through the Sheets API (whole sheet,
+   cached 60 s, Apps Script value types incl. Date cells in the spreadsheet time zone). Writes to existing sheets or
+   settings throw `READ_ONLY`; a missing sheet exists only in memory; a sheet that exists but was not read throws
+   (add it to `MAIN_SHEETS` / `ATTENDANCE_SHEETS` in `src/api/endpoints/classes.ts`). Session / tab checks:
+   Azure checks the token (`requireSession`), the copied code gets the same session and the same Access Control
+   switches. Settings come from App Service (same names as Script Properties; never secrets) + the role lists.
+4. **Register the endpoint** with the Code.gs name in `src/api/endpoints/…`; switch off anything that writes
+   (e.g. `canSubmit` / `canSendTest` = false) until that write moves.
+5. **Parity test** in `test/classes.parity.test.ts`: run the Code.gs function in the Apps Script mock and the Azure
+   endpoint on the same seeded Sheets for every role (incl. refusals); compare the full result; assert every new part
+   had real data. Add a browser check in `tools/e2e-browser.js`.
+6. **Docs:** `docs/PHASE2.md`, `docs/APS_Dashboard_Azure_Guide.md`, README; list any new app setting.
+
+Known Apps Script mock limit: new mock sheets have 26 columns — widen them in the test (`sh.maxCols`) when a
+header is longer, or Code.gs fails quietly in the mock.
+
+---
+
+## B12. Current state (keep updated)
+
+- Azure web app `aps-dashboard-ap` (resource group `rg-aps-dashboard`, Key Vault `kv-apsdashboardapu7zau2j`),
+  Node 22 LTS, deployed by GitHub Actions (`vsugadev/APS-Dashboard-Azure`, managed identity `id-aps-github`, OIDC).
+- On Azure (read-only): sign-in, sessions, roles, Access Control (view), Classes view (`getDashboardData`) incl.
+  Sheet-based card parts, `getMyCountryPreference`, Teacher Availability (`getClassTeacherAvailabilityView`).
+- Live Apps Script dashboard remains production for every user; Azure is not yet announced to users.
+- Phase 3 (live data in Script / User Properties) and every write still to come.

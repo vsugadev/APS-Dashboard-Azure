@@ -49,6 +49,21 @@ leave with date cells, coverage merged today, temp teacher active now) and check
 against Code.gs for 7 viewers — and that each of those parts really appeared. `test/runtime.test.ts`: no writes,
 date conversion (EST/EDT/India), settings never include secrets.
 
+## Step 3 — Teacher Availability (v0.4.0, 2026-11-11)
+
+`getClassTeacherAvailabilityView` — Classes → Teacher Availability: the teacher's own week (Nilai, times, status,
+classrooms) and the Admin / HM / BOD weekly report, built by the Code.gs function itself (98 functions + 58 constants
+copied by `gen-gas-scope`; new sheets in the snapshot: Teacher_Availability_Selection, Dashboard_User_Roles).
+**Read-only on Azure:** `canSubmit` and `canSendTest` are false (Save / Send test email stay in Apps Script).
+The copied code's school-leave audit row is not written on Azure (Code.gs already treats it as best effort).
+
+Also: the generator now indexes top-level `const` / `let` (a `const` used by the copied code was missed before —
+caught by the parity test); the date shim supports every Java pattern the copied code uses (tested); the runtime
+refuses to read a sheet that exists but was not in the snapshot list, so a reader can never silently see "empty".
+
+Tests: parity for teacher (own saved week), Admin, HM, BOD reports and the student refusal (same message); browser
+check calls the endpoint through the page's `google.script.run`. `npm test` 30 pass; browser 6 pass.
+
 ### Not on Azure yet (Code.gs "nothing set" values meanwhile)
 
 | Part | Source | When |

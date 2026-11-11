@@ -58,20 +58,33 @@ export class SnapRange {
 
 export class SnapWorkbook {
   private sheets: Record<string, SnapSheet> = {};
-  constructor(private id: string, grids: Record<string, SheetGrid | null>, private tz = 'America/New_York') {
+  /** `titles` = every sheet that exists in Google. A sheet that exists but was not read into this snapshot throws, so a
+   *  reader can never silently see an "empty" sheet; a sheet that does not exist is null (Code.gs "create it" path). */
+  constructor(private id: string, grids: Record<string, SheetGrid | null>, private tz = 'America/New_York', private titles: string[] | null = null) {
     for (const [name, g] of Object.entries(grids)) if (g) this.sheets[name] = new SnapSheet(name, g.values.map((r) => r.slice()), true);
   }
-  getSheetByName(n: string): SnapSheet | null { return this.sheets[n] || null; }
+  getSheetByName(n: string): SnapSheet | null {
+    if (this.sheets[n]) return this.sheets[n];
+    if (this.titles && this.titles.indexOf(n) > -1) throw new Error('Azure runtime: sheet "' + n + '" exists but was not read for this request (add it to the snapshot list).');
+    return null;
+  }
   insertSheet(n: string): SnapSheet { return (this.sheets[n] = new SnapSheet(n, [], false)); } // in memory only — never sent to Google
   getSheets(): SnapSheet[] { return Object.values(this.sheets); }
   getId(): string { return this.id; }
   getSpreadsheetTimeZone(): string { return this.tz; }
 }
 
+/** Expected, harmless messages from the copied code (an optional Script Property not set; an audit row Azure does not
+ *  write) — not repeated in the App Service log on every request. Never prints a stored value. */
+function quiet(m: unknown): boolean { return /^\[Config\] Script Property "[^"]*" is not (set|valid)/.test(String(m)) || /audit not written: READ_ONLY/.test(String(m)); }
+
 const noCache = { get: () => null, put: () => undefined, remove: () => undefined, getAll: () => ({}), putAll: () => undefined, removeAll: () => undefined };
 
 export interface RuntimeDeps {
   main: SnapWorkbook;
+  session?: { email: string; role: string } | null;   // the session Azure already checked
+  courses?: () => unknown[];                           // readAllCoursesFromCache_ (a fresh copy each call)
+  tabAllowedForSession?: (key: string) => boolean;
   attendance: SnapWorkbook | null;
   settings: Record<string, string>;
   isRosterHiddenStaffEmail_: (email: unknown) => boolean;
@@ -92,12 +105,21 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     PropertiesService: { getScriptProperties: () => props, getUserProperties: () => props },
     Utilities,
     Session: { getActiveUser: () => ({ getEmail: () => '' }), getEffectiveUser: () => ({ getEmail: () => '' }) },
-    console: { log: () => undefined, info: () => undefined, warn: (m: unknown) => console.warn('[Gas] ' + String(m).slice(0, 200)), error: (m: unknown) => console.error('[Gas] ' + String(m).slice(0, 200)) },
+    console: { log: () => undefined, info: () => undefined, warn: (m: unknown) => quiet(m) || console.warn('[Gas] ' + String(m).slice(0, 200)), error: (m: unknown) => quiet(m) || console.error('[Gas] ' + String(m).slice(0, 200)) },
     getWorkbook_: () => d.main,
     getAttendanceWorkbook_: () => { if (!d.attendance) throw new Error('Could not open the Attendance data right now.'); return d.attendance; },
     isRosterHiddenStaffEmail_: d.isRosterHiddenStaffEmail_,
     apsTabAllowed_: d.apsTabAllowed_,
     isOnCallCoordinatorEmail_: d.isOnCallCoordinatorEmail_,
+    // Session / tab checks: Azure has already verified the token server-side (requireSession); the copied code gets that
+    // same session, and its Access Control check uses the same switches.
+    requireValidSession_: () => { if (!d.session) throw new Error('SESSION_EXPIRED: please sign in again.'); return { email: d.session.email, role: d.session.role }; },
+    apsRequireTabForToken_: (_t: unknown, key: string) => {
+      if (!d.session) throw new Error('SESSION_EXPIRED: please sign in again.');
+      if (d.tabAllowedForSession && !d.tabAllowedForSession(key)) throw new Error('ACCESS_OFF: This section has been turned off for your role by the APS administrator.');
+      return { email: d.session.email, role: d.session.role };
+    },
+    readAllCoursesFromCache_: () => (d.courses ? d.courses() : []),
   };
 }
 

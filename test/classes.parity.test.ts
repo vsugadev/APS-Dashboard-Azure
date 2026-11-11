@@ -127,3 +127,38 @@ test('getMyCountryPreference matches Code.gs (USER_COUNTRY row, no row, feature 
   G.PropertiesService.getScriptProperties().setProperty('APS_COUNTRY_FEATURE', 'off'); G.APS_REQ_MEMO_ = null;
   assert.deepEqual(J(countryPreference(await scope({ APS_COUNTRY_FEATURE: 'off' }), email)), J(G.getMyCountryPreference(tok)));
 });
+
+test('Teacher Availability view (getClassTeacherAvailabilityView) matches Code.gs — teacher form, Admin / HM / BOD report, refusals', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F);
+  // this week's own selections (Teacher_Availability_Selection)
+  const wk = G.getCurrentWeekId_(new Date()), H = J(G.CTA_SELECTION_HEADER_);
+  const sel = F.env.wb.getSheetByName(G.CTA_SELECTION_SHEET_) || F.env.wb.insertSheet(G.CTA_SELECTION_SHEET_); sel.maxCols = 40;
+  if (!sel.data.length || !sel.data[0] || !sel.data[0].length) sel.data[0] = H.slice();
+  const now = new Date().toISOString();
+  sel.data.push([wk, G.COURSE_NAME_SUFFIX, 'kavitha_aps8130@avvaiyarpadasalai.org', 'Kavitha Raman', 'APS8130', 'MUNMAZHALAI', 'FRI 6:30 - 8:00 PM EST', 'confirmed', now, now, 'kavitha_aps8130@avvaiyarpadasalai.org'],
+    [wk, G.COURSE_NAME_SUFFIX, 'senthil_aps8131@avvaiyarpadasalai.org', 'Senthil Kumar', 'APS8131', '', '', 'not_available', now, now, 'senthil_aps8131@avvaiyarpadasalai.org']);
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+  const reg = (await import('../src/server')).buildRegistry();
+  const viewers: [string, string][] = [['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student']];
+  let reports = 0;
+  for (const [email, role] of viewers) {
+    const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+    const token = await ctx.sessions.create({ email, role });
+    let gas: any; try { gas = J(G.getClassTeacherAvailabilityView(F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
+    const az: any = await reg.call(ctx, 'getClassTeacherAvailabilityView', [token]);
+    if (gas.err) { assert.deepEqual(az, { err: gas.err }, role + ': same refusal'); continue; }
+    assert.ok(az.ok, role + ': Azure answered ' + JSON.stringify(az));
+    const a = az.ok;
+    assert.equal(a.canSubmit, false, role + ': Save is not on Azure yet'); assert.equal(a.canSendTest, false); assert.equal(a.azureReadOnly, true);
+    for (const k of ['canSubmit', 'canSendTest', 'azureReadOnly']) { delete a[k]; delete gas[k]; }
+    if (a.report) { delete a.report.generatedAt; delete gas.report.generatedAt; reports++; }
+    const d = diffs(a, gas);
+    assert.deepEqual(d, [], role + ' differences:\n' + d.slice(0, 15).join('\n'));
+    if (role === 'teacher') assert.equal(a.mine && a.mine.status, 'confirmed', 'teacher sees own saved week');
+  }
+  assert.ok(reports >= 3, 'Admin / HM / BOD weekly report compared');
+});

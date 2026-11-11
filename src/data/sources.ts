@@ -125,7 +125,7 @@ export class SheetsDataSource implements DataSource {
         return { values: gridToValues(data && data.rowData, meta.tz) };
       });
     }));
-    return { timeZone: meta.tz, sheets };
+    return { timeZone: meta.tz, sheets, titles: meta.titles.slice() };
   }
   async readAccessOverrides(): Promise<AccessOverrides> {
     return this.cache.get('access', ACCESS_TTL_MS, async () => {
@@ -143,7 +143,7 @@ export class FixtureDataSource implements DataSource {
     const src = (this.data.sheets && this.data.sheets[book]) || {};
     const sheets: Record<string, SheetGrid | null> = {};
     for (const n of names) sheets[n] = src[n] ? { values: src[n].map((r) => r.map((v) => (v instanceof Date ? new Date(v.getTime()) : typeof v === 'string' && v.startsWith('date:') ? new Date(v.slice(5)) : v))) } : null;
-    return { timeZone: 'America/New_York', sheets };
+    return { timeZone: 'America/New_York', sheets, titles: Object.keys(src) };
   }
   static fromFile(path: string): FixtureDataSource {
     return new FixtureDataSource(fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : {});

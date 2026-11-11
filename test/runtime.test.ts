@@ -42,3 +42,13 @@ test('Code.gs settings for the runtime: plain APS_/TCC_/TTM_… values only — 
   const s = scriptSettingsFrom({ APS_SCHOOL_LEAVE_ENABLED: 'true', TCC_CLEANUP_GRACE_MINUTES: '30', APS_ZOHO_CLIENT_SECRET: 's', APS_API_KEY: 'k', ATTENDANCE_TOKEN: 't', GOOGLE_OAUTH_CLIENT_SECRET: 'x', PATH: '/bin', APS_SA_JSON: '{}' } as NodeJS.ProcessEnv);
   assert.deepEqual(s, { APS_SCHOOL_LEAVE_ENABLED: 'true', TCC_CLEANUP_GRACE_MINUTES: '30' });
 });
+
+test('Utilities.formatDate shim: every Java pattern the copied Code.gs uses, Eastern time, DST', async () => {
+  const { Utilities } = await import('../src/gas/utilities');
+  const d = new Date('2026-11-11T23:05:09Z'), s = new Date('2026-07-04T16:00:00Z'), tz = 'America/New_York';
+  const cases: [Date, string, string][] = [[d, 'yyyy-MM-dd', '2026-11-11'], [d, 'MM/dd HH:mm', '11/11 18:05'], [d, 'MM/dd/yyyy hh:mm a', '11/11/2026 06:05 PM'],
+    [d, 'MM/dd/yyyy', '11/11/2026'], [d, 'MMM d', 'Nov 11'], [d, 'XXX', '-05:00'], [s, 'XXX', '-04:00'], [d, 'u', '3'], [d, 'yyyy-MM-dd HH:mm:ss', '2026-11-11 18:05:09'],
+    [d, 'yyyyMMdd-HHmmss', '20261111-180509'], [s, 'EEEE, MMMM d', 'Saturday, July 4'], [new Date('2026-11-11T05:00:00Z'), 'h:mm a', '12:00 AM'], [d, "'Week of' MMM d", 'Week of Nov 11']];
+  for (const [dt, pat, want] of cases) assert.equal(Utilities.formatDate(dt, tz, pat), want, pat);
+  assert.throws(() => Utilities.formatDate(d, tz, 'yyyy-ww'), /unsupported pattern/);
+});

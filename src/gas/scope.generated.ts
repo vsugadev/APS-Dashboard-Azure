@@ -3,7 +3,7 @@
  * Code.gs Sheet readers copied word for word; run inside the read-only runtime (src/gas/runtime.ts). */
 /* eslint-disable */
 export function makeGasScope(rt: any): any {
-  const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_ } = rt;
+  const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_ } = rt;
 
 var APS_REQ_MEMO_ = null;
 
@@ -67,6 +67,81 @@ var UC_MEMO_ = null;
 var SUPERADMIN_ROLE = 'superadmin';
 
 var VCFO_AMCHSTS_BOD_ROLE = 'vcfo_amchsts_bod';
+
+const EXAM_QP_DAY_TOKENS_ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+var ATTENDANCE_ON_CALL_PREFIXES_MEMO_ = null;
+
+var ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_ = ['tcs_', 'tts_'];
+
+var SL_AUDIT_SHEET_ = 'APS_SCHOOL_LEAVE_AUDIT_LOG';
+
+var SL_AUDIT_HEADER_ = ['Audit_ID', 'Leave_ID', 'Action', 'Old_Value', 'New_Value', 'Performed_By', 'Timestamp'];
+
+var CLASS_SCHEDULE_DAY_TOKENS = {
+  SUN: 0, SUNDAY: 0, MON: 1, MONDAY: 1, TUE: 2, TUES: 2, TUESDAY: 2,
+  WED: 3, WEDS: 3, WEDNESDAY: 3, THU: 4, THUR: 4, THURS: 4, THURSDAY: 4,
+  FRI: 5, FRIDAY: 5, SAT: 6, SATURDAY: 6
+};
+
+var ATTENDANCE_EXCLUDED_MEMO_ = null;
+
+var ADMIN_EMAILS = getConfigList_('ADMIN_EMAILS', []);
+
+var HEADMASTER_EMAILS = getConfigList_('HEADMASTER_EMAILS', []);
+
+var ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_ = ['vsugadev@avvaiyarpadasalai.org', 'vasuki_aps999@avvaiyarpadasalai.org'];
+
+var VCFO_AMCHATS_BOD_EMAILS = getConfigList_('VCFO_AMCHATS_BOD_EMAILS', []);
+
+var ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_ = 'admin@avvaiyarpadasalai.org';
+
+var APS_MAIL_PROFILES_ = {
+  TICKETS: { label: 'Tickets', fromKey: 'TICKET_MAIL_FROM', fromDefault: 'donotreply@avvaiyarpadasalai.org', displayName: 'APS Dashboard Tickets',
+    idKey: 'TICKET_MAIL_OAUTH_CLIENT_ID', secretKey: 'TICKET_MAIL_OAUTH_CLIENT_SECRET', refreshKey: 'TICKET_MAIL_REFRESH_TOKEN',
+    saKey: 'TICKET_MAIL_SERVICE_ACCOUNT_JSON', fallbackKey: 'TICKET_MAIL_ALLOW_MAILAPP_FALLBACK', fallbackName: 'APS Dashboard Tickets (do not reply)',
+    notConfigured: 'Ticket email is not configured (Ticket Settings → Email).' },
+  ATTENDANCE: { label: 'Attendance', fromKey: 'ATTENDANCE_MAIL_FROM', fromDefault: 'attendance@avvaiyarpadasalai.org', displayName: 'APS Attendance',
+    idKey: 'ATTENDANCE_OAUTH_CLIENT_ID', secretKey: 'ATTENDANCE_OAUTH_CLIENT_SECRET', refreshKey: 'ATTENDANCE_REFRESH_TOKEN',
+    saKey: '', fallbackKey: '', fallbackName: '',
+    notConfigured: 'Attendance email is not configured: set ATTENDANCE_OAUTH_CLIENT_ID, ATTENDANCE_OAUTH_CLIENT_SECRET and ATTENDANCE_REFRESH_TOKEN in Script Properties.' }
+};
+
+var USER_ROLE_CACHE_KEY = 'dashboardUserRoles_v1';
+
+var USER_ROLE_SHEET_NAME = 'Dashboard_User_Roles';
+
+var USER_ROLE_CACHE_SECONDS = 60;
+
+var DASHBOARD_ROLES = ['admin', 'headmaster', 'teacher', 'student', VCFO_AMCHSTS_BOD_ROLE, SUPERADMIN_ROLE];
+
+var SUPERADMIN_EMAILS = getConfigList_('SUPERADMIN_EMAILS', []);
+
+var CTA_EXCLUDE_ROLES_ = ['admin', 'headmaster', SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE];
+
+var APS_GRADING_TEAM_EMAILS_ = ['grading@avvaiyarpadasalai.org'].concat(getConfigList_('APS_GRADING_TEAM_EMAILS', []));
+
+var HIDDEN_TEACHER_NAMES = ['google classroom admin'];
+
+var HIDDEN_TEACHER_NAME_PREFIXES = ['avvaiyar padasalai', 'aps','APS','Avvaiyar Padasalai'];
+
+var HIDDEN_TEACHER_EMAIL_PREFIXES = getConfigList_('HIDDEN_TEACHER_EMAIL_PREFIXES', ['aps_']);
+
+var CTA_DEFAULT_TO_ = 'teachers@avvaiyarpadasalai.org';
+
+var NILAI_FILTER_OPTIONS = ['All', 'MUNMAZHALAI', 'MAZHALAI', 'NILAI 1', 'NILAI 2', 'NILAI 3', 'NILAI 4', 'NILAI 5', 'NILAI 6', 'NILAI 7', 'NILAI 8', 'THULIR(துளிர்)'];
+
+var CLASS_TIME_FILTER_OPTIONS = ['All', 'FRI 6:30 - 8:00 PM EST', 'FRI 7:30 - 9:00 PM EST', 'FRI 9:00 - 10:30 PM EST', 'SAT 12:00 - 1:30 PM EST', 'SUN 7:30 - 9:00 PM EST'];
+
+var CTA_SELECTION_SHEET_ = 'Teacher_Availability_Selection';
+
+var CTA_SELECTION_HEADER_ = ['Week ID', 'Academic Year', 'Teacher Email', 'Teacher Name', 'APSID', 'Nilai', 'Available Time', 'Status', 'Submitted At', 'Updated At', 'Updated By Email'];
+
+var CTA_LABEL_ = { AVAILABLE: 'AVAILABLE', NOT_AVAILABLE: 'NOT AVAILABLE', SUBMITTED: 'SUBMITTED', NOT_SUBMITTED: 'NOT SUBMITTED', PENDING: 'PENDING' };
+
+var CTA_CODE_TO_LABEL_ = { confirmed: 'AVAILABLE', not_available: 'NOT AVAILABLE', pending: 'PENDING' };
+
+var CTA_DAY_NAMES_ = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 var COURSE_NAME_SUFFIX = 'AY26-27';
 
@@ -511,6 +586,569 @@ function ttmCanUse_(role, email) { return (isAdminRole_(role) || role === 'headm
 
 function ttmIsCoordinator_(role, email) { return role === VCFO_AMCHSTS_BOD_ROLE && isOnCallCoordinatorEmail_(email); }
 
+function getClassTeacherAvailabilityView(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'classes.teacherAvail'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var f = ctaRoleFlags_(session.role);
+  if (!f.teacher && !f.staff && !f.bod) throw new Error('Teacher Availability is available to Teachers, Head Masters and Admins only.');
+  var cfg = ctaConfig_();
+  var now = new Date();
+  var courses = readAllCoursesFromCache_();
+  var weekId = getCurrentWeekId_(now);
+  var out = { academicYear: cfg.academicYear, weekId: weekId, weekLabel: getWeekLabel_(weekId), nilaiOptions: ctaNilaiOptions_(), timeOptions: ctaTimeOptions_(),
+    role: session.role, canSubmit: f.teacher && !isReadOnlyRole_(session.role), canSendTest: f.admin, canViewReport: f.staff || f.bod,
+    schedule: { enabled: cfg.enabled, hour: cfg.hour, to: f.staff ? cfg.to : [], cc: f.staff ? cfg.cc : [], from: f.staff ? apsMailFrom_('ATTENDANCE') : '', days: 'Tuesday – Friday' } };
+  if (f.teacher) {
+    var sel = ctaReadSelections_(weekId)[normalizeEmail_(session.email)];
+    var nm = findDisplayName_(courses, session.email);
+    out.me = { email: session.email, name: nm === session.email ? localPartOfEmail_(session.email) : nm, apsId: ctaApsId_(session.email),
+      classrooms: courses.filter(function (c) { return ctaAyMatch_(c.name, cfg.academicYear) && courseHasTeacherEmail_(c, normalizeEmail_(session.email)); }).map(function (c) { return c.name; }) };
+    out.mine = sel ? { nilai: sel.nilai, times: sel.times, status: sel.status, updatedAt: ctaFmtTs_(sel.updatedAt, cfg.tz) } : null;
+  }
+  if (out.canViewReport) out.report = ctaBuildReport_(now, { courses: courses });
+  return out;
+}
+
+function attOnCallPrefixes_() {
+  if (!ATTENDANCE_ON_CALL_PREFIXES_MEMO_) {
+    var extra = [];
+    try { extra = JSON.parse(PropertiesService.getScriptProperties().getProperty('ATTENDANCE_ON_CALL_PREFIXES') || '[]'); if (!Array.isArray(extra)) extra = []; } catch (e) { extra = []; }
+    ATTENDANCE_ON_CALL_PREFIXES_MEMO_ = ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_.concat(extra)
+      .map(function (x) { return String(x || '').trim().toLowerCase(); }).filter(Boolean);
+  }
+  return ATTENDANCE_ON_CALL_PREFIXES_MEMO_;
+}
+
+function parseClockTime_(token) {
+  if (!token) return null;
+  var m = String(token).trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (!m) return null;
+  var hour = parseInt(m[1], 10);
+  var minute = m[2] ? parseInt(m[2], 10) : 0;
+  if (hour > 23 || minute > 59) return null;
+  var meridiem = m[3] ? m[3].toUpperCase() : null;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null; // e.g. "13 PM" isn't a valid 12-hour time
+    if (hour === 12) hour = 0;
+    if (meridiem === 'PM') hour += 12;
+    return { hour: hour, minute: minute, meridiemExplicit: true };
+  }
+  if (hour === 0 || hour >= 13) {
+    return { hour: hour, minute: minute, meridiemExplicit: true }; // unambiguous 24-hour-style value
+  }
+  return { hour: hour, minute: minute, meridiemExplicit: false }; // ambiguous — e.g. plain "9:00"
+}
+
+function inferMissingMeridiem_(hour12, minute, anchorMinutes, solvingForStart) {
+  var amHour = (hour12 === 12) ? 0 : hour12;
+  var pmHour = (hour12 === 12) ? 12 : hour12 + 12;
+  var amMinutes = amHour * 60 + minute;
+  var pmMinutes = pmHour * 60 + minute;
+
+  var amDuration = solvingForStart ? (anchorMinutes - amMinutes) : (amMinutes - anchorMinutes);
+  var pmDuration = solvingForStart ? (anchorMinutes - pmMinutes) : (pmMinutes - anchorMinutes);
+  var amOk = amDuration > 0;
+  var pmOk = pmDuration > 0;
+
+  if (!amOk && !pmOk) return null;
+  var usePm = amOk && pmOk ? (pmDuration < amDuration) : pmOk;
+  return { hour: usePm ? pmHour : amHour, minute: minute, meridiemExplicit: true };
+}
+
+function attIsOnCallEmail_(email) {
+  var e = normalizeEmail_(email);
+  return !!e && attOnCallPrefixes_().some(function (p) { return e.indexOf(p) === 0; });
+}
+
+function getConfigList_(key, fallback) {
+  var raw = PropertiesService.getScriptProperties().getProperty(key);
+  if (raw === null || raw === undefined || raw === '') {
+    console.warn('[Config] Script Property "' + key + '" is not set — using fallback.');
+    return fallback || [];
+  }
+  try {
+    var parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('not a JSON array');
+    return parsed;
+  } catch (e) {
+    console.error('[Config] Script Property "' + key + '" is not valid JSON array text (' + e.message + ') — using fallback. Stored value was: ' + raw);
+    return fallback || [];
+  }
+}
+
+function isSyntacticallyValidEmail_(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+function slAudit_(leaveId, action, oldV, newV, by) {
+  try {
+    ctaSheet_(SL_AUDIT_SHEET_, SL_AUDIT_HEADER_).appendRow(['SLA-' + Utilities.formatDate(new Date(), APS_TZ, 'yyyyMMdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+      leaveId || '', action, String(oldV === undefined ? '' : oldV).slice(0, 2000), String(newV === undefined ? '' : newV).slice(0, 2000), by || '', Utilities.formatDate(new Date(), APS_TZ, 'yyyy-MM-dd HH:mm:ss')]);
+  } catch (e) { console.warn('[SchoolLeave] audit not written: ' + (e && e.message)); }
+}
+
+function parseCourseSchedule_(rawName) {
+  if (!rawName) return null;
+  var scheduleSegment = rawName;
+  var parts = String(rawName).split('|');
+  if (parts.length >= 2) scheduleSegment = parts[1];
+
+  var m = scheduleSegment.match(/\b([A-Za-z]{3,9})\s+(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*([A-Za-z]{2,5})?\b/i);
+  if (!m && scheduleSegment !== rawName) {
+    // The pipe-delimited segment didn't parse — try the whole title as a fallback.
+    m = String(rawName).match(/\b([A-Za-z]{3,9})\s+(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*([A-Za-z]{2,5})?\b/i);
+  }
+  if (!m) return null;
+
+  var dayToken = m[1].toUpperCase();
+  if (!CLASS_SCHEDULE_DAY_TOKENS.hasOwnProperty(dayToken)) return null;
+  var dayOfWeek = CLASS_SCHEDULE_DAY_TOKENS[dayToken];
+  var timezoneRaw = (m[4] || '').toUpperCase();
+
+  var start = parseClockTime_(m[2]);
+  var end = parseClockTime_(m[3]);
+  if (!start || !end) {
+    return { dayOfWeek: dayOfWeek, start: null, end: null, timezoneRaw: timezoneRaw };
+  }
+
+  // Common title style: only ONE side of the range spells out AM/PM, e.g.
+  // "FRI 6:30 - 8:00 PM EST" (only the end says PM) or "FRI 9:00 AM - 12:00
+  // EST" (only the start says AM). The other side is still unambiguous in
+  // practice — a real class has a short, positive duration, and only one of
+  // the two AM/PM readings of the missing side keeps the range that way — so
+  // this is resolved rather than guessed. Only when BOTH sides omit AM/PM
+  // (fully ambiguous, e.g. "FRI 9:00 - 10:00") is it left unresolved.
+  if (!start.meridiemExplicit && !end.meridiemExplicit) {
+    return { dayOfWeek: dayOfWeek, start: null, end: null, timezoneRaw: timezoneRaw };
+  }
+  if (!start.meridiemExplicit) {
+    var inferredStart = inferMissingMeridiem_(start.hour, start.minute, end.hour * 60 + end.minute, true);
+    if (!inferredStart) return { dayOfWeek: dayOfWeek, start: null, end: null, timezoneRaw: timezoneRaw };
+    start = inferredStart;
+  } else if (!end.meridiemExplicit) {
+    var inferredEnd = inferMissingMeridiem_(end.hour, end.minute, start.hour * 60 + start.minute, false);
+    if (!inferredEnd) return { dayOfWeek: dayOfWeek, start: null, end: null, timezoneRaw: timezoneRaw };
+    end = inferredEnd;
+  }
+
+  return {
+    dayOfWeek: dayOfWeek,
+    start: { hour: start.hour, minute: start.minute },
+    end: { hour: end.hour, minute: end.minute },
+    timezoneRaw: timezoneRaw
+  };
+}
+
+function attIsExcludedEmail_(email) {
+  var e = normalizeEmail_(email);
+  if (!e) return true;
+  if (!ATTENDANCE_EXCLUDED_MEMO_) {
+    var set = {};
+    var extra = PropertiesService.getScriptProperties().getProperty('ATTENDANCE_EXCLUDED_EMAILS');
+    var extraList = [];
+    if (extra) { try { extraList = JSON.parse(extra); if (!Array.isArray(extraList)) extraList = []; } catch (e) { extraList = []; } }
+    ADMIN_EMAILS.concat(HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, APS_GRADING_TEAM_EMAILS_, extraList).forEach(function (x) { var n = normalizeEmail_(x); if (n) set[n] = true; });
+    // Role lists: excluded too, EXCEPT an on-call (TCS_/TTS_) account that also appears there
+    // (e.g. a BOD member's tcs_ account) — on-call attendance must always be captured.
+    var roleSet = {};
+    SUPERADMIN_EMAILS.concat(VCFO_AMCHATS_BOD_EMAILS).forEach(function (x) { var n = normalizeEmail_(x); if (n) roleSet[n] = true; });
+    ATTENDANCE_EXCLUDED_MEMO_ = {
+      set: set,
+      roleSet: roleSet,
+      prefixes: HIDDEN_TEACHER_EMAIL_PREFIXES.map(function (x) { return String(x || '').trim().toLowerCase(); }).filter(Boolean)
+    };
+  }
+  if (ATTENDANCE_EXCLUDED_MEMO_.set[e]) return true; // explicit lists always win (e.g. ATTENDANCE_EXCLUDED_EMAILS)
+  // On-Call Teacher Attendance: a tcs_ / tts_ teacher is ALWAYS captured, even when HIDDEN_TEACHER_EMAIL_PREFIXES lists
+  // tcs_ / tts_ to keep those accounts off the class cards (that list only hides them from rosters).
+  if (attIsOnCallEmail_(e)) return false;
+  if (ATTENDANCE_EXCLUDED_MEMO_.prefixes.some(function (prefix) { return e.indexOf(prefix) === 0; })) return true;
+  return !!ATTENDANCE_EXCLUDED_MEMO_.roleSet[e];
+}
+
+function normalizeClassTimeText_(raw) {
+  return String(raw || '')
+    .replace(/[‒–—−]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*/g, ' - ')
+    .trim()
+    .toUpperCase();
+}
+
+function ctaProp_(key, fallback) {
+  var v = PropertiesService.getScriptProperties().getProperty(key);
+  return v === null || v === undefined || String(v).trim() === '' ? fallback : String(v).trim();
+}
+
+function attMailAdminCc_() {
+  var e = normalizeEmail_(rosterProp_('ATTENDANCE_MAIL_ADMIN_CC', ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_));
+  return isSyntacticallyValidEmail_(e) ? e : ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_;
+}
+
+function attMailCc_(cc, to) {
+  var toSet = {}; (to || []).forEach(function (e) { toSet[normalizeEmail_(e)] = true; });
+  var out = [];
+  (cc || []).concat([attMailAdminCc_()]).forEach(function (e) { e = normalizeEmail_(e); if (e && !toSet[e] && out.indexOf(e) === -1 && isSyntacticallyValidEmail_(e)) out.push(e); });
+  return out;
+}
+
+function apsMailProfile_(name) { var pr = APS_MAIL_PROFILES_[name]; if (!pr) throw new Error('Unknown mail profile'); return pr; }
+
+function extractAPSID_(email) {
+  if (!email) return 'NA';
+  var match = String(email).match(/_aps([a-z0-9]+)@/i);
+  if (!match || !match[1]) return 'NA';
+  return ('APS' + match[1]).toUpperCase();
+}
+
+function apsLeaveSkip_(area, date) {
+  var l = slCovering_(date); if (!l) return false;
+  var d = slDateStr_(date), key = 'sl_skip_' + area + '_' + d;
+  if (SL_MEMO_.seen[key]) return true; // already logged in this execution — no cache call per class
+  SL_MEMO_.seen[key] = true;
+  var cache = CacheService.getScriptCache(), seen = null;
+  try { seen = cache.get(key); } catch (e) { seen = null; }
+  if (!seen) {
+    try { cache.put(key, '1', 129600); } catch (e2) { /* best effort */ }
+    console.log('[SchoolLeave] SKIPPED_SCHOOL_LEAVE ' + area + ' ' + d + ' (' + l.title + ')');
+    slAudit_(l.id, 'SKIPPED_SCHOOL_LEAVE', area, d, 'system');
+  }
+  return true;
+}
+
+function apsClassDateInWeek_(weekId, dow) {
+  var m = /^WK-(\d{4}-\d{2}-\d{2})$/.exec(String(weekId || '')); if (!m || dow === null || dow === undefined) return '';
+  return dsShift_(m[1], [2, -4, -3, -2, -1, 0, 1][dow]);
+}
+
+function examQpParseClassName_(name) {
+  const raw = String(name || '').trim();
+  const parts = raw.split('|').map(function (p) { return p.trim(); });
+  const head = parts[0] || '';
+  const dash = head.lastIndexOf('-');
+  const section = dash > -1 ? head.slice(dash + 1).trim() : '';
+  const grade = extractNilaiFromCourseName_(raw) || (dash > -1 ? head.slice(0, dash).trim() : head);
+  const ayMatch = /(AY\d{2}-\d{2})\s*$/i.exec(raw);
+  const sched = parseCourseSchedule_(raw);
+  const fmt = function (t) { if (!t) return ''; const h12 = (t.hour % 12) || 12; return h12 + ':' + ('0' + t.minute).slice(-2) + ' ' + (t.hour < 12 ? 'AM' : 'PM'); };
+  return {
+    grade: grade, section: section,
+    day: sched ? EXAM_QP_DAY_TOKENS_[sched.dayOfWeek] : '', dayOfWeek: sched ? sched.dayOfWeek : null,
+    start: sched && sched.start ? sched.start : null, end: sched && sched.end ? sched.end : null,
+    startLabel: sched && sched.start ? fmt(sched.start) : '', endLabel: sched && sched.end ? fmt(sched.end) : '',
+    timeZone: (sched && sched.timezoneRaw) || 'EST',
+    academicYear: ayMatch ? ayMatch[1].toUpperCase() : ''
+  };
+}
+
+function readConfiguredUserRoles_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(USER_ROLE_CACHE_KEY);
+  if (cached) return JSON.parse(cached);
+  var roles = {};
+  var sheet = getWorkbook_().getSheetByName(USER_ROLE_SHEET_NAME);
+  if (!sheet) {
+    cache.put(USER_ROLE_CACHE_KEY, JSON.stringify(roles), USER_ROLE_CACHE_SECONDS);
+    return roles;
+  }
+  if (sheet.getLastRow() < 2) {
+    cache.put(USER_ROLE_CACHE_KEY, JSON.stringify(roles), USER_ROLE_CACHE_SECONDS);
+    return roles;
+  }
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues().forEach(function (row) {
+    var email = normalizeEmail_(row[0]);
+    var role = String(row[1] || '').trim().toLowerCase();
+    var active = row[2] === true || String(row[2]).toLowerCase() === 'true' || row[2] === 1;
+    if (email && active && DASHBOARD_ROLES.indexOf(role) > -1) roles[email] = role;
+  });
+  cache.put(USER_ROLE_CACHE_KEY, JSON.stringify(roles), USER_ROLE_CACHE_SECONDS);
+  return roles;
+}
+
+function ctaExcludeRule_() {
+  var list = function (k, d) { return ctaProp_(k, d).split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean); };
+  var emails = {};
+  list('APS_CLASS_TEACHER_AVAILABILITY_EXCLUDE_EMAILS', 'vsugadev@avvaiyarpadasalai.org').concat(SUPERADMIN_EMAILS.map(normalizeEmail_)).forEach(function (e) { emails[e] = true; });
+  return { emails: emails, prefixes: list('APS_CLASS_TEACHER_AVAILABILITY_EXCLUDE_PREFIXES', 'tts_') };
+}
+
+function ctaExcluded_(email, rule, roles) {
+  email = normalizeEmail_(email);
+  if (!email) return true;
+  // attIsExcludedEmail_: Admin/HM/Super Admin/BOD lists, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, Script Property
+  // ATTENDANCE_EXCLUDED_EMAILS and HIDDEN_TEACHER_EMAIL_PREFIXES — the same accounts Attendance never shows.
+  return isRosterHiddenStaffEmail_(email) || attIsExcludedEmail_(email) || isHiddenTeacherName_('', email) || !!rule.emails[email] || CTA_EXCLUDE_ROLES_.indexOf(roles[email]) > -1 ||
+    rule.prefixes.some(function (p) { return email.indexOf(p) === 0; });
+}
+
+function isHiddenTeacherName_(name, email) {
+  var normalizedName = String(name || '').trim().toLowerCase();
+  var normalizedEmail = String(email || '').trim().toLowerCase();
+  if (normalizedEmail && APS_GRADING_TEAM_EMAILS_.some(function (g) { return normalizeEmail_(g) === normalizedEmail; })) return true; // r116: Grading Help Team account
+  if (normalizedName && HIDDEN_TEACHER_NAMES.indexOf(normalizedName) > -1) return true;
+  if (normalizedName && HIDDEN_TEACHER_NAME_PREFIXES.some(function (prefix) {
+    return normalizedName.indexOf(String(prefix || '').trim().toLowerCase()) === 0;
+  })) return true;
+  return !!normalizedEmail && HIDDEN_TEACHER_EMAIL_PREFIXES.some(function (prefix) {
+    return normalizedEmail.indexOf(String(prefix || '').trim().toLowerCase()) === 0;
+  });
+}
+
+function extractNilaiFromCourseName_(rawName) {
+  var segment = String(rawName || '').split('|')[0]; // the grade token always precedes the first "|", same convention parseCourseSchedule_() relies on
+  if (segment.indexOf('துளிர்') !== -1) return 'THULIR(துளிர்)';
+  // Collapse whitespace/punctuation so "MUN MAZHALAI" and "MUNMAZHALAI" compare equal, per "normalize whitespace only when necessary".
+  var compact = segment.toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  if (!compact) return '';
+  if (compact.indexOf('MUNMAZHALAI') !== -1) return 'MUNMAZHALAI';
+  if (compact.indexOf('MAZHALAI') !== -1) return 'MAZHALAI';
+  if (compact.indexOf('THULIR') !== -1) return 'THULIR(துளிர்)';
+  var m = compact.match(/NILAI(\d+)(?!\d)/);
+  if (m && NILAI_FILTER_OPTIONS.indexOf('NILAI ' + m[1]) !== -1) return 'NILAI ' + m[1];
+  return '';
+}
+
+function extractClassTimeFromCourseName_(rawName) {
+  var raw = String(rawName || '');
+  var parts = raw.split('|');
+  var candidates = parts.length >= 2 ? [parts[1], raw] : [raw];
+  for (var i = 0; i < candidates.length; i++) {
+    var normalizedCandidate = normalizeClassTimeText_(candidates[i]);
+    for (var j = 1; j < CLASS_TIME_FILTER_OPTIONS.length; j++) { // j starts at 1 to skip "All"
+      if (normalizedCandidate.indexOf(normalizeClassTimeText_(CLASS_TIME_FILTER_OPTIONS[j])) !== -1) return CLASS_TIME_FILTER_OPTIONS[j];
+    }
+  }
+  return '';
+}
+
+function ctaRoleFlags_(role) {
+  return { teacher: role === 'teacher', staff: isAdminOrHm_(role), admin: isAdminRole_(role), bod: role === VCFO_AMCHSTS_BOD_ROLE };
+}
+
+function ctaConfig_() {
+  var hour = Number(ctaProp_('APS_CLASS_TEACHER_AVAILABILITY_HOUR', '18'));
+  var tz = ctaProp_('APS_CLASS_TEACHER_AVAILABILITY_TIMEZONE', APS_TZ);
+  try { Utilities.formatDate(new Date(), tz, 'u'); } catch (e) { tz = APS_TZ; }
+  var to = ctaProp_('APS_CLASS_TEACHER_AVAILABILITY_EMAIL_TO', CTA_DEFAULT_TO_).split(/[,;\s]+/).map(normalizeEmail_)
+    .filter(function (x, i, a) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x) && a.indexOf(x) === i; });
+  // r53: admin@ is always CC, never To (an older Script Property may still list it in To).
+  var adminCc = attMailAdminCc_(), toNoAdmin = to.filter(function (x) { return x !== adminCc; });
+  if (toNoAdmin.length) to = toNoAdmin;
+  return {
+    enabled: String(ctaProp_('APS_CLASS_TEACHER_AVAILABILITY_EMAIL_ENABLED', 'true')).toLowerCase() !== 'false',
+    to: to, cc: attMailCc_([], to), tz: tz,
+    hour: hour >= 0 && hour <= 23 && Math.floor(hour) === hour ? hour : 18,
+    academicYear: ctaProp_('APS_CLASS_TEACHER_AVAILABILITY_ACADEMIC_YEAR', COURSE_NAME_SUFFIX || 'AY26-27')
+  };
+}
+
+function getWeekLabel_(weekId) {
+  var m = /^WK-(\d{4})-(\d{2})-(\d{2})$/.exec(weekId || '');
+  if (!m) return weekId || '';
+  var friday = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  var sunday = new Date(friday.getTime() + 2 * 24 * 60 * 60000);
+  var fmt = function (d) { return Utilities.formatDate(d, LAST_LOGIN_TIMEZONE, 'MMM d'); };
+  return 'Week of ' + fmt(friday) + ' - ' + fmt(sunday) + ', ' + m[1];
+}
+
+function ctaNilaiOptions_() { return NILAI_FILTER_OPTIONS.slice(1); }
+
+function ctaTimeOptions_() { return CLASS_TIME_FILTER_OPTIONS.slice(1); }
+
+function isReadOnlyRole_(role) { return role === VCFO_AMCHSTS_BOD_ROLE; }
+
+function apsMailFrom_(name) { var pr = apsMailProfile_(name); return String(rosterProp_(pr.fromKey, pr.fromDefault)).trim().toLowerCase(); }
+
+function ctaReadSelections_(weekId) {
+  var sh = ctaSheet_(CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_);
+  var out = {}, last = sh.getLastRow();
+  if (last < 2) return out;
+  var split = function (v) { return String(v || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean); };
+  sh.getRange(2, 1, last - 1, CTA_SELECTION_HEADER_.length).getValues().forEach(function (r, i) {
+    if (String(r[0]) !== weekId) return;
+    var email = normalizeEmail_(r[2]);
+    if (!email) return;
+    out[email] = { rowNum: i + 2, weekId: weekId, academicYear: String(r[1] || ''), email: email, name: String(r[3] || ''), apsId: String(r[4] || ''),
+      nilai: split(r[5]), times: split(r[6]), status: String(r[7] || ''), submittedAt: r[8] ? String(r[8]) : '', updatedAt: r[9] ? String(r[9]) : '' };
+  });
+  return out;
+}
+
+function findDisplayName_(courses, email) {
+  var normalized = normalizeEmail_(email);
+  for (var i = 0; i < courses.length; i++) {
+    var c = courses[i];
+    var people = (c.teachers || []).concat(c.students || []);
+    for (var j = 0; j < people.length; j++) {
+      if (normalizeEmail_(people[j].email) === normalized) return people[j].name;
+    }
+  }
+  return email;
+}
+
+function localPartOfEmail_(email) {
+  var at = (email || '').indexOf('@');
+  return at > -1 ? email.slice(0, at) : (email || '');
+}
+
+function ctaApsId_(email) { var id = extractAPSID_(email); return id && id !== 'NA' ? id : 'APSXXX'; }
+
+function ctaAyMatch_(name, ay) {
+  var n = String(name || '').trim().toLowerCase(), s = String(ay || '').trim().toLowerCase();
+  return !s || n.slice(-s.length) === s;
+}
+
+function courseHasTeacherEmail_(course, normalizedEmail) {
+  if (!normalizedEmail || !course) return false;
+  if ((course.teachers || []).some(function (t) { return normalizeEmail_(t.email) === normalizedEmail; })) return true;
+  // r46 — every Google Classroom teacher of the course has teacher access to it, including tcs_ / tts_ on-call
+  // accounts and others hidden from the card display (display rules are unchanged).
+  return (course.rosterTeacherEmails || []).indexOf(normalizedEmail) > -1;
+}
+
+function ctaFmtTs_(iso, tz) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return isNaN(d.getTime()) ? String(iso) : Utilities.formatDate(d, tz || APS_TZ, 'MM/dd/yyyy hh:mm a') + ' EST';
+}
+
+function ctaBuildReport_(now, opts) {
+  opts = opts || {};
+  var cfg = ctaConfig_();
+  var weekId = getCurrentWeekId_(now);
+  // ACTIVE Google Classrooms of the academic year only (the cache holds ACTIVE courses; courseState is checked when present).
+  var courses = (opts.courses || readAllCoursesFromCache_()).filter(function (c) { return ctaAyMatch_(c.name, cfg.academicYear) && (!c.courseState || c.courseState === 'ACTIVE'); });
+  courses = courses.filter(function (c) { return !apsLeaveSkip_('TEACHER_AVAILABILITY', apsClassDateInWeek_(weekId, examQpParseClassName_(c.name).dayOfWeek)); }); // r109: school leave
+  var selections = ctaReadSelections_(weekId);
+  var classMap = readTeacherAvailabilityMap_();
+  var roles = opts.roles || readConfiguredUserRoles_();
+  var rule = ctaExcludeRule_();
+  // Class teacher = the Course Description PRIMARY_TEACHER (Classroom member) when the report's exclusion rule allows it, else the
+  // first other Classroom teacher; a VP / HM named only in the Room (t.supportRole) is never the class teacher.
+  // The report's own exclusion rule (APS_CLASS_TEACHER_AVAILABILITY_EXCLUDE_*) still applies — it is a report setting, not an access role.
+  // Class teacher = the Course Description's Primary Teacher (primaryTeacherOf_) — ALWAYS, whatever the email
+  // prefix or the report's exclusion lists say (the Description is authoritative). Only classes without a named
+  // Primary Teacher fall back to the first eligible Classroom teacher (report exclusion rules apply there).
+  var classTeacher = function (c) {
+    var p = primaryTeacherOf_(c);
+    if (p && p.email && (p.apsRoles || []).indexOf('PRIMARY_TEACHER') > -1) return p;
+    var list = (c.teachers || []).filter(function (t) { return t.email && !t.supportRole && !ctaExcluded_(t.email, rule, roles); });
+    return list.filter(function (t) { return !isHiddenTeacherName_(t.name, t.email); })[0] || null;
+  };
+  var people = {};
+  var touch = function (email, name, isPrimary) {
+    email = normalizeEmail_(email);
+    if (!email || (!isPrimary && ctaExcluded_(email, rule, roles))) return null; // a Description Primary Teacher is never excluded
+    var p = people[email] || (people[email] = { email: email, name: '', classrooms: [], classIds: {} });
+    if (!p.name && name && normalizeEmail_(name) !== email) p.name = String(name);
+    return p;
+  };
+  courses.forEach(function (c) {
+    (c.teachers || []).forEach(function (t) {
+      var namedPrimary = (t.apsRoles || []).indexOf('PRIMARY_TEACHER') > -1;
+      if (!t.email || (!namedPrimary && isHiddenTeacherName_(t.name, t.email))) return; // support accounts; Admin/HM/hidden staff are dropped by touch()
+      if (t.supportRole) return; // VP / HM named only in the Room: there for Class Support, not a class teacher
+      var p = touch(t.email, t.name, namedPrimary);
+      if (p && !p.classIds[c.id]) { p.classIds[c.id] = true; p.classrooms.push({ id: String(c.id), name: String(c.name || '') }); }
+    });
+  });
+  Object.keys(roles).forEach(function (email) { if (roles[email] === 'teacher') touch(email, ''); });
+  Object.keys(selections).forEach(function (email) { touch(email, selections[email].name); });
+
+  var courseById = {};
+  courses.forEach(function (c) { courseById[String(c.id)] = c; });
+  var classAnswers = {}; // email -> [{status, nilai, time}] from the existing per-class "This Week" answers
+  Object.keys(classMap).forEach(function (k) {
+    var a = classMap[k];
+    if (a.weekId !== weekId || !courseById[a.courseId]) return;
+    var email = normalizeEmail_(a.teacherEmail);
+    var cn = courseById[a.courseId].name;
+    (classAnswers[email] = classAnswers[email] || []).push({ status: a.status, nilai: extractNilaiFromCourseName_(cn), time: extractClassTimeFromCourseName_(cn) });
+  });
+
+  var uniq = function (arr) { return arr.filter(function (x, i) { return x && arr.indexOf(x) === i; }); };
+  var rows = Object.keys(people).map(function (email) {
+    var p = people[email], sel = selections[email];
+    var cls = p.classrooms.slice().sort(function (a, b) { return naturalCompareJs_(a.name, b.name); });
+    var row = { email: email, name: p.name || findDisplayName_(courses, email), apsId: ctaApsId_(email), classrooms: cls.map(function (c) { return c.name; }), nilai: [], times: [], status: CTA_LABEL_.NOT_SUBMITTED, source: 'none', updatedAt: '',
+      // This week's per-class answer from the class card (same data as the "📅 Class Teacher Availability" badge), one entry per classroom above.
+      classStatus: cls.map(function (c) { var a = classMap[weekId + '|' + c.id]; return a ? { status: a.status, alternative: a.alternative || '', by: a.updatedByName || '', at: a.updatedAt ? String(a.updatedAt) : '' } : { status: AVAILABILITY_STATUS.PENDING, alternative: '', by: '', at: '' }; }) };
+    if (row.name === email) row.name = localPartOfEmail_(email);
+    if (sel) {
+      row.nilai = sel.nilai; row.times = sel.times; row.source = 'form'; row.updatedAt = ctaFmtTs_(sel.updatedAt, cfg.tz);
+      row.status = CTA_CODE_TO_LABEL_[sel.status] || CTA_LABEL_.SUBMITTED;
+    } else if (classAnswers[email]) {
+      var ans = classAnswers[email];
+      var yes = ans.filter(function (a) { return a.status === AVAILABILITY_STATUS.CONFIRMED; });
+      var no = ans.filter(function (a) { return a.status === AVAILABILITY_STATUS.NOT_AVAILABLE; });
+      if (yes.length) { row.status = CTA_LABEL_.AVAILABLE; row.nilai = uniq(yes.map(function (a) { return a.nilai; })); row.times = uniq(yes.map(function (a) { return a.time; })); row.source = 'class'; }
+      else if (no.length) { row.status = CTA_LABEL_.NOT_AVAILABLE; row.source = 'class'; }
+    }
+    return row;
+  }).sort(function (a, b) { return String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()) || a.email.localeCompare(b.email); });
+  rows.forEach(function (r, i) { r.n = i + 1; });
+
+  var nilaiOpts = ctaNilaiOptions_(), timeOpts = ctaTimeOptions_();
+  var avail = rows.filter(function (r) { return r.status === CTA_LABEL_.AVAILABLE; });
+  var combos = {};
+  avail.forEach(function (r) { r.nilai.forEach(function (n) { r.times.forEach(function (t) { combos[n + '|' + t] = true; }); }); });
+  var count = function (f) { return rows.filter(f).length; };
+  // Grade-level view of THIS week's class-card answers (Teacher_Weekly_Availability, this weekId only):
+  // one entry per ACTIVE AY classroom, counted under its Nilai; plus every class still Not Available / Not Set.
+  var gradeIdx = {}, gradeLevel = nilaiOpts.map(function (n) { return (gradeIdx[n] = { nilai: n, classes: 0, available: 0, notAvailable: 0, notSet: 0 }); });
+  var attention = [];
+  courses.slice().sort(function (a, b) { return naturalCompareJs_(a.name, b.name); }).forEach(function (c) {
+    var g = gradeIdx[extractNilaiFromCourseName_(c.name)];
+    if (!g) return;
+    var a = classMap[weekId + '|' + c.id];
+    var x = a ? { status: a.status, alternative: a.alternative || '', by: a.updatedByName || '', at: a.updatedAt ? String(a.updatedAt) : '' } : { status: AVAILABILITY_STATUS.PENDING, alternative: '', by: '', at: '' };
+    g.classes++;
+    if (x.status === AVAILABILITY_STATUS.CONFIRMED) { g.available++; return; }
+    if (x.status === AVAILABILITY_STATUS.NOT_AVAILABLE) g.notAvailable++; else g.notSet++;
+    var t = classTeacher(c);
+    attention.push({ nilai: g.nilai, name: t ? (t.name || localPartOfEmail_(t.email)) : 'Not Assigned', email: t ? normalizeEmail_(t.email) : '', classroom: String(c.name || ''), classStatus: x,
+      status: x.status === AVAILABILITY_STATUS.NOT_AVAILABLE ? 'Not Available to Take Classes' : 'Not Set' });
+  });
+  attention.sort(function (a, b) { return nilaiOpts.indexOf(a.nilai) - nilaiOpts.indexOf(b.nilai) || naturalCompareJs_(a.classroom, b.classroom); });
+  var tsets = { all: {}, available: {}, notAvailable: {}, notSet: {} };
+  courses.forEach(function (c) {
+    if (!gradeIdx[extractNilaiFromCourseName_(c.name)]) return;
+    var t = classTeacher(c), k = t ? normalizeEmail_(t.email) : 'none|' + c.id, a = classMap[weekId + '|' + c.id];
+    var st = !a ? 'notSet' : a.status === AVAILABILITY_STATUS.CONFIRMED ? 'available' : a.status === AVAILABILITY_STATUS.NOT_AVAILABLE ? 'notAvailable' : 'notSet';
+    tsets.all[k] = true; tsets[st][k] = true;
+  });
+  var gsum = function (key) { return gradeLevel.reduce(function (n, g) { return n + g[key]; }, 0); };
+  var classSummary = { classes: gsum('classes'), available: gsum('available'), notAvailable: gsum('notAvailable'), notSet: gsum('notSet'),
+    teachers: Object.keys(tsets.all).length, tAvailable: Object.keys(tsets.available).length, tNotAvailable: Object.keys(tsets.notAvailable).length, tNotSet: Object.keys(tsets.notSet).length };
+  var dow = Number(Utilities.formatDate(now, cfg.tz, 'u')) % 7;
+  return {
+    classSummary: classSummary,
+    academicYear: cfg.academicYear, weekId: weekId, weekLabel: getWeekLabel_(weekId),
+    gradeLevel: gradeLevel, attention: attention,
+    reportDate: Utilities.formatDate(now, cfg.tz, 'MM/dd/yyyy'), dayName: CTA_DAY_NAMES_[dow],
+    generatedAt: Utilities.formatDate(now, cfg.tz, 'MM/dd/yyyy hh:mm a') + ' EST',
+    nilaiOptions: nilaiOpts, timeOptions: timeOpts,
+    summary: {
+      total: rows.length,
+      submitted: count(function (r) { return r.source !== 'none'; }),
+      notSubmitted: count(function (r) { return r.source === 'none'; }),
+      available: avail.length,
+      notAvailable: count(function (r) { return r.status === CTA_LABEL_.NOT_AVAILABLE; }),
+      pending: count(function (r) { return r.status === CTA_LABEL_.PENDING; }),
+      withClassroom: count(function (r) { return r.classrooms.length > 0; }),
+      withoutClassroom: count(function (r) { return !r.classrooms.length; }),
+      combos: Object.keys(combos).length, combosPossible: nilaiOpts.length * timeOpts.length
+    },
+    byNilai: nilaiOpts.map(function (n) {
+      return { nilai: n, teachers: avail.filter(function (r) { return r.nilai.indexOf(n) > -1; }).map(function (r) { return { name: r.name, email: r.email, detail: r.times.join(', ') || 'Not Selected' }; }) };
+    }),
+    byTime: timeOpts.map(function (t) {
+      return { time: t, teachers: avail.filter(function (r) { return r.times.indexOf(t) > -1; }).map(function (r) { return { name: r.name, email: r.email, detail: r.nilai.join(', ') || 'Not Selected' }; }) };
+    }),
+    rows: rows
+  };
+}
+
 function applyUserCountry_(courses) {
   var map = apsCountryOn_() ? getUserCountryMap_() : {}; // r119: switched off — every flag blank, the map is not read
   courses.forEach(function (c) {
@@ -575,7 +1213,7 @@ function ucPref_(email) {
 function apsCountryOn_() { return apsReqMemo_('countryOn', function () { return String(rosterProp_('APS_COUNTRY_FEATURE', 'on')).trim().toLowerCase() !== 'off'; }); }
 
   APS_REQ_MEMO_ = {};
-  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, COURSE_NAME_SUFFIX };
+  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
 }
 export const SCOPE_SOURCE_MD5 = '44ef1e4219409858c968276a3738f1ce';
-export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};
+export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};

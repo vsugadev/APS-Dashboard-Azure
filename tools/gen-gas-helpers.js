@@ -52,7 +52,7 @@ function find(src, re, name) {
 function main() {
   const src = fs.readFileSync(SRC, 'utf8');
   const parts = [];
-  for (const c of CONSTANTS) parts.push(find(src, new RegExp('^var ' + c + ' = ', 'm'), c));
+  for (const c of CONSTANTS) parts.push(find(src, new RegExp('^(?:var|const|let) ' + c + ' = ', 'm'), c));
   for (const f of FUNCTIONS) {
     const body = find(src, new RegExp('^function ' + f.replace(/\$/g, '\\$') + '\\(', 'm'), f);
     if (FORBIDDEN.test(body)) throw new Error(f + ' uses an Apps Script service — it cannot be copied as a pure helper.');

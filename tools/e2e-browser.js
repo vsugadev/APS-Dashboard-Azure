@@ -51,6 +51,11 @@ const { DashboardPage } = require('../dist/src/web/render');
       const txt = await page.evaluate(() => document.body.innerText);
       assert.ok(/NILAI 3 - EF/.test(txt) && /NILAI 1 - EA/.test(txt), 'both sample classes shown');
     });
+    await t('Phase 2 step 3: Teacher Availability report served by Azure, read-only (Save / test email off)', async () => {
+      const tok = await page.evaluate(() => apsSessionToken);
+      const v = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getClassTeacherAvailabilityView(tk)), tok);
+      assert.ok(v && v.report && v.weekId, 'weekly report returned'); assert.strictEqual(v.canSubmit, false); assert.strictEqual(v.canSendTest, false);
+    });
     await t('sign-out: endSession sent and the session is gone on the server', async () => {
       const tok = await page.evaluate(() => apsSessionToken);
       await page.evaluate(() => document.getElementById('apsSignOutBtn').click());

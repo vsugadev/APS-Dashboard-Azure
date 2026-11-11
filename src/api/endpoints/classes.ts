@@ -34,7 +34,8 @@ const ACCESS_STAFF_ROLES = new Set(['superadmin', 'admin', 'headmaster', 'vcfo_a
 
 /** Sheet names the copied readers open — taken from the copied Code.gs constants, never retyped. */
 const NAMES = makeGasScope(makeRuntime({ main: new SnapWorkbook('x', {}), attendance: null, settings: {}, isRosterHiddenStaffEmail_: () => false, apsTabAllowed_: () => false, isOnCallCoordinatorEmail_: () => false }));
-export const MAIN_SHEETS: string[] = [NAMES.TEACHER_AVAILABILITY_SHEET_NAME, NAMES.WHATSAPP_LINKS_SHEET_NAME, NAMES.SL_SHEET_, NAMES.TCC_SHEET_, NAMES.TTM_SHEET_, NAMES.UC_SHEET_];
+export const MAIN_SHEETS: string[] = [NAMES.TEACHER_AVAILABILITY_SHEET_NAME, NAMES.WHATSAPP_LINKS_SHEET_NAME, NAMES.SL_SHEET_, NAMES.TCC_SHEET_, NAMES.TTM_SHEET_, NAMES.UC_SHEET_,
+  NAMES.CTA_SELECTION_SHEET_, NAMES.USER_ROLE_SHEET_NAME];
 export const ATTENDANCE_SHEETS: string[] = [NAMES.ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, NAMES.CLASS_MEET_DETECTED_SHEET_];
 
 /** Code.gs ROSTER_HIDDEN_STAFF_EMAIL_SET_: Headmaster + Admin lists + ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS + grading team. */
@@ -61,16 +62,28 @@ function isOnCallCoordinator(cfg: AppConfig, email: unknown): boolean {
 }
 
 /** One request's copy of the Code.gs readers, on a read-only snapshot of the sheets they read. */
-export async function gasScopeFor(ctx: AppContext): Promise<any> {
-  const [main, ov] = await Promise.all([ctx.data.readSheets('main', MAIN_SHEETS), ctx.data.readAccessOverrides()]);
+/** Settings the copied code reads as Script Properties: plain APS_/TCC_/… values + the role lists Azure holds (Key Vault). */
+export function gasSettings(cfg: AppConfig): Record<string, string> {
+  return { ...cfg.scriptSettings,
+    SUPERADMIN_EMAILS: JSON.stringify(cfg.superadminEmails), ADMIN_EMAILS: JSON.stringify(cfg.adminEmails), HEADMASTER_EMAILS: JSON.stringify(cfg.headmasterEmails),
+    VCFO_AMCHATS_BOD_EMAILS: JSON.stringify(cfg.bodEmails), ON_CALL_COORDINATOR_EMAILS: JSON.stringify(cfg.onCallCoordinatorEmails),
+    ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS: JSON.stringify(cfg.rosterHiddenStaffAdditionalEmails), APS_GRADING_TEAM_EMAILS: JSON.stringify(cfg.gradingTeamEmails) };
+}
+
+/** One request's copy of the Code.gs readers, on a read-only snapshot of the sheets they read. `session` = the session
+ *  Azure already checked (for copied endpoints that call requireValidSession_ / apsRequireTabForToken_). */
+export async function gasScopeFor(ctx: AppContext, session: { email: string; role: string } | null = null): Promise<any> {
+  const [main, ov, courses] = await Promise.all([ctx.data.readSheets('main', MAIN_SHEETS), ctx.data.readAccessOverrides(), session ? ctx.data.readCourses() : Promise.resolve([])]);
   let attendance: SnapWorkbook | null = null;
   if (ctx.cfg.attendanceSpreadsheetId || ctx.cfg.dataMode === 'fixture') {
-    try { const a = await ctx.data.readSheets('attendance', ATTENDANCE_SHEETS); attendance = new SnapWorkbook('attendance', a.sheets, a.timeZone); }
+    try { const a = await ctx.data.readSheets('attendance', ATTENDANCE_SHEETS); attendance = new SnapWorkbook('attendance', a.sheets, a.timeZone, a.titles); }
     catch (e) { console.warn('[Classes] attendance workbook not readable — Meet links from Classroom only: ' + String((e as Error).message).slice(0, 120)); }
   }
   const hidden = hiddenStaffSet(ctx.cfg);
+  const json = JSON.stringify(courses);
   return makeGasScope(makeRuntime({
-    main: new SnapWorkbook('main', main.sheets, main.timeZone), attendance, settings: ctx.cfg.scriptSettings,
+    main: new SnapWorkbook('main', main.sheets, main.timeZone, main.titles), attendance, settings: gasSettings(ctx.cfg),
+    session, courses: () => JSON.parse(json), tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),
     isRosterHiddenStaffEmail_: (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; },
     apsTabAllowed_: (r: string, key: string) => apsTabAllowed(r, key, ov),
     isOnCallCoordinatorEmail_: (e: unknown) => isOnCallCoordinator(ctx.cfg, e),
@@ -202,6 +215,15 @@ export function registerClasses(reg: Registry): void {
   reg.register('getMyCountryPreference', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
     return countryPreference(await gasScopeFor(ctx), s.email);
+  });
+  /** getClassTeacherAvailabilityView — Classes → Teacher Availability (Phase 2 step 3): a teacher's own week + the
+   *  Admin / HM / BOD weekly report, exactly as Code.gs builds it (copied code, read-only). Saving stays in Apps Script. */
+  reg.register('getClassTeacherAvailabilityView', async (ctx, [token]) => {
+    const s = await requireSession(ctx, token);
+    const S = await gasScopeFor(ctx, { email: s.email, role: s.role });
+    const out = S.getClassTeacherAvailabilityView(token);
+    if (out) { out.canSubmit = false; out.canSendTest = false; out.azureReadOnly = true; } // save / test email: still in Apps Script
+    return out;
   });
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */
   reg.register('getDashboardData', async (ctx, [token]) => {

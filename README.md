@@ -3,6 +3,8 @@
 Location: `C:\Users\AmChaTS\PycharmProjects\APS-Dashboard-Azure` — a separate project beside the live Apps Script
 project `APS-Classroom-Dashboard` (which is never changed by anything here).
 
+**Start here:** [`docs/APS_Dashboard_Azure_Guide.md`](docs/APS_Dashboard_Azure_Guide.md) — what is on Azure, settings, deploy, troubleshooting, change log.
+
 ## Folders
 
 | Folder | What it holds |
