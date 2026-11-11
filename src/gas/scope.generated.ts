@@ -3,7 +3,7 @@
  * Code.gs Sheet readers copied word for word; run inside the read-only runtime (src/gas/runtime.ts). */
 /* eslint-disable */
 export function makeGasScope(rt: any): any {
-  const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_ } = rt;
+  const { Sheets, SpreadsheetApp, CacheService, PropertiesService, Utilities, Session, console, getWorkbook_, getAttendanceWorkbook_, isRosterHiddenStaffEmail_, apsTabAllowed_, isOnCallCoordinatorEmail_, apsRequireTabForToken_, requireValidSession_, readAllCoursesFromCache_, applyRosterHiddenStaffFilter_, applyLivePresence_, applyLastLogin_, applyStudentOnboardedFlag_ } = rt;
 
 var APS_REQ_MEMO_ = null;
 
@@ -67,6 +67,88 @@ var UC_MEMO_ = null;
 var SUPERADMIN_ROLE = 'superadmin';
 
 var VCFO_AMCHSTS_BOD_ROLE = 'vcfo_amchsts_bod';
+
+var ATTENDANCE_EFFECTIVE_CAP_FROM_MIN = 90;
+
+var ATTENDANCE_EFFECTIVE_CAP_MIN = 95;
+
+var ATTENDANCE_SCORE_TIERS_ = [
+  { minPct: 75, exclusive: true, score: 100 },
+  { minPct: 60, score: 90 }, { minPct: 50, score: 80 }, { minPct: 40, score: 70 },
+  { minPct: 30, score: 60 }, { minPct: 20, score: 50 }, { minPct: 0, score: 0 }
+];
+
+var ATTENDANCE_STATUS = { PRESENT: 'PRESENT', PARTIAL: 'PARTIAL', ABSENT: 'ABSENT' };
+
+var ROLE_PERMISSION_CACHE_KEY = 'dashboardRolePermissions_v1';
+
+var ROLE_PERMISSION_PROP_KEY = 'dashboardRolePermissions_v1';
+
+var ROLE_PERMISSION_CACHE_SECONDS = 60;
+
+var ATTENDANCE_COL_ = {
+  DATE: 0, COURSE_ID: 1, CLASS_NAME: 2, LEVEL: 3, SECTION: 4, DAY: 5,
+  SCHED_START: 6, SCHED_END: 7, TZ: 8, ACADEMIC_YEAR: 9,
+  PERSON_NAME: 10, APS_ID: 11, EMAIL: 12, ROLE: 13,
+  SESSION_COUNT: 14, SESSION_DETAILS: 15, FIRST_JOIN: 16, LAST_LEAVE: 17,
+  ACTIVE_MINUTES: 18, STATUS: 19, LAST_UPDATED: 20,
+  AUTO_STATUS: 21, OVERRIDE_STATUS: 22, OVERRIDE_BY: 23, OVERRIDE_AT: 24, OVERRIDE_REASON: 25, CAPTURE_SOURCE: 26, WEEK_OF: 27, WEEK_NO: 28,
+  CALL_START: 29, CALL_END: 30, CALL_MINUTES: 31, ATTENDED_PCT: 32, AUTO_SCORE: 33, SCORE: 34,
+  ACTUAL_CLASS_MINUTES: 35, EFFECTIVE_CLASS_MINUTES: 36, CLASS_WINDOW_BASIS: 37
+};
+
+var ATTENDANCE_HEADER_ROW = [
+  'Attendance Date', 'Course ID', 'Class Name', 'Level', 'Section', 'Day',
+  'Scheduled Start', 'Scheduled End', 'Time Zone', 'Academic Year',
+  'Person Name', 'APS ID', 'Email', 'Role',
+  'Session Count', 'Session Details', 'Actual First Join', 'Actual Last Leave',
+  'Active Minutes', 'Attendance Status', 'Last Updated',
+  'Auto Status', 'Override Status', 'Override By', 'Override At', 'Override Reason', 'Capture Source', 'Week Of',
+  'Week No',
+  'Call Start', 'Call End', 'Call Minutes', 'Attended %', 'Auto Score', 'Score', // scoring columns (Sept 26 follow-up)
+  'Actual Class Minutes', 'Effective Class Minutes', 'Class Window Basis' // class-duration rule (Sept 27): Call Minutes = Effective
+];
+
+var ATTENDANCE_SPREADSHEET_ID = getConfigString_('ATTENDANCE_SPREADSHEET_ID', '');
+
+var ATTENDANCE_OVERRIDE_SCORES_ = { PRESENT: 100, PARTIAL: 70, EXCUSED: 70, ABSENT: 0 };
+
+var ATTENDANCE_WEEK1_START_DEFAULT_ = '2026-09-11';
+
+var ATTENDANCE_WEEK_SHEET_PATTERN_ = /^AWK(\d{2,})ATT$/;
+
+var ATTENDANCE_SUMMARY_SHEET_NAME = 'Attendance_Summary';
+
+var ATTENDANCE_SUMMARY_HEADER_ROW = [
+  'Course ID', 'Class Name', 'Person Name', 'Email', 'Role', 'Weeks Recorded',
+  'Attended Minutes', 'Call Minutes', 'Weighted Score Sum', 'Weight Minutes', 'Overall %', 'Last Updated'
+];
+
+var ATTENDANCE_SHEET_PREFIX = 'AWK';
+
+var ATTENDANCE_AUDIT_LOG_SHEET_NAME = 'Attendance_Audit_Log';
+
+var ATTENDANCE_ROLE = { STUDENT: 'STUDENT', TEACHER: 'TEACHER' };
+
+var ATTENDANCE_SOURCE = {
+  AUDIT_MAPPED_CODE: 'MEET_AUDIT_MAPPED_CODE',
+  AUDIT_TEACHER_CODE: 'MEET_AUDIT_TEACHER_CODE',
+  AUDIT_CLASS_CODE: 'MEET_AUDIT_CLASS_CODE',
+  AUDIT_NO_ACTIVITY: 'MEET_AUDIT_NO_ACTIVITY',
+  MEET_API: 'MEET_API',
+  ON_CALL_GUEST: 'MEET_AUDIT_ON_CALL_GUEST', // an on-call (TCS_/TTS_) teacher who joined the class's Meet without being on its roster
+  COVERAGE: 'MEET_AUDIT_COVERAGE_MERGE' // r58: Temporary Class Coverage — the class met in the coverage class's Meet that session
+};
+
+var ATTENDANCE_AUDIT_LOG_HEADER_ROW = [
+  'Edited At', 'Edited By Email', 'Edited By Role', 'Course ID', 'Class Name',
+  'Attendance Date', 'Person Name', 'Person Email', 'Person Role', 'Old Status', 'New Status', 'Reason',
+  'Action', 'Auto Status' // appended (weekly-attendance round) — columns 1-12 unchanged
+];
+
+var ATTENDANCE_SYNC_DIAGNOSTIC_KEY = 'attendanceSyncDiagnostic_v1';
+
+var ATTENDANCE_LAST_SYNC_SUMMARY_KEY = 'attendanceLastSyncSummary_v1';
 
 var AUTHORIZED_ROLE = 'authorized';
 
@@ -587,6 +669,560 @@ function ttmFmtDate_(ymd) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd 
 function ttmCanUse_(role, email) { return (isAdminRole_(role) || role === 'headmaster' || role === 'teacher' || ttmIsCoordinator_(role, normalizeEmail_(email))) && apsTabAllowed_(role, 'classes.tempTeacher'); }
 
 function ttmIsCoordinator_(role, email) { return role === VCFO_AMCHSTS_BOD_ROLE && isOnCallCoordinatorEmail_(email); }
+
+function getAttendanceCourseAwkMap(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminOrHm_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin/Headmaster/Super Admin can view the AWK mapping.');
+  var week1 = getAttendanceWeek1Start_();
+  return attListWeekSheets_().map(function (w) {
+    var weekId = attWeekIdForNumber_(w.weekNo, week1);
+    return { awkSheet: w.name, weekNo: w.weekNo, weekId: weekId, weekLabel: 'Week ' + w.weekNo + ' — ' + getWeekLabel_(weekId).replace(/^Week of /, ''), rows: Math.max(0, w.sheet.getLastRow() - 1) };
+  });
+}
+
+function defaultDashboardRolePermissions_() {
+  return {
+    admin: { readOnly: false, buttons: true, filters: true, tabs: true },
+    superadmin: { readOnly: false, buttons: true, filters: true, tabs: true },
+    headmaster: { readOnly: false, buttons: true, filters: true, tabs: true },
+    teacher: { readOnly: false, buttons: true, filters: true, tabs: true },
+    student: { readOnly: false, buttons: true, filters: false, tabs: true },
+    vcfo_amchsts_bod: { readOnly: true, buttons: false, filters: true, tabs: true },
+    authorized: { readOnly: true, buttons: false, filters: false, tabs: false }
+  };
+}
+
+function getEffectiveClassMinutes(actualMinutes) {
+  var minutes = Number(actualMinutes) || 0;
+  if (minutes < ATTENDANCE_EFFECTIVE_CAP_FROM_MIN) return minutes;
+  return ATTENDANCE_EFFECTIVE_CAP_MIN;
+}
+
+function attAttendedPct_(attendedMinutes, effectiveMinutes) {
+  var eff = Number(effectiveMinutes) || 0;
+  if (eff <= 0) return 0;
+  return Math.min(100, Math.round(((Number(attendedMinutes) || 0) / eff) * 10000) / 100);
+}
+
+function attScoreForPct_(pct) {
+  pct = Number(pct) || 0;
+  for (var i = 0; i < ATTENDANCE_SCORE_TIERS_.length; i++) {
+    var t = ATTENDANCE_SCORE_TIERS_[i];
+    if (t.exclusive ? pct > t.minPct : pct >= t.minPct) return t.score;
+  }
+  return 0;
+}
+
+function attStatusForScore_(score) {
+  return score >= 100 ? ATTENDANCE_STATUS.PRESENT : (score <= 0 ? ATTENDANCE_STATUS.ABSENT : ATTENDANCE_STATUS.PARTIAL);
+}
+
+function readDashboardRolePermissionsRaw_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(ROLE_PERMISSION_CACHE_KEY);
+  if (cached) return JSON.parse(cached);
+  var defaults = defaultDashboardRolePermissions_();
+  var raw = PropertiesService.getScriptProperties().getProperty(ROLE_PERMISSION_PROP_KEY);
+  var saved = raw ? JSON.parse(raw) : {};
+  Object.keys(defaults).forEach(function (role) {
+    saved[role] = Object.assign({}, defaults[role], saved[role] || {});
+  });
+  cache.put(ROLE_PERMISSION_CACHE_KEY, JSON.stringify(saved), ROLE_PERMISSION_CACHE_SECONDS);
+  return saved;
+}
+
+function attApplyClassDurationRule_(r) {
+  var stored = r.effectiveClassMinutes;
+  r.legacyDuration = (r.actualClassMinutes === null || r.actualClassMinutes === undefined);
+  var actual = r.legacyDuration ? (Number(r.callMinutes) || 0) : (Number(r.actualClassMinutes) || 0);
+  var eff = getEffectiveClassMinutes(actual);
+  r.actualClassMinutes = actual;
+  if (!r.legacyDuration && eff === Number(stored) && eff === Number(r.callMinutes)) return r;
+  r.effectiveClassMinutes = eff;
+  r.callMinutes = eff;
+  if (r.autoScore !== null && r.autoScore !== undefined) {
+    r.attendedPct = attAttendedPct_(r.activeMinutes, eff);
+    r.autoScore = attScoreForPct_(r.attendedPct);
+    r.autoStatus = attStatusForScore_(r.autoScore);
+    if (!r.overrideStatus) r.status = r.autoStatus;
+    r.score = attEffectiveScore_(r);
+  }
+  return r;
+}
+
+function getConfigString_(key, fallback) {
+  var value = PropertiesService.getScriptProperties().getProperty(key);
+  if (value === null || value === undefined || value === '') {
+    console.warn('[Config] Script Property "' + key + '" is not set — using fallback.');
+    return fallback !== undefined ? fallback : '';
+  }
+  return value;
+}
+
+function readDashboardRolePermissions_() { return apsReqMemo_('rolePermissions', readDashboardRolePermissionsRaw_); }
+
+function attColumnLetter_(n) {
+  var s = '';
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+function attRowToRecord_(row, tz) {
+  var C = ATTENDANCE_COL_;
+  var cell = function (i) { return (row && row[i] !== undefined) ? row[i] : ''; };
+  var date = attCellToText_(cell(C.DATE), 'date', tz);
+  var status = attCellToText_(cell(C.STATUS), '', tz);
+  return attApplyClassDurationRule_({
+    date: date, courseId: attCellToText_(cell(C.COURSE_ID), '', tz), className: attCellToText_(cell(C.CLASS_NAME), '', tz),
+    level: attCellToText_(cell(C.LEVEL), '', tz), section: attCellToText_(cell(C.SECTION), '', tz), day: attCellToText_(cell(C.DAY), '', tz),
+    schedStart: attCellToText_(cell(C.SCHED_START), 'time', tz), schedEnd: attCellToText_(cell(C.SCHED_END), 'time', tz),
+    tz: attCellToText_(cell(C.TZ), '', tz), academicYear: attCellToText_(cell(C.ACADEMIC_YEAR), '', tz),
+    personName: attCellToText_(cell(C.PERSON_NAME), '', tz), apsId: getAPSIdFromEmail(attCellToText_(cell(C.EMAIL), '', tz)), // always the centralized derivation
+    email: attCellToText_(cell(C.EMAIL), '', tz), role: attCellToText_(cell(C.ROLE), '', tz),
+    sessionCount: Number(cell(C.SESSION_COUNT)) || 0, sessionDetails: attCellToText_(cell(C.SESSION_DETAILS), '', tz),
+    firstJoin: attCellToText_(cell(C.FIRST_JOIN), 'time', tz), lastLeave: attCellToText_(cell(C.LAST_LEAVE), 'time', tz),
+    activeMinutes: Number(cell(C.ACTIVE_MINUTES)) || 0, status: status,
+    lastUpdated: attCellToText_(cell(C.LAST_UPDATED), 'datetime', tz),
+    autoStatus: attCellToText_(cell(C.AUTO_STATUS), '', tz) || status, // legacy rows: captured status was the only status
+    overrideStatus: attCellToText_(cell(C.OVERRIDE_STATUS), '', tz),
+    overrideBy: attCellToText_(cell(C.OVERRIDE_BY), '', tz),
+    overrideAt: attCellToText_(cell(C.OVERRIDE_AT), 'datetime', tz),
+    overrideReason: attCellToText_(cell(C.OVERRIDE_REASON), '', tz),
+    captureSource: attCellToText_(cell(C.CAPTURE_SOURCE), '', tz),
+    weekOf: attCellToText_(cell(C.WEEK_OF), '', tz) || attWeekIdForDateStr_(date),
+    weekNo: Number(cell(C.WEEK_NO)) || '',
+    callStart: attCellToText_(cell(C.CALL_START), 'time', tz),
+    callEnd: attCellToText_(cell(C.CALL_END), 'time', tz),
+    callMinutes: Number(cell(C.CALL_MINUTES)) || 0,
+    attendedPct: Number(cell(C.ATTENDED_PCT)) || 0,
+    autoScore: cell(C.AUTO_SCORE) === '' ? null : (Number(cell(C.AUTO_SCORE)) || 0), // null = legacy row, not yet scored
+    score: cell(C.SCORE) === '' ? null : (Number(cell(C.SCORE)) || 0),
+    actualClassMinutes: cell(C.ACTUAL_CLASS_MINUTES) === '' ? null : (Number(cell(C.ACTUAL_CLASS_MINUTES)) || 0), // null = captured before the class-duration rule
+    effectiveClassMinutes: cell(C.EFFECTIVE_CLASS_MINUTES) === '' ? (Number(cell(C.CALL_MINUTES)) || 0) : (Number(cell(C.EFFECTIVE_CLASS_MINUTES)) || 0),
+    classWindowBasis: attCellToText_(cell(C.CLASS_WINDOW_BASIS), '', tz)
+  });
+}
+
+function attReadSheetRecords_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var width = Math.min(ATTENDANCE_HEADER_ROW.length, sheet.getMaxColumns());
+  var tz = getAttendanceWorkbook_().getSpreadsheetTimeZone();
+  return sheet.getRange(2, 1, lastRow - 1, width).getValues().map(function (row) { return attRowToRecord_(row, tz); });
+}
+
+function attWeekIdForDateStr_(dateStr) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return '';
+  var dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
+  var offsetToFridayByDow = [-2, 4, 3, 2, 1, 0, -1]; // identical table to getCurrentWeekId_()
+  return 'WK-' + attShiftDateStr_(dateStr, offsetToFridayByDow[dow]);
+}
+
+function attShiftDateStr_(dateStr, days) {
+  var d = new Date(dateStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function getDashboardRolePermission_(role) {
+  var permissions = readDashboardRolePermissions_();
+  return permissions[role] || { readOnly: true, buttons: false, filters: false, tabs: false };
+}
+
+function attSummaryKey_(courseId, email) { return String(courseId) + '|' + normalizeEmail_(email); }
+
+function attStudentOverallKey_(email) { return '*STUDENT*|' + normalizeEmail_(email); }
+
+function attSummaryOverall_(weightedSum, weightMinutes) {
+  return weightMinutes > 0 ? Math.round((weightedSum / weightMinutes) * 10) / 10 : 0;
+}
+
+function attWeekSheetNameForDate_(dateStr, week1Start) {
+  var n = attWeekNumberForWeekId_(attWeekIdForDateStr_(dateStr), week1Start);
+  return n ? formatAwkSheetName_(n) : '';
+}
+
+function attReadRecordsForSheets_(sheetNames) {
+  var out = {};
+  if (!sheetNames.length) return out;
+  var ss = getAttendanceWorkbook_();
+  var existingNames = {};
+  ss.getSheets().forEach(function (sh) { existingNames[sh.getName()] = true; });
+  var names = sheetNames.filter(function (n) { return existingNames[n]; });
+  if (!names.length) return out;
+  var lastColLetter = attColumnLetter_(ATTENDANCE_HEADER_ROW.length);
+  try {
+    var resp = Sheets.Spreadsheets.Values.batchGet(ATTENDANCE_SPREADSHEET_ID, {
+      ranges: names.map(function (n) { return "'" + n.replace(/'/g, "''") + "'!A2:" + lastColLetter; }),
+      valueRenderOption: 'UNFORMATTED_VALUE',
+      dateTimeRenderOption: 'SERIAL_NUMBER',
+      majorDimension: 'ROWS'
+    });
+    (resp.valueRanges || []).forEach(function (vr, i) {
+      out[names[i]] = (vr.values || []).filter(function (row) { return row && row.length && row[0] !== ''; })
+        .map(function (row) { return attRowToRecord_(row, null); });
+    });
+    return out;
+  } catch (e) {
+    console.warn('[Attendance] batchGet failed, falling back to per-sheet reads: ' + (e && e.message ? e.message : String(e)));
+  }
+  names.forEach(function (n) { out[n] = attReadSheetRecords_(ss.getSheetByName(n)); });
+  return out;
+}
+
+function attEffectiveScore_(r) {
+  if (r.overrideStatus && ATTENDANCE_OVERRIDE_SCORES_.hasOwnProperty(r.overrideStatus)) return ATTENDANCE_OVERRIDE_SCORES_[r.overrideStatus];
+  return Number(r.autoScore) || 0;
+}
+
+function ensureSheetHeader_(sheet, header) {
+  var maxCols = sheet.getMaxColumns();
+  if (maxCols < header.length) sheet.insertColumnsAfter(maxCols, header.length - maxCols);
+  if (sheet.getLastColumn() < header.length) {
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
+  }
+}
+
+function getAttendanceWeek1Start_() {
+  var raw = String(PropertiesService.getScriptProperties().getProperty('ATTENDANCE_WEEK1_START') || '').trim();
+  var wk = attWeekIdForDateStr_(raw);
+  return wk ? wk.slice(3) : ATTENDANCE_WEEK1_START_DEFAULT_;
+}
+
+function attListWeekSheets_() {
+  return getAttendanceWorkbook_().getSheets().map(function (sh) {
+    var m = ATTENDANCE_WEEK_SHEET_PATTERN_.exec(sh.getName());
+    return m ? { name: sh.getName(), weekNo: Number(m[1]), sheet: sh } : null;
+  }).filter(Boolean).sort(function (a, b) { return a.weekNo - b.weekNo; });
+}
+
+function attWeekIdForNumber_(n, week1Start) {
+  return 'WK-' + attShiftDateStr_(week1Start, (n - 1) * 7);
+}
+
+function classSupportElevated_(viewer, course) {
+  return !!viewer && viewer.role === 'teacher' && !!course && courseHasSupportEmail_(course, normalizeEmail_(viewer.email));
+}
+
+function courseHasStudentEmail_(course, normalizedEmail) {
+  return (course.students || []).some(function (s) { return normalizeEmail_(s.email) === normalizedEmail; });
+}
+
+function requireDashboardMutationPermission_(viewer, action) {
+  var permissions = getDashboardRolePermission_(viewer.role);
+  if (isReadOnlyRole_(viewer.role) || !permissions.buttons || permissions.readOnly) {
+    throw new Error('Read-only access: this account cannot ' + action + '.');
+  }
+}
+
+function readAttendanceSummaryMap_() {
+  var sheet = getAttendanceWorkbook_().getSheetByName(ATTENDANCE_SUMMARY_SHEET_NAME);
+  var map = {};
+  if (!sheet || sheet.getLastRow() < 2) return map;
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, ATTENDANCE_SUMMARY_HEADER_ROW.length).getValues().forEach(function (row, i) {
+    if (!row[0] || !row[3]) return;
+    var e = map[attSummaryKey_(row[0], row[3])] = {
+      weeks: Number(row[5]) || 0, attended: Number(row[6]) || 0, call: Number(row[7]) || 0,
+      wsum: Number(row[8]) || 0, wmin: Number(row[9]) || 0, overallPct: Number(row[10]) || 0, rowIndex: i + 2
+    };
+    if (String(row[4]) !== ATTENDANCE_ROLE.STUDENT) return; // teachers keep the per-classroom figure (they teach several classes at once)
+    var k = attStudentOverallKey_(row[3]), t = map[k] || (map[k] = { weeks: 0, attended: 0, call: 0, wsum: 0, wmin: 0, overallPct: 0, classes: 0 });
+    t.weeks += e.weeks; t.attended += e.attended; t.call += e.call; t.wsum += e.wsum; t.wmin += e.wmin; t.classes++;
+    t.overallPct = attSummaryOverall_(t.wsum, t.wmin);
+  });
+  return map;
+}
+
+function getAPSIdFromEmail(email) {
+  var id = extractAPSID_(String(email || '').trim());
+  return id === 'NA' ? 'APSXXX' : id;
+}
+
+function attReadRecordsForFilters_(filters, allowedCourseIds) {
+  var week1 = getAttendanceWeek1Start_();
+  var names;
+  if (filters.weekOf) {
+    var n = attWeekNumberForWeekId_(filters.weekOf, week1);
+    names = n ? [formatAwkSheetName_(n)] : [];
+  } else if (filters.date) {
+    var byDate = attWeekSheetNameForDate_(filters.date, week1);
+    names = byDate ? [byDate] : [];
+  } else {
+    names = attListWeekSheets_().map(function (w) { return w.name; });
+  }
+  var bySheet = attReadRecordsForSheets_(names);
+  var out = [];
+  names.forEach(function (name) {
+    var weekNo = Number((ATTENDANCE_WEEK_SHEET_PATTERN_.exec(name) || [])[1]) || '';
+    (bySheet[name] || []).forEach(function (r) {
+      if (attIsExcludedEmail_(r.email)) return; // never shown, even before the next sync purges the row
+      if (allowedCourseIds && !allowedCourseIds[r.courseId]) return;
+      if (filters.courseId && r.courseId !== String(filters.courseId)) return;
+      if (filters.date && r.date !== filters.date) return;
+      if (filters.weekOf && r.weekOf !== filters.weekOf) return;
+      r.awkSheet = name;
+      r.weekNo = r.weekNo || weekNo;
+      r.score = attEffectiveScore_(r); // always the effective (override-aware) score
+      out.push(r);
+    });
+  });
+  return out;
+}
+
+function attOverallFor_(summaryMap, r) {
+  var sm = r.role === ATTENDANCE_ROLE.STUDENT ? summaryMap[attStudentOverallKey_(r.email)] : null;
+  if (!sm) sm = summaryMap[attSummaryKey_(r.courseId, r.email)];
+  return sm ? sm.overallPct : null;
+}
+
+function attCompareRecords_(a, b) {
+  return String(b.date || '').localeCompare(String(a.date || '')) ||
+    String(a.className || '').localeCompare(String(b.className || '')) ||
+    String(b.role || '').localeCompare(String(a.role || '')) ||
+    String(a.personName || '').localeCompare(String(b.personName || ''));
+}
+
+function attCountedMinutes_(r) {
+  var eff = Number(r.effectiveClassMinutes !== undefined && r.effectiveClassMinutes !== null ? r.effectiveClassMinutes : r.callMinutes) || 0;
+  return Math.min(Number(r.activeMinutes) || 0, eff);
+}
+
+function attWeekNumberForWeekId_(weekId, week1Start) {
+  var m = /^WK-(\d{4}-\d{2}-\d{2})$/.exec(weekId || '');
+  if (!m) return 0;
+  var days = Math.round((new Date(m[1] + 'T12:00:00Z') - new Date(week1Start + 'T12:00:00Z')) / 86400000);
+  return days < 0 ? 0 : Math.floor(days / 7) + 1;
+}
+
+function formatAwkSheetName_(n) {
+  var padded = n < 100 ? ('0' + n).slice(-2) : String(n);
+  return ATTENDANCE_SHEET_PREFIX + padded + 'ATT';
+}
+
+function getOrCreateAttendanceAuditLogSheet_() {
+  var ss = getAttendanceWorkbook_();
+  var sheet = ss.getSheetByName(ATTENDANCE_AUDIT_LOG_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(ATTENDANCE_AUDIT_LOG_SHEET_NAME);
+    sheet.getRange(1, 1, 1, ATTENDANCE_AUDIT_LOG_HEADER_ROW.length).setValues([ATTENDANCE_AUDIT_LOG_HEADER_ROW]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  ensureSheetHeader_(sheet, ATTENDANCE_AUDIT_LOG_HEADER_ROW);
+  return sheet;
+}
+
+function attCellToText_(v, kind, tz) {
+  if (v === null || v === undefined) return '';
+  var pattern = kind === 'date' ? 'yyyy-MM-dd' : (kind === 'time' ? 'h:mm a' : (kind === 'datetime' ? 'MM/dd/yyyy h:mm a' : ''));
+  if (Object.prototype.toString.call(v) === '[object Date]') return pattern ? Utilities.formatDate(v, tz || APS_TZ, pattern) : v.toISOString();
+  if (typeof v === 'number' && pattern) {
+    // Sheets serial: days since 1899-12-30, wall-clock (no zone) — decode with UTC getters.
+    var d = new Date(Math.round((v - 25569) * 86400000));
+    var ymd = d.toISOString().slice(0, 10);
+    var h = d.getUTCHours(), m = d.getUTCMinutes();
+    var hm = ((h % 12) || 12) + ':' + ('0' + m).slice(-2) + ' ' + (h < 12 ? 'AM' : 'PM');
+    if (kind === 'date') return ymd;
+    if (kind === 'time') return hm;
+    return ymd.slice(5, 7) + '/' + ymd.slice(8, 10) + '/' + ymd.slice(0, 4) + ' ' + hm;
+  }
+  return String(v);
+}
+
+function getAttendanceRecordsForViewer(sessionToken, filters) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var courses = readAllCoursesFromCache_();
+  var viewer = { email: session.email, role: session.role };
+  filters = filters || {};
+  var allowed = null; // null = every course (Admin/HM/SuperAdmin/BOD)
+  var canEditAny = isAdminOrHm_(viewer.role);
+  // Sept 2026 addendum: BOD (vcfo_amchsts_bod) sees the same unrestricted course scope
+  // as Admin/HM/SuperAdmin, but canEditAny (above) deliberately stays false for BOD —
+  // every row it sees comes back with editable:false, and editAttendanceRecordStatus()
+  // below is unchanged (still isAdminOrHm_-or-teacher-only), so this is read-only.
+  var canSeeAll = canEditAny || viewer.role === VCFO_AMCHSTS_BOD_ROLE;
+
+  if (canSeeAll) {
+    // unrestricted — identical course scope to getAttendanceRecordsForAdmin
+  } else if (viewer.role === 'teacher') {
+    allowed = {};
+    var elevatedCourse = {}; // VP / HM of the class (Class Support): every row of it, editable — HM-level for that class only
+    courses.forEach(function (c) { if (userHasCourseAccess_(viewer.email, c)) allowed[String(c.id)] = true; if (classSupportElevated_(viewer, c)) elevatedCourse[String(c.id)] = true; });
+    // r108: students CURRENTLY in this viewer's classes — their earlier attendance in a previous or closed class
+    // (class move, merged / archived class) is shown too, view-only. Other students' rows of that class never are.
+    var myStudents = {};
+    courses.forEach(function (c) { if (allowed[String(c.id)]) (c.students || []).forEach(function (s) { var e = normalizeEmail_(s.email); if (e) myStudents[e] = true; }); });
+  } else if (viewer.role === 'student') {
+    allowed = {};
+    courses.forEach(function (c) { if (courseHasStudentEmail_(c, viewer.email)) allowed[String(c.id)] = true; });
+  } else {
+    throw new Error('Only a recognized Admin, Headmaster, BOD, Teacher, or Student can view attendance.');
+  }
+  // Read-only for everyone when the role's dashboard permission is read-only (same gate the edit endpoint enforces).
+  var mutationAllowed = true;
+  try { requireDashboardMutationPermission_(viewer, 'edit attendance'); } catch (permErr) { mutationAllowed = false; }
+
+  var out = [];
+  var summaryMap = readAttendanceSummaryMap_(); // overall % per student per classroom (one small range read)
+  // Class teacher(s) per course from the already-loaded cache — powers the tab's Teacher filter (no extra reads).
+  var classTeachersByCourse = {};
+  courses.forEach(function (c) {
+    classTeachersByCourse[String(c.id)] = (c.teachers || []).filter(function (t) { return t.email && !attIsExcludedEmail_(t.email); })
+      .map(function (t) { return { name: t.name || t.email, email: normalizeEmail_(t.email), apsId: getAPSIdFromEmail(t.email) }; });
+  });
+  var readScope = viewer.role === 'teacher' && filters.scope !== 'mine' ? null : allowed; // r108: teachers read every class, then keep only their scope + their students' history
+  attReadRecordsForFilters_(filters, readScope).forEach(function (r) {
+      if (readScope === null && allowed && !allowed[r.courseId]) {
+        if (r.role !== ATTENDANCE_ROLE.STUDENT || !myStudents[normalizeEmail_(r.email)]) return; // not one of my students → never shown
+        r.previousClass = true; // earlier class of a student now in my class — view-only (the edit endpoint refuses it too)
+      }
+      r.overallPct = attOverallFor_(summaryMap, r); // r82: students — across every class they attended (Re-Map safe)
+      r.classTeachers = classTeachersByCourse[r.courseId] || [];
+      var editable = false;
+      if (canSeeAll) {
+        editable = canEditAny; // Admin/HM/SuperAdmin may edit any row; BOD sees the same rows but never edits
+        if (filters.role && r.role !== filters.role) return;
+      } else if (viewer.role === 'teacher' && r.previousClass) {
+        if (filters.role && r.role !== filters.role) return;
+        editable = false; // r108: history from a previous / closed class is view-only
+        r.overrideBy = ''; // who overrode it in the other class is not shown outside that class
+      } else if (viewer.role === 'teacher' && elevatedCourse[r.courseId] && filters.scope !== 'mine') {
+        editable = mutationAllowed;
+        if (filters.role && r.role !== filters.role) return;
+      } else if (viewer.role === 'teacher') {
+        if (filters.scope === 'mine') {
+          // "My Attendance": this teacher's own captured rows only, always view-only.
+          if (r.role !== ATTENDANCE_ROLE.TEACHER || normalizeEmail_(r.email) !== viewer.email) return;
+          editable = false;
+        } else {
+          // Default teacher view: their students' rows only, in courses they teach.
+          if (r.role !== ATTENDANCE_ROLE.STUDENT) return;
+          editable = true;
+        }
+      } else if (viewer.role === 'student') {
+        // Own rows only, whatever role they're recorded under — always view-only.
+        if (normalizeEmail_(r.email) !== viewer.email) return;
+        editable = false;
+        r.overrideBy = '';
+        r.overrideReason = '';
+      }
+      // No other branch is reachable here: the course-scope check above already
+      // restricted the allowed courses (and therefore viewer.role) to canSeeAll/teacher/student,
+      // throwing for anyone else before this per-row loop ever runs.
+
+      r.editable = editable && mutationAllowed;
+      r.isOverridden = !!r.overrideStatus;
+      out.push(r);
+  });
+  out.sort(attCompareRecords_);
+  return out;
+}
+
+function getOnCallTeacherAttendance(sessionToken, filters) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var role = session.role;
+  if (!isAdminOrHm_(role) && role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin, Super Admin, Headmaster or BOD can view On-Call Teacher Attendance.');
+  filters = filters || {};
+  var rows = attReadRecordsForFilters_({ weekOf: filters.weekOf || '' }, null).filter(function (r) {
+    if (r.role !== ATTENDANCE_ROLE.TEACHER || !attIsOnCallEmail_(r.email)) return false;
+    return filters.includeNotJoined ? true : ((Number(r.activeMinutes) || 0) > 0 || !!r.overrideStatus);
+  }).map(function (r) {
+    return {
+      date: r.date, weekNo: r.weekNo, weekOf: r.weekOf, day: r.day, courseId: r.courseId, className: r.className,
+      personName: r.personName, email: normalizeEmail_(r.email), apsId: getAPSIdFromEmail(r.email),
+      firstJoin: r.firstJoin, lastLeave: r.lastLeave, activeMinutes: Number(r.activeMinutes) || 0,
+      countedMinutes: attCountedMinutes_(r), effectiveClassMinutes: r.effectiveClassMinutes, actualClassMinutes: r.actualClassMinutes,
+      callStart: r.callStart, callEnd: r.callEnd, attendedPct: r.attendedPct, score: r.score, status: r.status,
+      overrideStatus: r.overrideStatus || '', onRoster: r.captureSource !== ATTENDANCE_SOURCE.ON_CALL_GUEST,
+      captureSource: r.captureSource, classWindowBasis: r.classWindowBasis || ''
+    };
+  });
+  rows.sort(function (a, b) {
+    return String(b.date).localeCompare(String(a.date)) || String(a.personName).localeCompare(String(b.personName)) || String(a.className).localeCompare(String(b.className));
+  });
+  var byTeacher = {};
+  rows.forEach(function (r) {
+    var t = byTeacher[r.email] || (byTeacher[r.email] = { email: r.email, name: r.personName, apsId: r.apsId, classesJoined: 0, classesRecorded: 0, meetMinutes: 0, countedMinutes: 0, pctSum: 0, weeks: {}, lastDate: '' });
+    t.classesRecorded++;
+    if (r.activeMinutes > 0) { t.classesJoined++; t.weeks[r.weekNo] = true; }
+    t.meetMinutes += r.activeMinutes;
+    t.countedMinutes += r.countedMinutes;
+    t.pctSum += Number(r.attendedPct) || 0;
+    if (r.date > t.lastDate) t.lastDate = r.date;
+  });
+  var teachers = Object.keys(byTeacher).map(function (k) {
+    var t = byTeacher[k];
+    return { email: t.email, name: t.name, apsId: t.apsId, classesJoined: t.classesJoined, classesRecorded: t.classesRecorded,
+      weeksActive: Object.keys(t.weeks).length, meetMinutes: t.meetMinutes, countedMinutes: t.countedMinutes,
+      avgAttendedPct: t.classesRecorded ? Math.round((t.pctSum / t.classesRecorded) * 100) / 100 : 0, lastDate: t.lastDate };
+  }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+  return { rows: rows, teachers: teachers, prefixes: attOnCallPrefixes_(), weekOf: filters.weekOf || '', includeNotJoined: !!filters.includeNotJoined,
+    generatedAt: Utilities.formatDate(new Date(), APS_TZ, 'MM/dd/yyyy h:mm a') + ' EST' };
+}
+
+function getAttendanceWeekOptions(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  requireValidSession_(sessionToken);
+  var now = new Date();
+  var week1 = getAttendanceWeek1Start_();
+  var currentId = getCurrentWeekId_(now);
+  var todayStr = Utilities.formatDate(now, APS_TZ, 'yyyy-MM-dd');
+  var currentNo = Math.max(1, attWeekNumberForWeekId_(currentId, week1));
+  var weeks = [];
+  for (var n = currentNo; n >= 1; n--) {
+    var id = attWeekIdForNumber_(n, week1);
+    weeks.push({ id: id, weekNo: n, awkSheet: formatAwkSheetName_(n), label: 'Week ' + n + ' — ' + getWeekLabel_(id).replace(/^Week of /, '') + ' (' + formatAwkSheetName_(n) + ')' });
+  }
+  var defaultWeekId = (currentId.slice(3) > todayStr && weeks.length > 1) ? weeks[1].id : weeks[0].id;
+  return { weeks: weeks, defaultWeekId: defaultWeekId, currentWeekId: currentId, week1Start: week1 };
+}
+
+function getAttendanceAuditLog(sessionToken, filters) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminOrHm_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin/Headmaster/Super Admin can view the attendance audit log.');
+  filters = filters || {};
+  var sheet = getOrCreateAttendanceAuditLogSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var tz = getAttendanceWorkbook_().getSpreadsheetTimeZone();
+  var values = sheet.getRange(2, 1, lastRow - 1, Math.min(ATTENDANCE_AUDIT_LOG_HEADER_ROW.length, sheet.getMaxColumns())).getValues();
+  var txt = function (v, kind) { return attCellToText_(v, kind || '', tz); };
+  var out = values.map(function (row) {
+    return {
+      editedAt: txt(row[0]), editedByEmail: txt(row[1]), editedByRole: txt(row[2]), courseId: txt(row[3]), className: txt(row[4]),
+      date: txt(row[5], 'date'), personName: txt(row[6]), personEmail: txt(row[7]), personRole: txt(row[8]),
+      oldStatus: txt(row[9]), newStatus: txt(row[10]), reason: txt(row[11]),
+      action: txt(row[12]), autoStatus: txt(row[13]),
+      personApsId: getAPSIdFromEmail(txt(row[7])), editedByApsId: getAPSIdFromEmail(txt(row[1]))
+    };
+  });
+  if (filters.courseId) out = out.filter(function (r) { return r.courseId === String(filters.courseId); });
+  out.sort(function (a, b) { return String(b.editedAt).localeCompare(String(a.editedAt)); });
+  return out.slice(0, 500);
+}
+
+function getAttendanceSyncDiagnostics(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminOrHm_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin/Headmaster/Super Admin can view attendance sync diagnostics.');
+  var raw = PropertiesService.getScriptProperties().getProperty(ATTENDANCE_SYNC_DIAGNOSTIC_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+function getAttendanceLastSyncInfo(sessionToken) {
+  apsRequireTabForToken_(sessionToken, 'attendance'); // r56: Admin Control → Access Control
+  var session = requireValidSession_(sessionToken);
+  var viewer = { email: session.email, role: session.role };
+  if (!isAdminOrHm_(viewer.role) && viewer.role !== VCFO_AMCHSTS_BOD_ROLE) throw new Error('Only Admin/Headmaster/Super Admin can view attendance sync status.');
+  var raw = PropertiesService.getScriptProperties().getProperty(ATTENDANCE_LAST_SYNC_SUMMARY_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
 
 function getDirectoryIndex(sessionToken) {
   var s = apsRequireTabForToken_(sessionToken, 'directory.search');
@@ -1271,7 +1907,7 @@ function ucPref_(email) {
 function apsCountryOn_() { return apsReqMemo_('countryOn', function () { return String(rosterProp_('APS_COUNTRY_FEATURE', 'on')).trim().toLowerCase() !== 'off'; }); }
 
   APS_REQ_MEMO_ = {};
-  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
+  return { extractMeetCode_, ctaSheet_, rosterTs_, normalizeEmail_, naturalCompareJs_, isAdminOrHm_, isAdminRole_, apsReqMemo_, rosterProp_, countryCodeToFlagServer_, resolveCountryFlag_, getCurrentWeekId_, easternDayOfWeek_, easternWallTimeToDate_, readTeacherAvailabilityMap_, getOrCreateTeacherAvailabilitySheet_, buildAvailabilityBoard_, primaryTeacherOf_, getWhatsAppLinksMap_, getWhatsAppLinksMapFromSheet_, getOrCreateWhatsAppLinksSheet_, applyWhatsAppLinks_, normalizeClassKey_, applyMeetLinks_, classMeetLinkMaps_, classMeetUrl_, classMeetJoinUrl_, attNormalizeMeetCode_, getAPSSchoolLeaveStatus, slCovering_, slEnabled_, slDateStr_, apsSchoolLeaves_, slReadAll_, slSheet_, dsShift_, dsDateParts_, tccStampToday_, tccCoverageMap_, tccRows_, tccGraceMinutes_, tccCanUse_, courseHasSupportEmail_, ttmStampCards_, ttmCardMap_, ttmRows_, ttmToday_, ttmFmtDate_, ttmCanUse_, ttmIsCoordinator_, getAttendanceCourseAwkMap, defaultDashboardRolePermissions_, getEffectiveClassMinutes, attAttendedPct_, attScoreForPct_, attStatusForScore_, readDashboardRolePermissionsRaw_, attApplyClassDurationRule_, getConfigString_, readDashboardRolePermissions_, attColumnLetter_, attRowToRecord_, attReadSheetRecords_, attWeekIdForDateStr_, attShiftDateStr_, getDashboardRolePermission_, attSummaryKey_, attStudentOverallKey_, attSummaryOverall_, attWeekSheetNameForDate_, attReadRecordsForSheets_, attEffectiveScore_, ensureSheetHeader_, getAttendanceWeek1Start_, attListWeekSheets_, attWeekIdForNumber_, classSupportElevated_, courseHasStudentEmail_, requireDashboardMutationPermission_, readAttendanceSummaryMap_, getAPSIdFromEmail, attReadRecordsForFilters_, attOverallFor_, attCompareRecords_, attCountedMinutes_, attWeekNumberForWeekId_, formatAwkSheetName_, getOrCreateAttendanceAuditLogSheet_, attCellToText_, getAttendanceRecordsForViewer, getOnCallTeacherAttendance, getAttendanceWeekOptions, getAttendanceAuditLog, getAttendanceSyncDiagnostics, getAttendanceLastSyncInfo, getDirectoryIndex, classSupportGrantsAccess_, userHasCourseAccess_, directoryTierForRole_, applyNilaiAndClassTimeFilters_, getClassTeacherAvailabilityView, attOnCallPrefixes_, parseClockTime_, inferMissingMeridiem_, attIsOnCallEmail_, getConfigList_, isSyntacticallyValidEmail_, slAudit_, parseCourseSchedule_, attIsExcludedEmail_, normalizeClassTimeText_, ctaProp_, attMailAdminCc_, attMailCc_, apsMailProfile_, extractAPSID_, apsLeaveSkip_, apsClassDateInWeek_, examQpParseClassName_, readConfiguredUserRoles_, ctaExcludeRule_, ctaExcluded_, isHiddenTeacherName_, extractNilaiFromCourseName_, extractClassTimeFromCourseName_, ctaRoleFlags_, ctaConfig_, getWeekLabel_, ctaNilaiOptions_, ctaTimeOptions_, isReadOnlyRole_, apsMailFrom_, ctaReadSelections_, findDisplayName_, localPartOfEmail_, ctaApsId_, ctaAyMatch_, courseHasTeacherEmail_, ctaFmtTs_, ctaBuildReport_, applyUserCountry_, getUserCountryMap_, ucLegacyMap_, ucMap_, ucRows_, ucSheet_, ucPref_, apsCountryOn_, LAST_LOGIN_TIMEZONE, APS_TZ, AVAILABILITY_STATUS, TEACHER_AVAILABILITY_SHEET_NAME, WHATSAPP_LINKS_SHEET_NAME, CLASS_MEET_CACHE_KEY_, ATTENDANCE_MEET_LINK_MAP_SHEET_NAME, CLASS_MEET_DETECTED_SHEET_, SL_MEMO_, SL_CACHE_KEY_, SL_SHEET_, SL_HEADER_, SL_STATUS_, TCC_CACHE_KEY_, TCC_SHEET_, TCC_HEADER_, TTM_CARD_CACHE_, TTM_SHEET_, TTM_HEADER_, UC_SHEET_, UC_HEADER_, UC_CACHE_KEY_, UC_MEMO_, SUPERADMIN_ROLE, VCFO_AMCHSTS_BOD_ROLE, ATTENDANCE_EFFECTIVE_CAP_FROM_MIN, ATTENDANCE_EFFECTIVE_CAP_MIN, ATTENDANCE_SCORE_TIERS_, ATTENDANCE_STATUS, ROLE_PERMISSION_CACHE_KEY, ROLE_PERMISSION_PROP_KEY, ROLE_PERMISSION_CACHE_SECONDS, ATTENDANCE_COL_, ATTENDANCE_HEADER_ROW, ATTENDANCE_SPREADSHEET_ID, ATTENDANCE_OVERRIDE_SCORES_, ATTENDANCE_WEEK1_START_DEFAULT_, ATTENDANCE_WEEK_SHEET_PATTERN_, ATTENDANCE_SUMMARY_SHEET_NAME, ATTENDANCE_SUMMARY_HEADER_ROW, ATTENDANCE_SHEET_PREFIX, ATTENDANCE_AUDIT_LOG_SHEET_NAME, ATTENDANCE_ROLE, ATTENDANCE_SOURCE, ATTENDANCE_AUDIT_LOG_HEADER_ROW, ATTENDANCE_SYNC_DIAGNOSTIC_KEY, ATTENDANCE_LAST_SYNC_SUMMARY_KEY, AUTHORIZED_ROLE, EXAM_QP_DAY_TOKENS_, ATTENDANCE_ON_CALL_PREFIXES_MEMO_, ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_, SL_AUDIT_SHEET_, SL_AUDIT_HEADER_, CLASS_SCHEDULE_DAY_TOKENS, ATTENDANCE_EXCLUDED_MEMO_, ADMIN_EMAILS, HEADMASTER_EMAILS, ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_, VCFO_AMCHATS_BOD_EMAILS, ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_, APS_MAIL_PROFILES_, USER_ROLE_CACHE_KEY, USER_ROLE_SHEET_NAME, USER_ROLE_CACHE_SECONDS, DASHBOARD_ROLES, SUPERADMIN_EMAILS, CTA_EXCLUDE_ROLES_, APS_GRADING_TEAM_EMAILS_, HIDDEN_TEACHER_NAMES, HIDDEN_TEACHER_NAME_PREFIXES, HIDDEN_TEACHER_EMAIL_PREFIXES, CTA_DEFAULT_TO_, NILAI_FILTER_OPTIONS, CLASS_TIME_FILTER_OPTIONS, CTA_SELECTION_SHEET_, CTA_SELECTION_HEADER_, CTA_LABEL_, CTA_CODE_TO_LABEL_, CTA_DAY_NAMES_, COURSE_NAME_SUFFIX };
 }
 export const SCOPE_SOURCE_MD5 = '44ef1e4219409858c968276a3738f1ce';
-export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};
+export const SCOPE_FEATURES = {"shared":["extractMeetCode_","ctaSheet_","rosterTs_","normalizeEmail_","naturalCompareJs_","isAdminOrHm_","isAdminRole_","apsReqMemo_","rosterProp_","countryCodeToFlagServer_","resolveCountryFlag_"],"availability":["getCurrentWeekId_","easternDayOfWeek_","easternWallTimeToDate_","readTeacherAvailabilityMap_","getOrCreateTeacherAvailabilitySheet_","buildAvailabilityBoard_","primaryTeacherOf_"],"whatsapp":["getWhatsAppLinksMap_","getWhatsAppLinksMapFromSheet_","getOrCreateWhatsAppLinksSheet_","applyWhatsAppLinks_","normalizeClassKey_"],"meet":["applyMeetLinks_","classMeetLinkMaps_","classMeetUrl_","classMeetJoinUrl_","attNormalizeMeetCode_"],"schoolLeave":["getAPSSchoolLeaveStatus","slCovering_","slEnabled_","slDateStr_","apsSchoolLeaves_","slReadAll_","slSheet_","dsShift_","dsDateParts_"],"coverage":["tccStampToday_","tccCoverageMap_","tccRows_","tccGraceMinutes_","tccCanUse_","courseHasSupportEmail_"],"tempTeacher":["ttmStampCards_","ttmCardMap_","ttmRows_","ttmToday_","ttmFmtDate_","ttmCanUse_","ttmIsCoordinator_"],"attendance":["getAttendanceCourseAwkMap","defaultDashboardRolePermissions_","getEffectiveClassMinutes","attAttendedPct_","attScoreForPct_","attStatusForScore_","readDashboardRolePermissionsRaw_","attApplyClassDurationRule_","getConfigString_","readDashboardRolePermissions_","attColumnLetter_","attRowToRecord_","attReadSheetRecords_","attWeekIdForDateStr_","attShiftDateStr_","getDashboardRolePermission_","attSummaryKey_","attStudentOverallKey_","attSummaryOverall_","attWeekSheetNameForDate_","attReadRecordsForSheets_","attEffectiveScore_","ensureSheetHeader_","getAttendanceWeek1Start_","attListWeekSheets_","attWeekIdForNumber_","classSupportElevated_","courseHasStudentEmail_","requireDashboardMutationPermission_","readAttendanceSummaryMap_","getAPSIdFromEmail","attReadRecordsForFilters_","attOverallFor_","attCompareRecords_","attCountedMinutes_","attWeekNumberForWeekId_","formatAwkSheetName_","getOrCreateAttendanceAuditLogSheet_","attCellToText_","getAttendanceRecordsForViewer","getOnCallTeacherAttendance","getAttendanceWeekOptions","getAttendanceAuditLog","getAttendanceSyncDiagnostics","getAttendanceLastSyncInfo"],"directory":["getDirectoryIndex","classSupportGrantsAccess_","userHasCourseAccess_","directoryTierForRole_","applyNilaiAndClassTimeFilters_"],"teacherAvailability":["getClassTeacherAvailabilityView","attOnCallPrefixes_","parseClockTime_","inferMissingMeridiem_","attIsOnCallEmail_","getConfigList_","isSyntacticallyValidEmail_","slAudit_","parseCourseSchedule_","attIsExcludedEmail_","normalizeClassTimeText_","ctaProp_","attMailAdminCc_","attMailCc_","apsMailProfile_","extractAPSID_","apsLeaveSkip_","apsClassDateInWeek_","examQpParseClassName_","readConfiguredUserRoles_","ctaExcludeRule_","ctaExcluded_","isHiddenTeacherName_","extractNilaiFromCourseName_","extractClassTimeFromCourseName_","ctaRoleFlags_","ctaConfig_","getWeekLabel_","ctaNilaiOptions_","ctaTimeOptions_","isReadOnlyRole_","apsMailFrom_","ctaReadSelections_","findDisplayName_","localPartOfEmail_","ctaApsId_","ctaAyMatch_","courseHasTeacherEmail_","ctaFmtTs_","ctaBuildReport_"],"country":["applyUserCountry_","getUserCountryMap_","ucLegacyMap_","ucMap_","ucRows_","ucSheet_","ucPref_","apsCountryOn_"]};

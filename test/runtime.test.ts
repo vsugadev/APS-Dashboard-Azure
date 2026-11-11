@@ -52,3 +52,21 @@ test('Utilities.formatDate shim: every Java pattern the copied Code.gs uses, Eas
   for (const [dt, pat, want] of cases) assert.equal(Utilities.formatDate(dt, tz, pat), want, pat);
   assert.throws(() => Utilities.formatDate(d, tz, 'yyyy-ww'), /unsupported pattern/);
 });
+
+test('on-demand loading: a sheet the copied code needs is loaded even if Code.gs catches the error; never loops', async () => {
+  const { runGas } = await import('../src/gas/run');
+  const { testContext, testConfig } = await import('./helpers');
+  const { FixtureDataSource } = await import('../src/data/sources');
+  const ctx = testContext({ cfg: testConfig() });
+  const summary = [['Course ID', 'Class Name', 'Person Name', 'Email', 'Role'], ['101', 'C', 'Kid', 'kid_aps1@x.org', 'TEACHER', 1, 80, 90, 90, 90, 88.9, '']];
+  ctx.data = new FixtureDataSource({ sheets: { attendance: { Attendance_Summary: summary } } });
+  let runs = 0;
+  const deps = { settings: {}, isRosterHiddenStaffEmail_: () => false, apsTabAllowed_: () => true, isOnCallCoordinatorEmail_: () => false };
+  const out: any = await runGas(ctx, { preload: { main: [], attendance: [] }, deps }, (S) => { runs++; try { return S.readAttendanceSummaryMap_(); } catch { return 'swallowed'; } });
+  assert.notEqual(out, 'swallowed'); assert.equal(Object.keys(out).length, 1, 'summary row read'); assert.equal(runs, 2, 'first run asked for the sheet, second run had it');
+  // a data source that never delivers the sheet → clear error, no endless retry
+  const broken = testContext({ cfg: testConfig() });
+  broken.data = new FixtureDataSource({ sheets: { attendance: { Attendance_Summary: summary } } });
+  (broken.data as any).readSheets = async () => ({ timeZone: 'America/New_York', sheets: {}, titles: ['Attendance_Summary'] });
+  await assert.rejects(runGas(broken, { preload: { main: [], attendance: [] }, deps }, (S) => S.readAttendanceSummaryMap_()), /requested again after loading/);
+});

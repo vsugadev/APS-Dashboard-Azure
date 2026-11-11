@@ -24,6 +24,7 @@ const FEATURES = {
   schoolLeave: ['getAPSSchoolLeaveStatus', 'slCovering_', 'slEnabled_', 'slDateStr_', 'apsSchoolLeaves_', 'slReadAll_', 'slSheet_', 'dsShift_', 'dsDateParts_'],
   coverage: ['tccStampToday_', 'tccCoverageMap_', 'tccRows_', 'tccGraceMinutes_', 'tccCanUse_', 'courseHasSupportEmail_'],
   tempTeacher: ['ttmStampCards_', 'ttmCardMap_', 'ttmRows_', 'ttmToday_', 'ttmFmtDate_', 'ttmCanUse_', 'ttmIsCoordinator_'],
+  attendance: ['getAttendanceCourseAwkMap', 'defaultDashboardRolePermissions_', 'getEffectiveClassMinutes', 'attAttendedPct_', 'attScoreForPct_', 'attStatusForScore_', 'readDashboardRolePermissionsRaw_', 'attApplyClassDurationRule_', 'getConfigString_', 'readDashboardRolePermissions_', 'attColumnLetter_', 'attRowToRecord_', 'attReadSheetRecords_', 'attWeekIdForDateStr_', 'attShiftDateStr_', 'getDashboardRolePermission_', 'attSummaryKey_', 'attStudentOverallKey_', 'attSummaryOverall_', 'attWeekSheetNameForDate_', 'attReadRecordsForSheets_', 'attEffectiveScore_', 'ensureSheetHeader_', 'getAttendanceWeek1Start_', 'attListWeekSheets_', 'attWeekIdForNumber_', 'classSupportElevated_', 'courseHasStudentEmail_', 'requireDashboardMutationPermission_', 'readAttendanceSummaryMap_', 'getAPSIdFromEmail', 'attReadRecordsForFilters_', 'attOverallFor_', 'attCompareRecords_', 'attCountedMinutes_', 'attWeekNumberForWeekId_', 'formatAwkSheetName_', 'getOrCreateAttendanceAuditLogSheet_', 'attCellToText_', 'getAttendanceRecordsForViewer', 'getOnCallTeacherAttendance', 'getAttendanceWeekOptions', 'getAttendanceAuditLog', 'getAttendanceSyncDiagnostics', 'getAttendanceLastSyncInfo'],
   directory: ['getDirectoryIndex', 'classSupportGrantsAccess_', 'userHasCourseAccess_', 'directoryTierForRole_', 'applyNilaiAndClassTimeFilters_'],
   teacherAvailability: ['getClassTeacherAvailabilityView', 'attOnCallPrefixes_', 'parseClockTime_', 'inferMissingMeridiem_', 'attIsOnCallEmail_', 'getConfigList_', 'isSyntacticallyValidEmail_', 'slAudit_', 'parseCourseSchedule_', 'attIsExcludedEmail_', 'normalizeClassTimeText_', 'ctaProp_', 'attMailAdminCc_', 'attMailCc_', 'apsMailProfile_', 'extractAPSID_', 'apsLeaveSkip_', 'apsClassDateInWeek_', 'examQpParseClassName_', 'readConfiguredUserRoles_', 'ctaExcludeRule_', 'ctaExcluded_', 'isHiddenTeacherName_', 'extractNilaiFromCourseName_', 'extractClassTimeFromCourseName_', 'ctaRoleFlags_', 'ctaConfig_', 'getWeekLabel_', 'ctaNilaiOptions_', 'ctaTimeOptions_', 'isReadOnlyRole_', 'apsMailFrom_', 'ctaReadSelections_', 'findDisplayName_', 'localPartOfEmail_', 'ctaApsId_', 'ctaAyMatch_', 'courseHasTeacherEmail_', 'ctaFmtTs_', 'ctaBuildReport_',],
   country: ['applyUserCountry_', 'getUserCountryMap_', 'ucLegacyMap_', 'ucMap_', 'ucRows_', 'ucSheet_', 'ucPref_', 'apsCountryOn_'],
@@ -34,16 +35,39 @@ const VARS = (process.env.GEN_VARS || '').split(',').filter(Boolean).concat([
   'CLASS_MEET_CACHE_KEY_', 'ATTENDANCE_MEET_LINK_MAP_SHEET_NAME', 'CLASS_MEET_DETECTED_SHEET_',
   'SL_MEMO_', 'SL_CACHE_KEY_', 'SL_SHEET_', 'SL_HEADER_', 'SL_STATUS_',
   'TCC_CACHE_KEY_', 'TCC_SHEET_', 'TCC_HEADER_', 'TTM_CARD_CACHE_', 'TTM_SHEET_', 'TTM_HEADER_',
-  'UC_SHEET_', 'UC_HEADER_', 'UC_CACHE_KEY_', 'UC_MEMO_', 'SUPERADMIN_ROLE', 'VCFO_AMCHSTS_BOD_ROLE', 'AUTHORIZED_ROLE', 'EXAM_QP_DAY_TOKENS_', 'ATTENDANCE_ON_CALL_PREFIXES_MEMO_', 'ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_', 'SL_AUDIT_SHEET_', 'SL_AUDIT_HEADER_', 'CLASS_SCHEDULE_DAY_TOKENS', 'ATTENDANCE_EXCLUDED_MEMO_', 'ADMIN_EMAILS', 'HEADMASTER_EMAILS', 'ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_', 'VCFO_AMCHATS_BOD_EMAILS', 'ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_', 'APS_MAIL_PROFILES_', 'USER_ROLE_CACHE_KEY', 'USER_ROLE_SHEET_NAME', 'USER_ROLE_CACHE_SECONDS', 'DASHBOARD_ROLES', 'SUPERADMIN_EMAILS', 'CTA_EXCLUDE_ROLES_', 'APS_GRADING_TEAM_EMAILS_', 'HIDDEN_TEACHER_NAMES', 'HIDDEN_TEACHER_NAME_PREFIXES', 'HIDDEN_TEACHER_EMAIL_PREFIXES', 'CTA_DEFAULT_TO_', 'NILAI_FILTER_OPTIONS', 'CLASS_TIME_FILTER_OPTIONS', 'CTA_SELECTION_SHEET_', 'CTA_SELECTION_HEADER_', 'CTA_LABEL_', 'CTA_CODE_TO_LABEL_', 'CTA_DAY_NAMES_', 'COURSE_NAME_SUFFIX',
+  'UC_SHEET_', 'UC_HEADER_', 'UC_CACHE_KEY_', 'UC_MEMO_', 'SUPERADMIN_ROLE', 'VCFO_AMCHSTS_BOD_ROLE', 'ATTENDANCE_EFFECTIVE_CAP_FROM_MIN', 'ATTENDANCE_EFFECTIVE_CAP_MIN', 'ATTENDANCE_SCORE_TIERS_', 'ATTENDANCE_STATUS', 'ROLE_PERMISSION_CACHE_KEY', 'ROLE_PERMISSION_PROP_KEY', 'ROLE_PERMISSION_CACHE_SECONDS', 'ATTENDANCE_COL_', 'ATTENDANCE_HEADER_ROW', 'ATTENDANCE_SPREADSHEET_ID', 'ATTENDANCE_OVERRIDE_SCORES_', 'ATTENDANCE_WEEK1_START_DEFAULT_', 'ATTENDANCE_WEEK_SHEET_PATTERN_', 'ATTENDANCE_SUMMARY_SHEET_NAME', 'ATTENDANCE_SUMMARY_HEADER_ROW', 'ATTENDANCE_SHEET_PREFIX', 'ATTENDANCE_AUDIT_LOG_SHEET_NAME', 'ATTENDANCE_ROLE', 'ATTENDANCE_SOURCE', 'ATTENDANCE_AUDIT_LOG_HEADER_ROW', 'ATTENDANCE_SYNC_DIAGNOSTIC_KEY', 'ATTENDANCE_LAST_SYNC_SUMMARY_KEY', 'AUTHORIZED_ROLE', 'EXAM_QP_DAY_TOKENS_', 'ATTENDANCE_ON_CALL_PREFIXES_MEMO_', 'ATTENDANCE_ON_CALL_PREFIXES_DEFAULT_', 'SL_AUDIT_SHEET_', 'SL_AUDIT_HEADER_', 'CLASS_SCHEDULE_DAY_TOKENS', 'ATTENDANCE_EXCLUDED_MEMO_', 'ADMIN_EMAILS', 'HEADMASTER_EMAILS', 'ATTENDANCE_ALWAYS_EXCLUDED_EMAILS_', 'VCFO_AMCHATS_BOD_EMAILS', 'ATTENDANCE_MAIL_ADMIN_CC_DEFAULT_', 'APS_MAIL_PROFILES_', 'USER_ROLE_CACHE_KEY', 'USER_ROLE_SHEET_NAME', 'USER_ROLE_CACHE_SECONDS', 'DASHBOARD_ROLES', 'SUPERADMIN_EMAILS', 'CTA_EXCLUDE_ROLES_', 'APS_GRADING_TEAM_EMAILS_', 'HIDDEN_TEACHER_NAMES', 'HIDDEN_TEACHER_NAME_PREFIXES', 'HIDDEN_TEACHER_EMAIL_PREFIXES', 'CTA_DEFAULT_TO_', 'NILAI_FILTER_OPTIONS', 'CLASS_TIME_FILTER_OPTIONS', 'CTA_SELECTION_SHEET_', 'CTA_SELECTION_HEADER_', 'CTA_LABEL_', 'CTA_CODE_TO_LABEL_', 'CTA_DAY_NAMES_', 'COURSE_NAME_SUFFIX',
 ]);
 // Supplied by src/gas/runtime.ts (Apps Script services, workbooks, Azure-side ports).
-const PROVIDED = ['SpreadsheetApp', 'CacheService', 'PropertiesService', 'Utilities', 'Session', 'console', 'getWorkbook_', 'getAttendanceWorkbook_',
+const PROVIDED = ['Sheets', 'SpreadsheetApp', 'CacheService', 'PropertiesService', 'Utilities', 'Session', 'console', 'getWorkbook_', 'getAttendanceWorkbook_',
   'isRosterHiddenStaffEmail_', 'apsTabAllowed_', 'isOnCallCoordinatorEmail_', 'apsRequireTabForToken_', 'requireValidSession_', 'readAllCoursesFromCache_',
   // live-data passes (Script / User Properties — Phase 3): Azure's versions with no stored maps, same as the Classes view
   'applyRosterHiddenStaffFilter_', 'applyLivePresence_', 'applyLastLogin_', 'applyStudentOnboardedFlag_'];
 // Writers that may be reached but are wrapped in try/catch in Code.gs (best-effort audit) — allowed: the runtime refuses the write.
 // (slAudit_ appends to APS_SCHOOL_LEAVE_AUDIT_LOG; Azure does not write it.)
+// Apps Script globals: any the copied code uses must be provided by the runtime (checked — nothing can be undefined).
+const APPS_SCRIPT_GLOBALS = ['Sheets', 'SpreadsheetApp', 'CacheService', 'PropertiesService', 'Utilities', 'Session', 'Logger', 'HtmlService', 'ContentService', 'Drive', 'People', 'Gmail', 'Calendar', 'XmlService', 'Charts', 'Maps', 'Classroom', 'ScriptApp', 'UrlFetchApp', 'DriveApp', 'GmailApp', 'MailApp', 'LockService', 'AdminDirectory', 'AdminReports'];
 const FORBIDDEN_CALLS = /ScriptApp|Classroom\.|UrlFetchApp|GmailApp|MailApp|DriveApp|LockService|AdminDirectory|AdminReports|\.setProperty|\.deleteProperty/;
+
+/** True when a '/' at position j starts a regex literal (not division): previous non-space char is an operator/bracket or a keyword. */
+function regexStart(src, j) {
+  let k = j - 1; while (k >= 0 && /\s/.test(src[k])) k--;
+  if (k < 0) return true;
+  if ('(,=:[!&|?{};+-*%<>~^'.includes(src[k])) return true;
+  const w = src.slice(Math.max(0, k - 9), k + 1).match(/[A-Za-z_$]+$/);
+  return !!w && /^(return|typeof|case|do|else|in|of|void|throw|delete|new)$/.test(w[0]);
+}
+/** Index just after a regex literal starting at j (handles escapes and [...] classes). */
+function skipRegex(src, j) {
+  let inClass = false;
+  for (let i = j + 1; i < src.length; i++) {
+    const c = src[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '[') inClass = true; else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) return i;
+    else if (c === '\n') return j; // not a regex after all
+  }
+  return j;
+}
 
 function blockAt(src, i) {
   const isF = src.startsWith('function ', i); let d = 0, q = null, seen = false;
@@ -52,6 +76,7 @@ function blockAt(src, i) {
     if (q) { if (c === q && p !== '\\') q = null; continue; }
     if (c === '/' && src[j + 1] === '/') { j = src.indexOf('\n', j); continue; }
     if (c === '/' && src[j + 1] === '*') { j = src.indexOf('*/', j) + 1; continue; }
+    if (c === '/' && regexStart(src, j)) { j = skipRegex(src, j); continue; }
     if (c === "'" || c === '"' || c === '`') { q = c; continue; }
     if ('{(['.includes(c)) { d++; seen = true; }
     else if ('})]'.includes(c)) { d--; if (d === 0 && seen && c === '}' && isF) return src.slice(i, j + 1); }
@@ -73,6 +98,7 @@ function main() {
     if (!(f in defs)) throw new Error('function not found in Code.gs: ' + f);
     const b = blockAt(src, defs[f]); const code = strip(b);
     if (FORBIDDEN_CALLS.test(code)) throw new Error(f + ' calls an Apps Script service that is not allowed in the read-only runtime.');
+    for (const g of APPS_SCRIPT_GLOBALS) if (new RegExp('(?<![.\\w$])' + g + '\\.').test(code) && !provided.has(g)) throw new Error(f + ' uses the Apps Script service ' + g + ' — provide it in src/gas/runtime.ts (read only) first.');
     for (const id of new Set(code.match(/(?<![.\w$])[A-Za-z_$][\w$]*/g) || [])) if (id in defs && !copied.has(id) && !provided.has(id)) (missing[id] = missing[id] || []).push(f);
     parts.push(b);
   }

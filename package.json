@@ -1,6 +1,6 @@
 {
   "name": "aps-dashboard-azure",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "APS Dashboard on Azure \u2014 Phase 1 foundation (sign-in, sessions, roles, Access Control, API registry, browser shim)",
   "type": "commonjs",

@@ -80,11 +80,38 @@ marks on a fresh map); the stored onboarded list arrives with Phase 3.
 Tests: parity for Admin, HM, BOD, teacher (full tier) and student, authorized (basic tier; no other student's email
 appears). `npm test` 31 pass; browser 7 pass.
 
+## Step 5 — Attendance tab (v0.6.0, 2026-11-11)
+
+The seven Attendance reads, each the copied Code.gs function with its own role checks (148 functions now copied):
+`getAttendanceWeekOptions`, `getAttendanceCourseAwkMap`, `getAttendanceRecordsForViewer`, `getOnCallTeacherAttendance`,
+`getAttendanceAuditLog`, `getAttendanceSyncDiagnostics`, `getAttendanceLastSyncInfo`.
+
+**Read-only:** every record comes back `editable: false` (editing stays in Apps Script; the edit / sync calls are not on
+Azure). Sync status and sync diagnostics are kept by Apps Script in Script Properties → empty on Azure until Phase 3.
+
+**Sheets loaded on demand** (`src/gas/run.ts`): weekly attendance lives in one sheet per week (`AWKnnATT`), so a fixed
+sheet list cannot work. The runner starts with the usual sheets; when the copied code opens a sheet, or calls the
+**Sheets advanced service** (`Sheets.Spreadsheets.Values.batchGet`, which Code.gs uses for the week sheets), the need
+is recorded — even when Code.gs catches the error and falls back — the first need is loaded, and the code runs again
+(safe: it only reads; at most 30 loads). `Sheets.batchGet` is answered by the real Sheets API `values:batchGet` with
+the same options (UNFORMATTED_VALUE, SERIAL_NUMBER), only for the two APS spreadsheets. The generator now also refuses
+any Apps Script service the runtime does not provide, and parses regex literals correctly.
+
+Tests: two real weekly sheets (some Date cells), Attendance_Summary and Attendance_Audit_Log; 10 calls × 7 viewers
+compared with Code.gs (records, filters by week / class / "mine", on-call teachers, audit log, refusals); the week
+sheets were fetched through batchGet with Code.gs's exact ranges. Loader tests: a swallowed need is still loaded;
+a source that never delivers fails clearly. `npm test` 33 pass; browser 8 pass.
+
+**Performance note:** each request reads the needed sheets (cached 60 s per sheet). A week sheet read through
+`values:batchGet` is light; whole-sheet snapshots (`includeGridData`) are heavier — fine for now, to revisit with
+Azure SQL in Phase 5.
+
 ### Not on Azure yet (Code.gs "nothing set" values meanwhile)
 
 | Part | Source | When |
 |---|---|---|
 | Assignment Monitoring tab access; Examination / Grading access | their modules | later in Phase 2 |
+| Attendance sync status / diagnostics; editing attendance | Script Properties / writes | Phase 3 / write phase |
 | Online now (heartbeat), last login, stored onboarded list, manual class status, live Meet status, card Status box during class, on-call banner, Hide/Show | Script / User Properties | Phase 3 |
 | Admin / HM badge name from the Google profile | Admin Directory API | later (scope not approved yet) |
 

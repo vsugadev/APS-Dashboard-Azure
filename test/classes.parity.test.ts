@@ -52,8 +52,11 @@ function seedSheets(F: any) {
 }
 /** The same Sheets as the Azure fixture data source sees them (both workbooks are the one mock workbook). */
 function sheetsFromMock(F: any) {
-  const pick = (names: string[]) => { const o: Record<string, unknown[][]> = {}; for (const n of names) { const sh = F.env.wb.getSheetByName(n); if (sh) o[n] = sh.data.map((r: unknown[]) => (r || []).slice()); } return o; };
-  return { main: pick(MAIN_SHEETS), attendance: pick(ATTENDANCE_SHEETS) };
+  // The mock has ONE workbook for both spreadsheets: every sheet is visible in both (loaded on demand by the runner).
+  const all: Record<string, unknown[][]> = {};
+  for (const sh of F.env.wb.getSheets()) all[sh.name] = sh.data.map((r: unknown[]) => (r || []).slice());
+  void MAIN_SHEETS; void ATTENDANCE_SHEETS;
+  return { main: all, attendance: all };
 }
 
 export function loadFixture() {
@@ -188,4 +191,69 @@ test('Active Directory (getDirectoryIndex) matches Code.gs — full tier (staff,
     if (gas.tier === 'basic') assert.ok(az.ok.classes.every((c: any) => c.students.every((p: any) => !p.email || p.email.toLowerCase() === email)), 'basic tier: no other student emails');
   }
   assert.ok(tiers.full >= 3 && tiers.basic >= 1, 'both tiers compared: ' + JSON.stringify(tiers));
+});
+
+/** Two real weekly attendance sheets (AWKnnATT) + Attendance_Summary + Attendance_Audit_Log, some cells as Date cells. */
+function seedAttendance(F: any) {
+  const G = F.G, wb = F.env.wb, now = new Date();
+  const week1 = G.getAttendanceWeek1Start_(), curId = G.getCurrentWeekId_(now), curNo = Math.max(2, G.attWeekNumberForWeekId_(curId, week1));
+  const courses = J(G.readAllCoursesFromCache_());
+  const mk = (name: string, header: string[]) => { const sh = wb.getSheetByName(name) || wb.insertSheet(name); sh.maxCols = header.length + 5; sh.data = [header.slice()]; return sh; };
+  let n = 0;
+  for (const weekNo of [curNo - 1, curNo]) {
+    const weekId = G.attWeekIdForNumber_(weekNo, week1), date = weekId.slice(3);
+    const sh = mk(G.formatAwkSheetName_(weekNo), J(G.ATTENDANCE_HEADER_ROW));
+    for (const c of courses.slice(0, 4)) {
+      const people = (c.teachers || []).map((t: any) => [t, 'TEACHER']).concat((c.students || []).slice(0, 4).map((p: any) => [p, 'STUDENT']));
+      for (const [p, role] of people) {
+        n++;
+        const status = n % 5 === 0 ? 'ABSENT' : n % 7 === 0 ? 'LATE' : 'PRESENT';
+        const row = G.attRecordToRow_({ date, courseId: String(c.id), className: c.name, level: '', section: '', day: 'FRI', schedStart: '6:30 PM', schedEnd: '8:00 PM', tz: 'EST', academicYear: 'AY26-27',
+          personName: p.name, apsId: G.getAPSIdFromEmail(p.email), email: p.email, role, sessionCount: 1, sessionDetails: '', firstJoin: '6:31 PM', lastLeave: '7:58 PM',
+          activeMinutes: status === 'ABSENT' ? 0 : 80, status, lastUpdated: '', autoStatus: status, overrideStatus: n % 11 === 0 ? 'EXCUSED' : '', overrideBy: n % 11 === 0 ? 'admin@aps.org' : '',
+          overrideReason: n % 11 === 0 ? 'Leave' : '', weekOf: weekId, weekNo, callMinutes: 90, attendedPct: 89, autoScore: 100, score: 100, actualClassMinutes: 90, effectiveClassMinutes: 90 });
+        if (n % 3 === 0) row[0] = new Date(date + 'T12:00:00Z'); // older rows were saved as Date cells
+        sh.data.push(row);
+      }
+    }
+  }
+  const sum = mk(G.ATTENDANCE_SUMMARY_SHEET_NAME, J(G.ATTENDANCE_SUMMARY_HEADER_ROW));
+  for (const c of courses.slice(0, 2)) for (const p of (c.students || []).slice(0, 3)) sum.data.push([String(c.id), c.name, p.name, p.email, 'STUDENT', 2, 160, 180, 180, 180, 88.9, now]);
+  const aud = mk(G.ATTENDANCE_AUDIT_LOG_SHEET_NAME, J(G.ATTENDANCE_AUDIT_LOG_HEADER_ROW));
+  aud.data.push([new Date(now.getTime() - 3600000), 'admin@aps.org', 'admin', String(courses[0].id), courses[0].name, curId.slice(3), 'Kid', 'kid_aps1@avvaiyarpadasalai.org', 'STUDENT', 'ABSENT', 'EXCUSED', 'Leave', 'OVERRIDE', 'ABSENT'],
+    ['2026-11-01 10:00', 'hm@aps.org', 'headmaster', String(courses[1].id), courses[1].name, new Date('2026-10-30T12:00:00Z'), 'Kid2', 'kid_aps2@avvaiyarpadasalai.org', 'STUDENT', 'PRESENT', 'ABSENT', 'x', 'OVERRIDE', 'PRESENT']);
+  return { curId, prevId: G.attWeekIdForNumber_(curNo - 1, week1), courseId: String(courses[0].id) };
+}
+
+test('Attendance tab reads (7 functions) match Code.gs for every role — weekly sheets loaded on demand, read-only', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); const W = seedAttendance(F);
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: J(G.PropertiesService.getScriptProperties().getProperties()), attendanceSpreadsheetId: 'mock' });
+  const reg = (await import('../src/server')).buildRegistry();
+  const viewers: [string, string][] = [['admin@aps.org', 'admin'], ['hm@aps.org', 'headmaster'], ['bod@aps.org', 'vcfo_amchsts_bod'], [F.vpEmail, 'teacher'],
+    ['kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student'], ['someone@namaps.org', 'authorized']];
+  const calls: [string, unknown[]][] = [['getAttendanceWeekOptions', []], ['getAttendanceCourseAwkMap', []], ['getAttendanceRecordsForViewer', [{}]],
+    ['getAttendanceRecordsForViewer', [{ weekOf: W.curId }]], ['getAttendanceRecordsForViewer', [{ weekOf: W.prevId, courseId: W.courseId }]], ['getAttendanceRecordsForViewer', [{ scope: 'mine' }]],
+    ['getOnCallTeacherAttendance', [{ includeNotJoined: true }]], ['getAttendanceAuditLog', [{}]], ['getAttendanceSyncDiagnostics', []], ['getAttendanceLastSyncInfo', []]];
+  let rows = 0, editableOnGas = 0, refusals = 0, awk = 0;
+  for (const [email, role] of viewers) {
+    for (const [fn, args] of calls) {
+      const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+      const token = await ctx.sessions.create({ email, role });
+      let gas: any; try { gas = J(G[fn](F.tok(email, role), ...J(args))); } catch (e) { gas = { err: (e as Error).message }; }
+      const az: any = await reg.call(ctx, fn, [token, ...J(args)]);
+      if (gas && gas.err) { assert.deepEqual(az, { err: gas.err }, role + ' ' + fn + ': same refusal'); refusals++; continue; }
+      assert.ok('ok' in az, role + ' ' + fn + ': Azure answered ' + JSON.stringify(az).slice(0, 300));
+      let a = az.ok;
+      if (fn === 'getAttendanceRecordsForViewer') { for (const r of gas) { if (r.editable) editableOnGas++; r.editable = false; } rows += a.length; }
+      if (fn === 'getAttendanceCourseAwkMap') awk += a.length;
+      const d = diffs(a, gas);
+      assert.deepEqual(d, [], role + ' ' + fn + ' ' + JSON.stringify(args) + ' differences:\n' + d.slice(0, 15).join('\n'));
+      a = null;
+    }
+  }
+  assert.ok(rows > 50 && editableOnGas > 0 && refusals > 0 && awk >= 2, JSON.stringify({ rows, editableOnGas, refusals, awk }));
 });

@@ -21,6 +21,11 @@ import type { AppConfig } from '../../config';
 import { G } from '../../gas/classes.generated';
 import { makeGasScope } from '../../gas/scope.generated';
 import { makeRuntime, SnapWorkbook } from '../../gas/runtime';
+import { runGas } from '../../gas/run';
+
+/** Attendance tab reads (same names as Code.gs). */
+export const ATTENDANCE_READS = ['getAttendanceWeekOptions', 'getAttendanceCourseAwkMap', 'getAttendanceRecordsForViewer', 'getOnCallTeacherAttendance',
+  'getAttendanceAuditLog', 'getAttendanceSyncDiagnostics', 'getAttendanceLastSyncInfo'];
 import { acEffectiveForRole, apsTabAllowed } from '../../auth/accessControl';
 import { viewerBadgeName, rolePermission, canViewAllDashboardFilters, isAdminRole, userHasCourseAccess, courseHasStudentEmail } from '../../auth/roles';
 
@@ -61,7 +66,6 @@ function isOnCallCoordinator(cfg: AppConfig, email: unknown): boolean {
   return !!e && cfg.onCallCoordinatorEmails.map((x) => G.normalizeEmail_(x)).indexOf(e) > -1;
 }
 
-/** One request's copy of the Code.gs readers, on a read-only snapshot of the sheets they read. */
 /** Settings the copied code reads as Script Properties: plain APS_/TCC_/… values + the role lists Azure holds (Key Vault). */
 export function gasSettings(cfg: AppConfig): Record<string, string> {
   return { ...cfg.scriptSettings,
@@ -70,24 +74,26 @@ export function gasSettings(cfg: AppConfig): Record<string, string> {
     ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS: JSON.stringify(cfg.rosterHiddenStaffAdditionalEmails), APS_GRADING_TEAM_EMAILS: JSON.stringify(cfg.gradingTeamEmails) };
 }
 
-/** One request's copy of the Code.gs readers, on a read-only snapshot of the sheets they read. `session` = the session
- *  Azure already checked (for copied endpoints that call requireValidSession_ / apsRequireTabForToken_). */
-export async function gasScopeFor(ctx: AppContext, session: { email: string; role: string } | null = null): Promise<any> {
-  const [main, ov, courses] = await Promise.all([ctx.data.readSheets('main', MAIN_SHEETS), ctx.data.readAccessOverrides(), session ? ctx.data.readCourses() : Promise.resolve([])]);
-  let attendance: SnapWorkbook | null = null;
-  if (ctx.cfg.attendanceSpreadsheetId || ctx.cfg.dataMode === 'fixture') {
-    try { const a = await ctx.data.readSheets('attendance', ATTENDANCE_SHEETS); attendance = new SnapWorkbook('attendance', a.sheets, a.timeZone, a.titles); }
-    catch (e) { console.warn('[Classes] attendance workbook not readable — Meet links from Classroom only: ' + String((e as Error).message).slice(0, 120)); }
-  }
+/** Runs copied Code.gs code for one request (src/gas/run.ts): read-only snapshot, sheets loaded on demand.
+ *  `session` = the session Azure already checked (for copied endpoints that call requireValidSession_ / apsRequireTabForToken_). */
+export async function gasRun<T>(ctx: AppContext, session: { email: string; role: string } | null, fn: (S: any) => T | Promise<T>): Promise<T> {
+  const [ov, courses] = await Promise.all([ctx.data.readAccessOverrides(), ctx.data.readCourses()]);
   const hidden = hiddenStaffSet(ctx.cfg);
   const json = JSON.stringify(courses);
-  return makeGasScope(makeRuntime({
-    main: new SnapWorkbook('main', main.sheets, main.timeZone, main.titles), attendance, settings: gasSettings(ctx.cfg),
-    session, courses: () => JSON.parse(json), live: liveEmptyPasses(ctx.cfg) as any, tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),
-    isRosterHiddenStaffEmail_: (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; },
-    apsTabAllowed_: (r: string, key: string) => apsTabAllowed(r, key, ov),
-    isOnCallCoordinatorEmail_: (e: unknown) => isOnCallCoordinator(ctx.cfg, e),
-  }));
+  return runGas(ctx, {
+    preload: { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS },
+    deps: {
+      settings: gasSettings(ctx.cfg), session, courses: () => JSON.parse(json), live: liveEmptyPasses(ctx.cfg) as any,
+      tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),
+      isRosterHiddenStaffEmail_: (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; },
+      apsTabAllowed_: (r: string, key: string) => apsTabAllowed(r, key, ov),
+      isOnCallCoordinatorEmail_: (e: unknown) => isOnCallCoordinator(ctx.cfg, e),
+    },
+  }, fn);
+}
+/** A copy of the Code.gs readers after a run (tests / simple lookups). */
+export async function gasScopeFor(ctx: AppContext, session: { email: string; role: string } | null = null): Promise<any> {
+  return gasRun(ctx, session, (S) => S);
 }
 
 type P = Person & Record<string, any>;
@@ -179,7 +185,8 @@ export function apsRoleFor(viewer: { email: string; role: string }, courses: C[]
 
 /** Same payload as Code.gs getDashboardDataInner_ + apsSlimDashboardPayload_ (live / not-yet parts empty, see header). */
 export async function buildClassesView(ctx: AppContext, viewer: { email: string; role: string }, allCourses: C[], now: Date, S?: any): Promise<Record<string, unknown>> {
-  const scope = S || (await gasScopeFor(ctx));
+  if (!S) { const json = JSON.stringify(allCourses); return gasRun(ctx, null, (S2) => buildClassesView(ctx, viewer, JSON.parse(json), now, S2)); } // fresh copy per run
+  const scope = S;
   const courses = decorateCourses(ctx.cfg, allCourses, now, scope);
   let visible: C[];
   if (ACCESS_STAFF_ROLES.has(viewer.role)) visible = courses;
@@ -233,14 +240,13 @@ export function registerClasses(reg: Registry): void {
   /** getMyCountryPreference — the sign-in "Continue" step asks this; without it the page waits for a country pick. */
   reg.register('getMyCountryPreference', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
-    return countryPreference(await gasScopeFor(ctx), s.email);
+    return gasRun(ctx, null, (S) => countryPreference(S, s.email));
   });
   /** getClassTeacherAvailabilityView — Classes → Teacher Availability (Phase 2 step 3): a teacher's own week + the
    *  Admin / HM / BOD weekly report, exactly as Code.gs builds it (copied code, read-only). Saving stays in Apps Script. */
   reg.register('getClassTeacherAvailabilityView', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
-    const S = await gasScopeFor(ctx, { email: s.email, role: s.role });
-    const out = S.getClassTeacherAvailabilityView(token);
+    const out = await gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getClassTeacherAvailabilityView(token));
     if (out) { out.canSubmit = false; out.canSendTest = false; out.azureReadOnly = true; } // save / test email: still in Apps Script
     return out;
   });
@@ -248,8 +254,21 @@ export function registerClasses(reg: Registry): void {
    *  server exactly as Code.gs (copied code). Online / last login / onboarded follow the Classes view (Phase 3 for stored data). */
   reg.register('getDirectoryIndex', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
-    return (await gasScopeFor(ctx, { email: s.email, role: s.role })).getDirectoryIndex(token);
+    return gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getDirectoryIndex(token));
   });
+  /** Attendance tab (Phase 2 step 5): the seven read calls, each the copied Code.gs function with its own role checks.
+   *  Weekly sheets / Sheets.batchGet ranges are loaded on demand. Editing / sync stay in Apps Script (not registered).
+   *  Sync status / diagnostics live in Script Properties → empty on Azure until Phase 3. */
+  for (const name of ATTENDANCE_READS) {
+    reg.register(name, async (ctx, [token, ...args]) => {
+      const s = await requireSession(ctx, token);
+      return gasRun(ctx, { email: s.email, role: s.role }, (S) => {
+        const out = S[name](token, ...args);
+        if (name === 'getAttendanceRecordsForViewer' && Array.isArray(out)) for (const r of out) r.editable = false; // edits stay in Apps Script
+        return out;
+      });
+    });
+  }
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */
   reg.register('getDashboardData', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);

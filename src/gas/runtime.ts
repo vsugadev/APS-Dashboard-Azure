@@ -11,7 +11,15 @@
  *    setProperty / deleteProperty throw.
  */
 import { Utilities } from './utilities';
-import type { SheetGrid } from '../data/types';
+import type { SheetGrid, WorkbookKey, ValuesRequest } from '../data/types';
+
+/** Something the copied code asked for that is not in this request's snapshot yet. Recorded through `need` (so it is
+ *  loaded even when Code.gs catches the error and falls back), then thrown; the runner loads it and runs again. */
+export type NeedRequest = { kind: 'sheet'; book: WorkbookKey; sheet: string } | { kind: 'values'; book: WorkbookKey; req: ValuesRequest };
+export class NeedData extends Error {
+  constructor(public need: NeedRequest) { super('NEED_DATA: ' + (need.kind === 'sheet' ? need.sheet : 'values')); }
+}
+export function valuesKey(r: ValuesRequest): string { return JSON.stringify([r.ranges, r.valueRenderOption || '', r.dateTimeRenderOption || '', r.majorDimension || '']); }
 
 export const READ_ONLY_MSG = 'READ_ONLY: the Azure dashboard does not change Google Sheets yet.';
 
@@ -60,23 +68,34 @@ export class SnapWorkbook {
   private sheets: Record<string, SnapSheet> = {};
   /** `titles` = every sheet that exists in Google. A sheet that exists but was not read into this snapshot throws, so a
    *  reader can never silently see an "empty" sheet; a sheet that does not exist is null (Code.gs "create it" path). */
-  constructor(private id: string, grids: Record<string, SheetGrid | null>, private tz = 'America/New_York', private titles: string[] | null = null) {
+  constructor(private id: string, grids: Record<string, SheetGrid | null>, private tz = 'America/New_York', private titles: string[] | null = null,
+    private book: WorkbookKey = 'main', private need: ((n: NeedRequest) => void) | null = null) {
     for (const [name, g] of Object.entries(grids)) if (g) this.sheets[name] = new SnapSheet(name, g.values.map((r) => r.slice()), true);
+  }
+  private missing(n: string): never {
+    const req: NeedRequest = { kind: 'sheet', book: this.book, sheet: n };
+    if (this.need) { this.need(req); throw new NeedData(req); }
+    throw new Error('Azure runtime: sheet "' + n + '" exists but was not read for this request.');
   }
   getSheetByName(n: string): SnapSheet | null {
     if (this.sheets[n]) return this.sheets[n];
-    if (this.titles && this.titles.indexOf(n) > -1) throw new Error('Azure runtime: sheet "' + n + '" exists but was not read for this request (add it to the snapshot list).');
+    if (this.titles && this.titles.indexOf(n) > -1) return this.missing(n); // exists in Google, not read yet → load and run again
     return null;
   }
   insertSheet(n: string): SnapSheet { return (this.sheets[n] = new SnapSheet(n, [], false)); } // in memory only — never sent to Google
-  getSheets(): SnapSheet[] { return Object.values(this.sheets); }
+  /** Every sheet of the spreadsheet (as Apps Script): read ones as they are; the others by name only — reading their data
+   *  asks for them to be loaded. */
+  getSheets(): unknown[] {
+    const names = (this.titles || []).concat(Object.keys(this.sheets).filter((n) => !(this.titles || []).includes(n)));
+    return names.map((n) => this.sheets[n] || new Proxy({}, { get: (_t, prop) => (prop === 'getName' ? () => n : () => this.missing(n)) }));
+  }
   getId(): string { return this.id; }
   getSpreadsheetTimeZone(): string { return this.tz; }
 }
 
 /** Expected, harmless messages from the copied code (an optional Script Property not set; an audit row Azure does not
  *  write) — not repeated in the App Service log on every request. Never prints a stored value. */
-function quiet(m: unknown): boolean { return /^\[Config\] Script Property "[^"]*" is not (set|valid)/.test(String(m)) || /audit not written: READ_ONLY/.test(String(m)); }
+function quiet(m: unknown): boolean { return /^\[Config\] Script Property "[^"]*" is not (set|valid)/.test(String(m)) || /audit not written: READ_ONLY/.test(String(m)) || /NEED_DATA/.test(String(m)); } // NEED_DATA: Azure loads it and runs again
 
 const noCache = { get: () => null, put: () => undefined, remove: () => undefined, getAll: () => ({}), putAll: () => undefined, removeAll: () => undefined };
 
@@ -89,6 +108,10 @@ export interface RuntimeDeps {
   live?: { applyRosterHiddenStaffFilter_: (c: unknown[]) => unknown; applyLivePresence_: (c: unknown[]) => unknown; applyLastLogin_: (c: unknown[]) => unknown; applyStudentOnboardedFlag_: (c: unknown[]) => unknown };
   attendance: SnapWorkbook | null;
   settings: Record<string, string>;
+  /** Sheets advanced service answers already fetched for this request (key = valuesKey), and which book each ID is. */
+  values?: Record<string, unknown>;
+  bookIds?: Record<string, WorkbookKey>;
+  need?: (n: NeedRequest) => void;
   isRosterHiddenStaffEmail_: (email: unknown) => boolean;
   apsTabAllowed_: (role: string, key: string) => boolean;
   isOnCallCoordinatorEmail_: (email: unknown) => boolean;
@@ -103,6 +126,18 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
   };
   return {
     SpreadsheetApp: { openById: () => { throw new Error('Azure runtime: use getWorkbook_ / getAttendanceWorkbook_.'); } },
+    // Sheets advanced service (read only): Values.batchGet with the same options Code.gs passes, answered from the real
+    // Sheets API values:batchGet — only for the two APS spreadsheets.
+    Sheets: { Spreadsheets: { Values: { batchGet: (id: string, o: ValuesRequest) => {
+      const book = d.bookIds && d.bookIds[String(id)];
+      if (!book) throw new Error('Azure runtime: Sheets.batchGet only reads the APS spreadsheets.');
+      const req: ValuesRequest = { ranges: (o.ranges || []).map(String), valueRenderOption: o.valueRenderOption, dateTimeRenderOption: o.dateTimeRenderOption, majorDimension: o.majorDimension };
+      const hit = d.values && d.values[book + ':' + valuesKey(req)];
+      if (hit) return JSON.parse(JSON.stringify(hit));
+      const n: NeedRequest = { kind: 'values', book, req };
+      if (d.need) d.need(n);
+      throw new NeedData(n);
+    } } } },
     CacheService: { getScriptCache: () => noCache, getUserCache: () => noCache },
     PropertiesService: { getScriptProperties: () => props, getUserProperties: () => props },
     Utilities,
@@ -140,4 +175,12 @@ export function serialToDate(serial: number, tz: string): Date {
     guess = wallMs - offMs;
   }
   return new Date(guess);
+}
+
+/** Instant → Sheets serial date/time in the spreadsheet's time zone (the inverse of serialToDate). */
+export function dateToSerial(d: Date, tz: string): number {
+  const off = Utilities.formatDate(d, tz, 'XXX');
+  const m = /^([+-])(\d{2}):(\d{2})$/.exec(off);
+  const offMs = m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) * 60000 : 0;
+  return (d.getTime() + offMs) / 86400000 + 25569;
 }

@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-11 (v0.5.0, Phase 2 step 4). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-11 (v0.6.0, Phase 2 step 5). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -19,6 +19,7 @@ show the same data. Nothing on Azure changes any data yet.
 | Classes — card extras from Sheets | ✅ | Teacher availability, WhatsApp link, Google Meet link, country flags, Temporary Class Coverage banner, Temp Teacher note, School Leave banner |
 | Classes → **Teacher Availability** | ✅ view | Teacher's own week; Admin / HM / BOD weekly report. **Save** and **Send test email** are off on Azure |
 | **Active Directory** → Directory Search | ✅ | Role-tiered on the server: staff / teachers see full details; students see names, classes and only their own details |
+| **Attendance** tab | ✅ view | Week list, records (by week / class / mine), on-call teacher attendance, audit log — all read-only (no edits). Sync status / diagnostics empty until Phase 3 |
 | Active Directory → Student Onboarding Status | ✅ | Built from the Classes data in the browser; "onboarded" = online now until Phase 3 |
 | Online now, last login, live Meet status, manual class status, on-call banner | ⏳ Phase 3 | Live data kept in Apps Script properties — empty on Azure for now |
 | Every other tab, every save / email / sync | ⏳ | Shows "not on Azure yet" — use the Apps Script dashboard |
@@ -32,7 +33,8 @@ show the same data. Nothing on Azure changes any data yet.
 - **Same rules:** Code.gs code is **copied word for word** by two tools, never retyped:
   `gen-gas-helpers` (pure rules) and `gen-gas-scope` (Sheet readers and whole read-only screens).
 - **Read-only runtime:** the copied code runs against a **snapshot** of the Google Sheets read through the Sheets API
-  (whole sheet, cached 60 s). It cannot change any existing sheet or setting (`READ_ONLY`).
+  (cached 60 s). It cannot change any existing sheet or setting (`READ_ONLY`). Sheets are **loaded on demand**: if the
+  code needs a sheet (e.g. a weekly attendance sheet) that is not loaded yet, Azure loads it and runs the read again.
 - **Proved by tests:** every screen is compared with Code.gs itself (run in the Apps Script test mock) for every role.
 
 ---
@@ -107,7 +109,8 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[Config] cannot start: …` | A required setting is missing (named, never its value) |
 | `[Config] X: Key Vault reference not resolved yet` | Secret missing or misspelled — check the green ticks under App Service → Environment variables |
 | `[Classes] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
-| `[Gas] … sheet "X" exists but was not read` | Developer: add the sheet to the snapshot list (`MAIN_SHEETS` / `ATTENDANCE_SHEETS`) |
+| `[Gas] … too many sheet loads` / `requested again after loading` | Developer: a read keeps asking for data the source cannot deliver — check the sheet name / range |
+| `[Gas] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
 | Page: "This sign-in link has expired" | Open the site fresh and sign in again |
 | Page: "cannot read class data right now" | Google access problem — see the `[Google]` / `[SignIn]` line |
 | Chrome "Dangerous" label | Report a false positive at safebrowsing.google.com or verify the site in Search Console; long term use an APS domain |
@@ -138,3 +141,4 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.3.0 | 2026-11-11 | Phase 2 step 2: card extras from Sheets via the read-only Code.gs runtime |
 | 0.4.0 | 2026-11-11 | Phase 2 step 3: Teacher Availability view (read-only); generator indexes `const`/`let`; full Java date patterns |
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
+| 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |

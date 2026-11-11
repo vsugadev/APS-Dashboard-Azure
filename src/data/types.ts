@@ -19,6 +19,9 @@ export interface SheetGrid { values: unknown[][] }
 export type WorkbookKey = 'main' | 'attendance';
 export interface SheetSnapshot { timeZone: string; sheets: Record<string, SheetGrid | null>; titles: string[] } // null = the sheet does not exist; titles = all sheets
 
+/** Sheets API values:batchGet request (same fields as the Apps Script Sheets advanced service). */
+export interface ValuesRequest { ranges: string[]; valueRenderOption?: string; dateTimeRenderOption?: string; majorDimension?: string }
+
 export interface DataSource {
   /** Every course row (parsed Detail JSON), like readAllCoursesFromCache_(). Callers may mutate the result. */
   readCourses(): Promise<Course[]>;
@@ -28,4 +31,6 @@ export interface DataSource {
   readAccessOverrides(): Promise<AccessOverrides>;
   /** Whole sheets (read-only snapshot) for the Code.gs readers run on Azure. */
   readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot>;
+  /** Sheets API values:batchGet (read only), as the Apps Script Sheets advanced service returns it. */
+  readValues(book: WorkbookKey, req: ValuesRequest): Promise<{ valueRanges: { range: string; values?: unknown[][] }[] }>;
 }

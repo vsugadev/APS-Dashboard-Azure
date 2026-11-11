@@ -9,8 +9,8 @@ import type { AppConfig } from '../config';
 import { normalizeEmail } from '../lib/email';
 import { TtlCache } from '../lib/ttlCache';
 import { GOOGLE_SCOPES, googleFetchJson, type AccessTokenProvider } from '../google/serviceAccount';
-import type { AccessOverrides, Course, DataSource, SheetGrid, SheetSnapshot, WorkbookKey } from './types';
-import { serialToDate } from '../gas/runtime';
+import type { AccessOverrides, Course, DataSource, SheetGrid, SheetSnapshot, ValuesRequest, WorkbookKey } from './types';
+import { serialToDate, dateToSerial } from '../gas/runtime';
 import { AC_ROLES, acItem } from '../auth/accessControl';
 import { DASHBOARD_ROLES } from '../auth/roles';
 
@@ -127,6 +127,18 @@ export class SheetsDataSource implements DataSource {
     }));
     return { timeZone: meta.tz, sheets, titles: meta.titles.slice() };
   }
+  /** Sheets API values:batchGet with the caller's options (as the Apps Script advanced service), cached 60 s. */
+  async readValues(book: WorkbookKey, req: ValuesRequest): Promise<{ valueRanges: { range: string; values?: unknown[][] }[] }> {
+    const id = this.bookId(book);
+    if (!id) throw new Error(book === 'main' ? 'TARGET_SPREADSHEET_ID is not set.' : 'ATTENDANCE_SPREADSHEET_ID is not set.');
+    return this.cache.get('values:' + id + ':' + JSON.stringify(req), SHEET_TTL_MS, async () => {
+      const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
+      const qs = req.ranges.map((r) => 'ranges=' + encodeURIComponent(r))
+        .concat(['valueRenderOption', 'dateTimeRenderOption', 'majorDimension'].filter((k) => (req as any)[k]).map((k) => k + '=' + encodeURIComponent((req as any)[k]))).join('&');
+      const r = await googleFetchJson<{ valueRanges?: { range: string; values?: unknown[][] }[] }>(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values:batchGet?${qs}`, t);
+      return { valueRanges: r.valueRanges || [] };
+    });
+  }
   async readAccessOverrides(): Promise<AccessOverrides> {
     return this.cache.get('access', ACCESS_TTL_MS, async () => {
       try { return parseAccessRows((await this.values([`${AC_SHEET}!A2:F`]))[0]); }
@@ -144,6 +156,27 @@ export class FixtureDataSource implements DataSource {
     const sheets: Record<string, SheetGrid | null> = {};
     for (const n of names) sheets[n] = src[n] ? { values: src[n].map((r) => r.map((v) => (v instanceof Date ? new Date(v.getTime()) : typeof v === 'string' && v.startsWith('date:') ? new Date(v.slice(5)) : v))) } : null;
     return { timeZone: 'America/New_York', sheets, titles: Object.keys(src) };
+  }
+  /** Same answer the Sheets API gives for 'Name'!A2:X style ranges (UNFORMATTED + SERIAL dates, trailing blanks trimmed). */
+  async readValues(book: WorkbookKey, req: ValuesRequest): Promise<{ valueRanges: { range: string; values?: unknown[][] }[] }> {
+    const src = (this.data.sheets && this.data.sheets[book]) || {};
+    const col = (a: string) => a.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+    return { valueRanges: req.ranges.map((range) => {
+      const m = /^'((?:[^']|'')*)'!([A-Z]+)(\d+)(?::([A-Z]+)(\d*))?$/.exec(range);
+      if (!m) throw new Error('fixture: unsupported range ' + range);
+      const rows = (src[m[1].replace(/''/g, "'")] || []) as unknown[][];
+      const c0 = col(m[2]) - 1, c1 = m[4] ? col(m[4]) : Infinity, r0 = Number(m[3]) - 1, r1 = m[5] ? Number(m[5]) : Infinity;
+      const conv = (v: unknown) => {
+        const d = v instanceof Date ? v : typeof v === 'string' && v.startsWith('date:') ? new Date(v.slice(5)) : null;
+        if (!d) return v === undefined || v === null ? '' : v;
+        if (req.dateTimeRenderOption === 'FORMATTED_STRING') return d.toISOString();
+        return dateToSerial(d, 'America/New_York');
+      };
+      let vals = rows.slice(r0, r1).map((r) => (r || []).slice(c0, c1).map(conv));
+      vals = vals.map((r) => { const a = r.slice(); while (a.length && (a[a.length - 1] === '' || a[a.length - 1] === undefined)) a.pop(); return a; });
+      while (vals.length && !vals[vals.length - 1].length) vals.pop();
+      return vals.length ? { range, values: vals } : { range };
+    }) };
   }
   static fromFile(path: string): FixtureDataSource {
     return new FixtureDataSource(fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : {});

@@ -28,6 +28,27 @@ const CONSTANTS = [
 ];
 const FORBIDDEN = /PropertiesService|SpreadsheetApp|CacheService|ScriptApp|Classroom\.|UrlFetchApp|GmailApp|MailApp|DriveApp|LockService|Session\.|AdminDirectory|AdminReports/;
 
+/** True when a '/' at position j starts a regex literal (not division): previous non-space char is an operator/bracket or a keyword. */
+function regexStart(src, j) {
+  let k = j - 1; while (k >= 0 && /\s/.test(src[k])) k--;
+  if (k < 0) return true;
+  if ('(,=:[!&|?{};+-*%<>~^'.includes(src[k])) return true;
+  const w = src.slice(Math.max(0, k - 9), k + 1).match(/[A-Za-z_$]+$/);
+  return !!w && /^(return|typeof|case|do|else|in|of|void|throw|delete|new)$/.test(w[0]);
+}
+/** Index just after a regex literal starting at j (handles escapes and [...] classes). */
+function skipRegex(src, j) {
+  let inClass = false;
+  for (let i = j + 1; i < src.length; i++) {
+    const c = src[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '[') inClass = true; else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) return i;
+    else if (c === '\n') return j; // not a regex after all
+  }
+  return j;
+}
+
 function extractBlock(src, startIdx) {
   // from startIdx to the end of the statement/function: balance (), {}, [] outside strings/regex-ish literals
   let depth = 0, i = startIdx, seenOpen = false, q = null;
@@ -36,6 +57,7 @@ function extractBlock(src, startIdx) {
     if (q) { if (ch === q && prev !== '\\') q = null; continue; }
     if (ch === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i < 0) i = src.length; continue; }
     if (ch === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i) + 1; continue; }
+    if (ch === '/' && regexStart(src, i)) { i = skipRegex(src, i); continue; }
     if (ch === "'" || ch === '"' || ch === '`') { q = ch; continue; }
     if (ch === '{' || ch === '(' || ch === '[') { depth++; seenOpen = true; }
     else if (ch === '}' || ch === ')' || ch === ']') { depth--; if (depth === 0 && seenOpen && ch === '}' && src.slice(startIdx, startIdx + 9) === 'function ') return src.slice(startIdx, i + 1); }

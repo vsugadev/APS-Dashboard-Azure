@@ -176,10 +176,13 @@ Before finishing, confirm:
      `npm run gen-gas`. The tool lists every name used but neither copied nor provided; add those until it passes.
      It refuses Classroom / Gmail / Drive / triggers / locks / setProperty. It indexes top-level `function`, `var`,
      `const` and `let`.
-3. **Read-only runtime** (`src/gas/runtime.ts`): sheets are a snapshot read through the Sheets API (whole sheet,
-   cached 60 s, Apps Script value types incl. Date cells in the spreadsheet time zone). Writes to existing sheets or
-   settings throw `READ_ONLY`; a missing sheet exists only in memory; a sheet that exists but was not read throws
-   (add it to `MAIN_SHEETS` / `ATTENDANCE_SHEETS` in `src/api/endpoints/classes.ts`). Session / tab checks:
+3. **Read-only runtime** (`src/gas/runtime.ts`) run by `gasRun` / `runGas` (`src/gas/run.ts`): sheets are a snapshot read
+   through the Sheets API (cached 60 s, Apps Script value types incl. Date cells in the spreadsheet time zone), LOADED ON
+   DEMAND — a missing sheet / `Sheets.batchGet` range is recorded (even if Code.gs catches the error), loaded, and the
+   read runs again (max 30 loads). Every Apps Script service used must be provided read-only by the runtime (the
+   generator checks). Writes to existing sheets or settings throw `READ_ONLY`; a sheet that does not exist in Google
+   exists only in memory; a sheet that exists but is not loaded yet is loaded on demand (`MAIN_SHEETS` /
+   `ATTENDANCE_SHEETS` are only the first-run preload). Session / tab checks:
    Azure checks the token (`requireSession`), the copied code gets the same session and the same Access Control
    switches. Settings come from App Service (same names as Script Properties; never secrets) + the role lists.
 4. **Register the endpoint** with the Code.gs name in `src/api/endpoints/…`; switch off anything that writes
@@ -200,7 +203,8 @@ header is longer, or Code.gs fails quietly in the mock.
   Node 22 LTS, deployed by GitHub Actions (`vsugadev/APS-Dashboard-Azure`, managed identity `id-aps-github`, OIDC).
 - On Azure (read-only): sign-in, sessions, roles, Access Control (view), Classes view (`getDashboardData`) incl.
   Sheet-based card parts, `getMyCountryPreference`, Teacher Availability (`getClassTeacherAvailabilityView`),
-  Active Directory (`getDirectoryIndex`, role-tiered; Onboarding Status is browser-side).
+  Active Directory (`getDirectoryIndex`, role-tiered; Onboarding Status is browser-side), Attendance tab (7 reads,
+  `editable: false`).
 - Live-data passes (presence / last login / onboarded / hidden staff) have ONE Azure implementation
   (`liveEmptyPasses`, provided to the copied code) — never write a second one.
 - Live Apps Script dashboard remains production for every user; Azure is not yet announced to users.
