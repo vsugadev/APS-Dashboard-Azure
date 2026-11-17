@@ -112,7 +112,7 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     attendanceSpreadsheetId: String(env.ATTENDANCE_SPREADSHEET_ID || ''),
     scriptSettings: scriptSettingsFrom(env),
     appsScriptBridgeUrl: String(env.APPS_SCRIPT_BRIDGE_URL || '').trim(),
-    appsScriptBridgeSecret: String(env.APPS_SCRIPT_BRIDGE_SECRET || ''),
+    appsScriptBridgeSecret: String(env.APPS_SCRIPT_BRIDGE_SECRET || '').trim(), // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };

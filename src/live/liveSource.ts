@@ -85,3 +85,12 @@ function strMap(o: unknown): Record<string, string> {
   return out;
 }
 function copy(s: LiveProps): LiveProps { return { script: { ...s.script }, user: { ...s.user } }; }
+
+/**
+ * v0.8.3 — a fingerprint to compare the two copies of the bridge secret WITHOUT showing it: the first 8 hex characters
+ * of SHA-256(secret). Apps Script prints the same value (AzureBridgeSetup.gs ONE_TIME_azureBridgeFingerprint). 32 bits
+ * of a hash of a 244-bit random value — reveals nothing usable.
+ */
+export function secretFingerprint(secret: string): string {
+  return crypto.createHash('sha256').update(String(secret), 'utf8').digest('hex').slice(0, 8);
+}

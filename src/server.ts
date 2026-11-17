@@ -9,7 +9,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
-import { AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
+import { secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
 import { serviceAccountTokenProvider } from './google/serviceAccount';
 import { MemorySessionStore } from './auth/sessions';
 import { googleAuth, StateNonces } from './auth/google';
@@ -48,6 +48,9 @@ export async function checkLiveBridge(ctx: AppContext, log: (m: string) => void 
   const s = await ctx.live.get(); const st = ctx.live.status();
   if (st.ok) log(`[Live] Apps Script bridge OK — ${Object.keys(s.script).length} Script + ${Object.keys(s.user).length} User Properties (allow-listed).`);
   else log('[Live] Apps Script bridge FAILED: ' + (st.error || 'unknown') + ' — see the guide, section Logs.');
+  // v0.8.3: BAD_SIGNATURE = the two copies of the secret differ — log length + fingerprint (never the value) to compare
+  // with Apps Script ONE_TIME_azureBridgeFingerprint.
+  if (!st.ok && /BAD_SIGNATURE/.test(st.error || '')) log(`[Live] Azure's secret: ${ctx.cfg.appsScriptBridgeSecret.length} characters, fingerprint ${secretFingerprint(ctx.cfg.appsScriptBridgeSecret)} — run ONE_TIME_azureBridgeFingerprint in Apps Script: both must be the same, else put the Apps Script value into Key Vault (New Version).`);
   return st.ok;
 }
 

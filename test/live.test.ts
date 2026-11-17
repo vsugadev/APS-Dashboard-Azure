@@ -109,3 +109,20 @@ test('bridge settings: used only with the real /exec address and a 32+ character
   assert.match(configWarnings(loadConfig(base)).join(' '), /APPS_SCRIPT_BRIDGE_URL/);
   assert.deepEqual((new FixtureLiveSource({ script: { presenceMap: '{}', ATTENDANCE_REFRESH_TOKEN: 't' }, user: {} })).status().ok, true);
 });
+
+test('v0.8.3: BAD_SIGNATURE → Azure logs the length + fingerprint of its secret (same formula as Apps Script), never the value; a pasted space / line break is trimmed', async () => {
+  const { secretFingerprint } = await import('../src/live/liveSource');
+  const crypto = await import('crypto');
+  const v = 'a'.repeat(64);
+  assert.equal(secretFingerprint(v), crypto.createHash('sha256').update(v, 'utf8').digest('hex').slice(0, 8));
+  const { loadConfig } = await import('../src/config');
+  const cfg: any = loadConfig({ APPS_SCRIPT_BRIDGE_SECRET: v + ' \n', PUBLIC_BASE_URL: 'https://x.azurewebsites.net' } as any);
+  assert.equal(cfg.appsScriptBridgeSecret, v, 'trimmed');
+  const { checkLiveBridge } = await import('../src/server');
+  const lines: string[] = [];
+  const ctx: any = { cfg: { dataMode: 'sheets', appsScriptBridgeUrl: 'https://script.google.com/macros/s/ABC_def-1/exec', appsScriptBridgeSecret: v },
+    live: { get: async () => ({ script: {}, user: {} }), status: () => ({ ok: false, at: 0, error: 'BAD_SIGNATURE' }) } };
+  assert.equal(await checkLiveBridge(ctx, (m) => lines.push(m)), false);
+  assert.ok(lines.some((l) => l.includes("Azure's secret: 64 characters, fingerprint " + secretFingerprint(v))), lines.join('\n'));
+  assert.ok(!lines.join('\n').includes(v), 'never the value');
+});
