@@ -391,3 +391,44 @@ test('Phase 3: every Script / User Property the copied Code.gs code read in thes
   }
   assert.deepEqual(loose, [], 'add these to src/live/allowlist.ts AND AzureBridge.gs (or to the never lists)');
 });
+
+test('Database pilot (v0.11.0): Special Classes served from the Azure SQL read copy give the SAME answer as Code.gs (Admin, student); Google Sheets not read for them', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); seedAttendance(F);
+  const put = (name: string, rows: unknown[][]) => { const sh = F.env.wb.getSheetByName(name) || F.env.wb.insertSheet(name); sh.maxCols = Math.max(sh.maxCols || 26, rows[0].length); sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows); };
+  put('APS_SPECIAL_CLASSES_LIVE', [['Title', 'Special Class ID', 'Audience', 'Mode', 'Registration Link', 'Status'],
+    ['Tamil grammar camp', 'SC-2026-010', 'Students Only', 'Zoom Meeting', 'https://ok.example/x', 'Active'],
+    ['Parents meet', 'SC-2026-011', 'All', 'Zoom Meeting', 'https://ok.example/y', 'Active'],
+    ['Old camp', 'SC-2025-001', 'All', 'Zoom Meeting', 'https://ok.example/z', 'Inactive']]);
+  const { SC_ENROLLMENTS_SHEET, startDatabase } = await import('../src/db/start');
+  assert.equal(SC_ENROLLMENTS_SHEET, G.SC_ENR_SHEET_, 'same enrollments sheet name as Code.gs');
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT' });
+  const P = Object.getPrototypeOf(F.env.wb.getSheetByName('Courses')); P.getMaxRows = P.getMaxRows || function (this: any) { return Math.max(1000, this.data.length); };
+  const { MemorySheetStore } = await import('../src/db/sheetStore');
+  const { DbBackedDataSource } = await import('../src/db/dbData');
+  const innerData = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+  const scBook = 'id:' + G.scSpreadsheetId_(); let scReads = 0; const orig = innerData.readSheets.bind(innerData);
+  (innerData as any).readSheets = async (b: any, n: string[]) => { if (b === scBook) scReads++; return orig(b, n); };
+  const store = new MemorySheetStore(); const db = new DbBackedDataSource(innerData, store);
+  const ctx = testContext({ cfg }); ctx.data = db; ctx.live = liveFromMock(F);
+  const logs: string[] = [];
+  const sync = await startDatabase(ctx, store, db, 3_600_000, (m) => logs.push(m));
+  assert.ok(sync && sync.last && sync.last.ok, logs.join('\n')); sync!.stop();
+  assert.equal(db.book, scBook); assert.match(logs.join('\n'), /Special Classes copied to Azure SQL — APS_SPECIAL_CLASSES_LIVE 4 rows/);
+  const readsAfterCopy = scReads;
+  const reg = (await import('../src/server')).buildRegistry();
+  G.getGoogleProfileName_ = () => null; G.apsDashboardUrl_ = () => 'https://www.avvaiyarpadasalai.org';
+  for (const [name, email, role] of [['getSpecialClasses', 'admin@aps.org', 'admin'], ['getSpecialClassesAdmin', 'admin@aps.org', 'admin'], ['getSpecialClasses', 'sa0_aps6650@avvaiyarpadasalai.org', 'student']] as [string, string, string][]) {
+    let gas: any; try { gas = J(G[name](F.tok(email, role))); } catch (e) { gas = { err: (e as Error).message }; }
+    const token = await ctx.sessions.create({ email, role });
+    const az: any = await reg.call(ctx, name, [token]);
+    const a = 'ok' in az ? az.ok : { err: az.err };
+    assert.deepEqual(diffs(a, gas), [], role + ' ' + name);
+    assert.ok(!gas.err, name + ' answered: ' + JSON.stringify(gas).slice(0, 120));
+  }
+  assert.equal(scReads, readsAfterCopy, 'no Google Sheets read for Special Classes after the copy');
+  assert.ok(db.served >= 3, 'served from the database: ' + db.served);
+});

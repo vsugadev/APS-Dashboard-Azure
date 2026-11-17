@@ -12,6 +12,9 @@ import { FixtureDataSource, SheetsDataSource } from './data/sources';
 import { bridgeUsable, secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
 import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
 import { registerWrites } from './api/endpoints/writes';
+import { DbBackedDataSource } from './db/dbData';
+import { MssqlSheetStore } from './db/sheetStore';
+import { startDatabase } from './db/start';
 import type { FetchLike } from './live/liveSource';
 import { serviceAccountTokenProvider } from './google/serviceAccount';
 import { MemorySessionStore } from './auth/sessions';
@@ -37,7 +40,9 @@ export function buildRegistry(fetchImpl?: FetchLike): Registry {
 export { bridgeUsable };
 
 export function createContext(cfg: AppConfig): AppContext {
-  const data = cfg.dataMode === 'fixture' ? FixtureDataSource.fromFile(cfg.fixturePath) : new SheetsDataSource(cfg, serviceAccountTokenProvider(cfg));
+  const sheetsData = cfg.dataMode === 'fixture' ? FixtureDataSource.fromFile(cfg.fixturePath) : new SheetsDataSource(cfg, serviceAccountTokenProvider(cfg));
+  // Database pilot (v0.11.0): Special Classes read from Azure SQL when SQL_SERVER + SQL_DATABASE are set (else Google Sheets only).
+  const data = cfg.dataMode === 'sheets' && cfg.sqlServer && cfg.sqlDatabase ? new DbBackedDataSource(sheetsData, new MssqlSheetStore(cfg.sqlServer, cfg.sqlDatabase)) : sheetsData;
   const live = cfg.dataMode === 'fixture' ? FixtureLiveSource.fromFile(cfg.fixturePath)
     : bridgeUsable(cfg) ? new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new EmptyLiveSource();
   const heartbeat = cfg.dataMode !== 'fixture' && cfg.heartbeatEnabled && bridgeUsable(cfg) ? new BridgeHeartbeat(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new NoopHeartbeat();
@@ -157,5 +162,6 @@ if (require.main === module) {
     console.log(`[Server] APS Dashboard (Azure) listening on ${cfg.port} — data: ${cfg.dataMode}`);
     void checkGoogleAccess(ctx);
     void checkLiveBridge(ctx);
+    if (ctx.data instanceof DbBackedDataSource) void startDatabase(ctx, ctx.data.storeRef(), ctx.data, cfg.dbSyncMinutes * 60_000);
   });
 }

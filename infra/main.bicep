@@ -30,6 +30,9 @@ param attendanceSpreadsheetId string = ''
 
 @description('Phase 3: the LIVE Apps Script web app address (https://script.google.com/macros/s/…/exec) — the live-data bridge. Empty = no live data.')
 param appsScriptBridgeUrl string = ''
+@description('Database pilot: Azure SQL server host (e.g. aps-dashboard-sql.database.windows.net) and database. Empty = no database (Google Sheets only).')
+param sqlServer string = ''
+param sqlDatabase string = ''
 
 var vaultName = take('kv-${replace(appName, '-', '')}${uniqueString(resourceGroup().id)}', 24)
 var kvRef = 'https://${vaultName}${environment().suffixes.keyvaultDns}/secrets'
@@ -97,6 +100,8 @@ resource web 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'GOOGLE_IMPERSONATE_USER', value: googleImpersonateUser }
         { name: 'DASHBOARD_HTML_PATH', value: 'public/Dashboard.html' }
         { name: 'APPS_SCRIPT_BRIDGE_URL', value: appsScriptBridgeUrl }
+        { name: 'SQL_SERVER', value: sqlServer }
+        { name: 'SQL_DATABASE', value: sqlDatabase }
         // Secrets — Key Vault references, resolved by the managed identity. Add the secrets with the names below.
         { name: 'GOOGLE_OAUTH_CLIENT_ID', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/google-oauth-client-id/)' }
         { name: 'GOOGLE_OAUTH_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=${kvRef}/google-oauth-client-secret/)' }

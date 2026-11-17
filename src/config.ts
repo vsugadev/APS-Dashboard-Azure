@@ -41,7 +41,10 @@ export interface AppConfig {
   appsScriptBridgeUrl: string;         // APPS_SCRIPT_BRIDGE_URL — the live Apps Script web app /exec address (Phase 3)
   appsScriptBridgeSecret: string;
   heartbeatEnabled: boolean;
-  writeThroughEnabled: boolean;       // AZURE_WRITE_THROUGH (default on; "off" = Saves answer "not on Azure yet") — write phase          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
+  writeThroughEnabled: boolean;
+  sqlServer: string;                  // SQL_SERVER — Azure SQL server host (e.g. aps-dashboard-sql.database.windows.net); empty = no database (pilot)
+  sqlDatabase: string;                // SQL_DATABASE — database name (free offer, serverless)
+  dbSyncMinutes: number;              // DB_SYNC_MINUTES — how often Special Classes are copied into the database (default 5, 1–60)       // AZURE_WRITE_THROUGH (default on; "off" = Saves answer "not on Azure yet") — write phase          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
 }
@@ -116,7 +119,10 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     appsScriptBridgeUrl: String(env.APPS_SCRIPT_BRIDGE_URL || '').trim(),
     appsScriptBridgeSecret: String(env.APPS_SCRIPT_BRIDGE_SECRET || '').trim(),
     heartbeatEnabled: String(env.AZURE_HEARTBEAT || 'on').trim().toLowerCase() !== 'off',
-    writeThroughEnabled: String(env.AZURE_WRITE_THROUGH || 'on').trim().toLowerCase() !== 'off', // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
+    writeThroughEnabled: String(env.AZURE_WRITE_THROUGH || 'on').trim().toLowerCase() !== 'off',
+    sqlServer: String(env.SQL_SERVER || '').trim().replace(/^tcp:/i, '').replace(/,1433$/, ''),
+    sqlDatabase: String(env.SQL_DATABASE || '').trim(),
+    dbSyncMinutes: Math.min(60, Math.max(1, Math.floor(Number(env.DB_SYNC_MINUTES) || 5))), // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };

@@ -1,8 +1,8 @@
 {
   "name": "aps-dashboard-azure",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
-  "description": "APS Dashboard on Azure \u2014 Phase 1 foundation (sign-in, sessions, roles, Access Control, API registry, browser shim)",
+  "description": "APS Dashboard on Azure — Phase 1 foundation (sign-in, sessions, roles, Access Control, API registry, browser shim)",
   "type": "commonjs",
   "engines": {
     "node": ">=22"
@@ -29,10 +29,12 @@
   },
   "dependencies": {
     "express": "4.21.2",
-    "google-auth-library": "9.15.1"
+    "google-auth-library": "9.15.1",
+    "mssql": "11.0.1"
   },
   "devDependencies": {
     "@types/express": "4.17.21",
+    "@types/mssql": "9.1.5",
     "@types/node": "20.17.10",
     "typescript": "5.7.2"
   }

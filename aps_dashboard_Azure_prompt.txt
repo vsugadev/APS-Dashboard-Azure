@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 8655bf1db4ae24a6cae53ac23c5fbcad
+#   Part B md5    : 15cd23029baaab5db8837dd2f9e5e4d0
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -959,6 +959,9 @@ header is longer, or Code.gs fails quietly in the mock.
 - Phase 3 step 1 (v0.8.0): live data through the Apps Script bridge (`AzureBridge.gs` r122 in the live project, routed
   by `PortalBridge.gs` doPost `azure:1`; Azure `src/live/`). The Code.gs live passes and `getRealtimeStatusSnapshot` run
   on Azure; the Phase 2 stand-ins are gone. Not yet: live Meet status, heartbeat from Azure, chat. See `docs/PHASE3.md`.
+- v0.11.0 (2026-11-17): database pilot — Azure SQL Database free offer, managed identity (no password), read copy of
+  Special Classes (src/db/; docs/DATABASE.md). Reads fall back to Sheets automatically. Next: stage 3 (database owns the
+  programs list) or teacher class-card actions (write-through).
 - v0.10.0 (2026-11-17): Phase 4 step 1 — 11 Admin settings saves write THROUGH Apps Script (bridge action call,
   AzureBridge.gs r132; WRITE_THROUGH list in src/api/endpoints/writes.ts must equal AZURE_BRIDGE_CALLS_). Rule for every
   later write: run the real Code.gs function in Apps Script via the bridge; never write Apps Script stores from Azure.
