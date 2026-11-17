@@ -12,6 +12,11 @@ on:
 permissions:
   id-token: write
   contents: read
+# One deploy at a time; a newer push replaces an older run that is still waiting, so old code can never be deployed
+# over newer code (a run already deploying is never cut off half-way).
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
