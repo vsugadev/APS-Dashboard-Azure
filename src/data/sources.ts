@@ -139,6 +139,8 @@ export class SheetsDataSource implements DataSource {
       return { valueRanges: r.valueRanges || [] };
     });
   }
+  /** Write phase (v0.10.0): after a save through the bridge, every cached read is re-done once. */
+  invalidate(): void { this.cache.clear(); }
   async readAccessOverrides(): Promise<AccessOverrides> {
     return this.cache.get('access', ACCESS_TTL_MS, async () => {
       try { return parseAccessRows((await this.values([`${AC_SHEET}!A2:F`]))[0]); }

@@ -40,7 +40,8 @@ export interface AppConfig {
   scriptSettings: Record<string, string>; // other Code.gs settings the copied readers read (APS_*, TCC_*, TTM_*, CTA_*, ROSTER_*, ATTENDANCE_*, SPECIAL_CLASSES_*, ZOHO_SYNC_SPREADSHEET_ID) — never secrets           // APS_COUNTRY_FEATURE (default on, as Code.gs r120)
   appsScriptBridgeUrl: string;         // APPS_SCRIPT_BRIDGE_URL — the live Apps Script web app /exec address (Phase 3)
   appsScriptBridgeSecret: string;
-  heartbeatEnabled: boolean;          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
+  heartbeatEnabled: boolean;
+  writeThroughEnabled: boolean;       // AZURE_WRITE_THROUGH (default on; "off" = Saves answer "not on Azure yet") — write phase          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
 }
@@ -114,7 +115,8 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     scriptSettings: scriptSettingsFrom(env),
     appsScriptBridgeUrl: String(env.APPS_SCRIPT_BRIDGE_URL || '').trim(),
     appsScriptBridgeSecret: String(env.APPS_SCRIPT_BRIDGE_SECRET || '').trim(),
-    heartbeatEnabled: String(env.AZURE_HEARTBEAT || 'on').trim().toLowerCase() !== 'off', // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
+    heartbeatEnabled: String(env.AZURE_HEARTBEAT || 'on').trim().toLowerCase() !== 'off',
+    writeThroughEnabled: String(env.AZURE_WRITE_THROUGH || 'on').trim().toLowerCase() !== 'off', // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };

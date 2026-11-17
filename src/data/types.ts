@@ -35,4 +35,6 @@ export interface DataSource {
   readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot>;
   /** Sheets API values:batchGet (read only), as the Apps Script Sheets advanced service returns it. */
   readValues(book: WorkbookKey, req: ValuesRequest): Promise<{ valueRanges: { range: string; values?: unknown[][] }[] }>;
+  /** Write phase: forget cached reads after a save went through to Apps Script (next read is fresh). */
+  invalidate?(): void;
 }

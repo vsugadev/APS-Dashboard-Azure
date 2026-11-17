@@ -13,10 +13,16 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import { filterLive } from './allowlist';
+import type { AppConfig } from '../config';
+
+/** The bridge is used only with the real /exec address and a long enough secret (config warnings say why not). */
+export function bridgeUsable(cfg: AppConfig): boolean {
+  return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl) && cfg.appsScriptBridgeSecret.length >= 32;
+}
 
 export interface LiveProps { script: Record<string, string>; user: Record<string, string> }
 export interface LiveSnapshot extends LiveProps { at: number; ok: boolean }
-export interface LiveSource { get(): Promise<LiveProps>; status(): { ok: boolean; at: number; error: string } }
+export interface LiveSource { get(): Promise<LiveProps>; status(): { ok: boolean; at: number; error: string }; /** write phase: next get() fetches again */ invalidate?(): void }
 
 export const LIVE_TTL_MS = 20_000;            // presence is "online" for minutes; 20 s keeps it as fresh as a page refresh
 export const LIVE_STALE_MAX_MS = 5 * 60_000;  // after a failed refresh, the last good snapshot is used up to 5 minutes
@@ -48,13 +54,16 @@ export class AppsScriptLiveSource implements LiveSource {
   private lastLogged = 0;
   constructor(private url: string, private secret: string, private fetchImpl: FetchLike = fetch as unknown as FetchLike, private now: () => number = Date.now) {}
 
+  private stale = false;
   status() { return { ok: !!this.last && this.last.ok, at: this.last ? this.last.at : 0, error: this.lastError }; }
+  /** v0.10.0: a save went through to Apps Script — the next read fetches a fresh snapshot (the old one stays as fallback). */
+  invalidate(): void { this.stale = true; }
 
   async get(): Promise<LiveProps> {
     const t = this.now();
-    if (this.last && t - this.last.at < LIVE_TTL_MS) return copy(this.last);
+    if (this.last && !this.stale && t - this.last.at < LIVE_TTL_MS) return copy(this.last);
     if (!this.inflight) this.inflight = this.fetchOnce().finally(() => { this.inflight = null; });
-    try { this.last = await this.inflight; this.lastError = ''; return copy(this.last); }
+    try { this.last = await this.inflight; this.lastError = ''; this.stale = false; return copy(this.last); }
     catch (e) {
       this.lastError = String((e as Error).message || e).slice(0, 120);
       if (t - this.lastLogged > 60_000) { this.lastLogged = t; console.warn('[Live] Apps Script bridge failed: ' + this.lastError + (this.last && t - this.last.at < LIVE_STALE_MAX_MS ? ' — using the last snapshot' : ' — live data empty')); }

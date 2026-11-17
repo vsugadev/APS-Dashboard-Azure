@@ -9,8 +9,10 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
-import { secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
+import { bridgeUsable, secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
 import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
+import { registerWrites } from './api/endpoints/writes';
+import type { FetchLike } from './live/liveSource';
 import { serviceAccountTokenProvider } from './google/serviceAccount';
 import { MemorySessionStore } from './auth/sessions';
 import { googleAuth, StateNonces } from './auth/google';
@@ -22,18 +24,17 @@ import { DashboardPage } from './web/render';
 import { signInWithClaims, type AppContext, type SignInResult } from './app/context';
 import { describeGoogleError } from './google/diagnose';
 
-export function buildRegistry(): Registry {
+export function buildRegistry(fetchImpl?: FetchLike): Registry {
   const reg = new Registry();
   registerCore(reg);
   registerClasses(reg);
   registerReads2(reg);
+  registerWrites(reg, fetchImpl); // write phase step 1: Admin settings saves → Apps Script (signed bridge)
   return reg;
 }
 
 /** The bridge is used only with the real /exec address and a long enough secret (config warnings say why not). */
-export function bridgeUsable(cfg: AppConfig): boolean {
-  return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl) && cfg.appsScriptBridgeSecret.length >= 32;
-}
+export { bridgeUsable };
 
 export function createContext(cfg: AppConfig): AppContext {
   const data = cfg.dataMode === 'fixture' ? FixtureDataSource.fromFile(cfg.fixturePath) : new SheetsDataSource(cfg, serviceAccountTokenProvider(cfg));

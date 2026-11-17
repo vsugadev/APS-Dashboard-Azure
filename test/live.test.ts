@@ -19,12 +19,12 @@ const SECRET = 'az-bridge-test-secret-0123456789-abcdef';
 const URL = 'https://script.google.com/macros/s/AKfyTEST/exec';
 
 /** Code.gs + PortalBridge.gs + AzureBridge.gs in the Apps Script mock, with live data and secrets in both stores. */
-function appsScript() {
+function appsScript(extra: Record<string, string> = {}) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { makeContext } = require(path.join(GAS, 'test', 'gasmock.js'));
   const env = makeContext({ props: { AZURE_BRIDGE_SECRET: SECRET, PORTAL_SHARED_SECRET: '', presenceMap: '{"a@x":{"lastSeen":"2026-11-11T10:00:00.000Z"}}', classStatusMap: '{"1":{"status":"cancelled"}}',
     onCallTeachers_v1: '[]', rosterHiddenStaffVisible_v1: 'true', 'GOOGLE_REVIEW_PROMPT_s@x': '1', EXAM_QP_DOWNLOAD_KEY_SECRET: 'never', TICKET_MAIL_SERVICE_ACCOUNT_JSON: '{"private_key":"never"}',
-    ZOHO_REFRESH_TOKEN: 'never', aps_session_abc: '{"email":"never"}', ADMIN_EMAILS: '["never@x"]', dashboardRolePermissions_v1: '{"never":1}', SOME_UNLISTED_KEY: 'never' } });
+    ZOHO_REFRESH_TOKEN: 'never', aps_session_abc: '{"email":"never"}', ADMIN_EMAILS: '["never@x"]', dashboardRolePermissions_v1: '{"never":1}', SOME_UNLISTED_KEY: 'never', ...extra } });
   Object.assign(env.userProps, { lastLoginMap: '{"a@x":{"db":"2026-11-10T10:00:00.000Z"}}', onboardedStudents: '{}', ZOHO_ACCESS_TOKEN: 'never' });
   env.ctx.ContentService = { MimeType: { JSON: 'json' }, createTextOutput: (t: string) => ({ setMimeType: () => ({ getContent: () => t }), getContent: () => t }) };
   const log: string[] = []; env.ctx.console = { log() {}, info() {}, warn: (m: string) => log.push(String(m)), error: (m: string) => log.push(String(m)) };
@@ -179,4 +179,51 @@ test('Phase 3 step 2: heartbeat sender — failures kept and retried, old Apps S
   mode = 'ok'; now += 10 * 60000; await hb.flush(); assert.equal(hb.status().error, '', 'resumes after the pause');
   assert.ok(!/aps8002|aps5557|az-bridge-test-secret/.test(logs.join('\n')), 'no e-mail or secret in the log');
   const n = new NoopHeartbeat(); n.note(); await n.flush(); assert.equal(n.status().sent, 0);
+});
+
+test('write phase step 1 (AzureBridge.gs r132): the call list is identical on both sides', { skip: !have && 'gas-source/AzureBridge.gs not found' }, async () => {
+  const { WRITE_THROUGH } = await import('../src/api/endpoints/writes');
+  const c: any = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(GAS, 'AzureBridge.gs'), 'utf8'), c);
+  assert.deepEqual(Array.from(c.AZURE_BRIDGE_CALLS_), WRITE_THROUGH);
+  for (const n of WRITE_THROUGH) assert.ok(/^(save|set)[A-Z]/.test(n), n + ' is a settings save');
+});
+
+test('write phase step 1: a Save on Azure runs the REAL Code.gs function in Apps Script for the signed-in person — Apps Script decides the role; refusals, unlisted functions and non-APS accounts stopped; temporary session removed; Azure caches refreshed', { skip: !have && 'Apps Script files not found' }, async () => {
+  const ADMIN = 'admin_aps9100@avvaiyarpadasalai.org', TEACHER = 'teach_aps9101@avvaiyarpadasalai.org';
+  const A = appsScript({ ADMIN_EMAILS: JSON.stringify([ADMIN]), rosterHiddenStaffVisible_v1: 'true' });
+  const { testContext, testConfig } = await import('./helpers');
+  const { buildRegistry } = await import('../src/server');
+  const cfg = testConfig({ dataMode: 'sheets', appsScriptBridgeUrl: URL, appsScriptBridgeSecret: SECRET, writeThroughEnabled: true });
+  const ctx: any = testContext({ cfg }); let inv = 0; ctx.live = { get: async () => ({ script: {}, user: {} }), status: () => ({ ok: true, at: 0, error: '' }), invalidate: () => { inv++; } };
+  const reg = buildRegistry(A.fetchImpl);
+  const admin = await ctx.sessions.create({ email: ADMIN, role: 'admin' });
+  const r: any = await reg.call(ctx, 'setRosterHiddenStaffVisible', [admin, false]);
+  assert.deepEqual(r, { ok: { visible: false } }, JSON.stringify(r));
+  assert.equal(A.env.props.rosterHiddenStaffVisible_v1, 'false', 'written in Apps Script by the real function');
+  assert.equal(inv, 1, 'Azure live snapshot refreshed after the save');
+  // Azure says "admin" for a teacher (outdated / forged role) — Apps Script works out the role itself and refuses
+  const forged = await ctx.sessions.create({ email: TEACHER, role: 'admin' });
+  const f: any = await reg.call(ctx, 'setRosterHiddenStaffVisible', [forged, true]);
+  assert.match(String(f.err), /Only Admin users can hide or show/); assert.equal(A.env.props.rosterHiddenStaffVisible_v1, 'false', 'unchanged');
+  // the function's own validation message reaches the page unchanged
+  const v: any = await reg.call(ctx, 'saveAccessControl', [admin, []]);
+  assert.match(String(v.err), /No changes to save/);
+  // straight to the bridge: an unlisted function, a non-APS account → refused
+  const crypto = require('crypto');
+  const raw = (pl: unknown) => { const p = JSON.stringify(pl), ts = String(Date.now()), nonce = crypto.randomUUID(); return A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: crypto.createHmac('sha256', SECRET).update(ts + '.' + nonce + '.' + p).digest('hex') })); };
+  assert.equal(raw({ action: 'call', v: 1, fn: 'saveDashboardUserRole', args: ['x@avvaiyarpadasalai.org', 'admin', true], email: ADMIN }).code, 'BAD_REQUEST');
+  assert.equal(raw({ action: 'call', v: 1, fn: 'endSession', args: [], email: ADMIN }).code, 'BAD_REQUEST');
+  assert.equal(raw({ action: 'call', v: 1, fn: 'setRosterHiddenStaffVisible', args: [true], email: 'someone@gmail.com' }).code, 'BAD_REQUEST');
+  assert.equal(A.env.props.rosterHiddenStaffVisible_v1, 'false');
+  // no temporary session left behind in Apps Script
+  assert.deepEqual(Object.keys(A.env.cache || {}).filter((k) => /^aps_sess_az_/.test(k)), [], 'temporary sessions removed');
+  // switched off on Azure → the old answer
+  const ctxOff: any = testContext({ cfg: { ...cfg, writeThroughEnabled: false } });
+  const off = await ctxOff.sessions.create({ email: ADMIN, role: 'admin' });
+  assert.match(String(((await reg.call(ctxOff, 'setRosterHiddenStaffVisible', [off, true])) as any).err), /NOT_ON_AZURE_YET/);
+  // no session → refused before anything is sent
+  const calls = A.fetchImpl.calls;
+  assert.match(String(((await reg.call(ctx, 'setRosterHiddenStaffVisible', ['bogus', true])) as any).err), /SESSION_EXPIRED/);
+  assert.equal(A.fetchImpl.calls, calls, 'nothing sent without a session');
 });

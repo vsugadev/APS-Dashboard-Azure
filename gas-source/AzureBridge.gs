@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -20,10 +20,16 @@
  *   - The Azure app keeps the snapshot ~20 s and calls only while someone uses the Azure dashboard. Successful calls
  *     are not logged to Portal_Bridge_Log (no sheet write per call); failures go to the execution log (no values).
  *   - The lists are mirrored in the Azure project (src/live/allowlist.ts); its tests fail if they ever differ.
- *   - r131 — second action, heartbeat (the ONLY write): { action:'heartbeat', v:1, emails:[…] } — people using the Azure
+ *   - r131 — second action, heartbeat (the first write): { action:'heartbeat', v:1, emails:[…] } — people using the Azure
  *     dashboard (Azure sends the e-mail of its own signed-in sessions, batched every ~15 s) are recorded exactly like
  *     a visit here (recordHeartbeat_): "online now" (presenceMap) and Last Login → DB slot (lastLoginMap). Only
- *     APS-domain e-mails, at most 200 per call, one lock + one write per store per call; nothing else can be written.
+ *     APS-domain e-mails, at most 200 per call, one lock + one write per store per call.
+ *   - r132 — third action, call (write phase step 1, Admin settings saves): { action:'call', v:1, fn, args, email } runs
+ *     ONE of the Code.gs functions in AZURE_BRIDGE_CALLS_ for that person, exactly as if they had pressed Save here:
+ *     Apps Script works out the person's role ITSELF from the e-mail (getViewerRoleForEmail_ — Azure's role is never
+ *     used), makes a session that lives only for this call, and the function's own checks (Admin only, Access
+ *     Control tab, read-only roles, validation, locks, audit with the person's e-mail) decide. Not in the list → refused.
+ *     The list is mirrored in Azure (src/api/endpoints/writes.ts); its test fails if they differ.
  * ========================================================================== */
 var AZURE_BRIDGE_LIVE_KEYS_ = [
   'APS_CLASSES_ALWAYS_SHOW_EMAILS', 'APS_CLASSES_PRIMARY_ONLY_PREFIXES', 'APS_CLASSROOM_ROSTER_ACADEMIC_YEAR',
@@ -63,8 +69,14 @@ var AZURE_BRIDGE_NEVER_KEYS_ = [
 var AZURE_BRIDGE_NEVER_RE_ = /SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|SERVICE_ACCOUNT|API_KEY|CLIENT_ID|OAUTH|REFRESH|NONCE|SESSION/i;
 var AZURE_BRIDGE_NONCE_PREFIX_ = 'aps_az_nonce_';
 var AZURE_BRIDGE_MAX_SKEW_MS_ = 5 * 60 * 1000;
-var AZURE_BRIDGE_MAX_P_ = 20000;        // r131: a heartbeat batch (≤ 200 e-mails) — was 2000 for the snapshot request
+var AZURE_BRIDGE_MAX_P_ = 100000;       // r131: heartbeat batch; r132: a settings save (e.g. Assignment Monitoring config) — was 2000
 var AZURE_BRIDGE_MAX_HEARTBEATS_ = 200;
+/** r132 — the ONLY Code.gs functions Azure may run (Admin settings saves; synchronous; JSON in / out). */
+var AZURE_BRIDGE_CALLS_ = [
+  'saveAccessControl', 'saveAssignmentMonitoringConfig', 'saveMissingGradingConfig', 'saveMarkCompleteSettings',
+  'saveTeacherAppreciationConfig', 'setTeacherAppreciationEmails', 'saveSpecialClassesSettings', 'saveTicketSettings',
+  'setExamQuestionPaperDefaults', 'setExamQuestionPaperAutoEmail', 'setRosterHiddenStaffVisible'
+];
 
 /** True only for an allow-listed, non-secret key. */
 function azureBridgeAllowed_(key) {
@@ -81,6 +93,7 @@ function azureBridgeDoPost_(body) {
     var req = azureBridgeVerify_(body);
     if (req.action === 'liveSnapshot') out = { ok: true, result: azureBridgeLiveSnapshot_() };
     else if (req.action === 'heartbeat') out = { ok: true, result: azureBridgeHeartbeats_(req) }; // r131
+    else if (req.action === 'call') out = { ok: true, result: azureBridgeCall_(req) }; // r132
     else throw portalErr_('BAD_REQUEST', 'Unknown action.');
   } catch (err) {
     out = { ok: false, code: err && err.portalCode || 'ERROR', message: err && err.portalCode ? String(err.message) : 'The APS Dashboard could not complete this request.' };
@@ -159,5 +172,34 @@ function azureBridgeHeartbeats_(req) {
     return { recorded: emails.length, ignored: ignored };
   } finally {
     try { lock.releaseLock(); } catch (e2) { /* ignore */ }
+  }
+}
+
+/**
+ * r132 — runs one allow-listed Code.gs function for the person Azure signed in (write phase step 1). Returns
+ * { value } or { error: <the function's own message> } (one line, no stack). The temporary session is removed after.
+ */
+function azureBridgeCall_(req) {
+  var fn = String(req.fn || '');
+  var g = globalThis;
+  if (AZURE_BRIDGE_CALLS_.indexOf(fn) === -1 || typeof g[fn] !== 'function') throw portalErr_('BAD_REQUEST', 'This function cannot be called from Azure.');
+  var email = normalizeEmail_(String(req.email || ''));
+  if (!email || !isApsEmailAllowed_(email)) throw portalErr_('BAD_REQUEST', 'Not an APS account.');
+  var args = Array.isArray(req.args) ? req.args : [];
+  if (args.length > 10) throw portalErr_('BAD_REQUEST', 'Too many arguments.');
+  var viewer = getViewerRoleForEmail_(email, readAllCoursesFromCache_()); // the role is decided HERE, never by Azure
+  if (!viewer || !viewer.role || viewer.role === 'none') return { error: 'You are not authorized to use the APS Dashboard.' };
+  var cache = CacheService.getScriptCache(), tok = 'az_' + Utilities.getUuid().replace(/-/g, '');
+  cache.put(SESSION_CACHE_PREFIX_ + tok, JSON.stringify({ email: viewer.email, role: viewer.role, issuedAt: Date.now(), via: 'azure' }), 120);
+  try {
+    var v = g[fn].apply(null, [tok].concat(args));
+    if (v && typeof v.then === 'function') return { error: 'This action is not available from Azure yet.' };
+    return { value: v === undefined ? null : JSON.parse(JSON.stringify(v)) };
+  } catch (e) {
+    var m = String(e && e.message || e).split('\n')[0].replace(/(Bearer\s+|token[=:]\s*|secret[=:]\s*)[^\s,)]+/gi, '$1[hidden]').slice(0, 300);
+    console.warn('[AzureBridge] call ' + fn + ' refused: ' + m.slice(0, 120));
+    return { error: m };
+  } finally {
+    try { cache.remove(SESSION_CACHE_PREFIX_ + tok); } catch (eR) { /* expires in 2 minutes */ }
   }
 }
