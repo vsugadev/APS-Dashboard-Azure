@@ -92,7 +92,7 @@ test('sign-in state: signed, single-use, 10 minutes; survives an app restart; fo
   assert.equal(other.consume(n.issue()), false);
   const t = n.issue(); const [body, sig] = t.split('.');
   const forged = Buffer.from(JSON.stringify({ n: 'x', t: now, k: 'APS-20260101-0001' })).toString('base64url') + '.' + sig;
-  assert.equal(n.consume(forged), false); assert.equal(n.consume(body + '.' + sig.slice(0, -2) + 'AA'), false);
+  assert.equal(n.consume(forged), false); assert.equal(n.consume(body + '.' + sig.slice(0, -2) + (sig.slice(-2) === 'AA' ? 'BB' : 'AA')), false); // v0.8.2: never the unchanged signature (was flaky 1 in 4096)
   assert.equal(n.consume(t), true);
   // nothing secret or personal inside: only a random value, the time and an optional ticket number
   assert.deepEqual(Object.keys(JSON.parse(Buffer.from(n.issue().split('.')[0], 'base64url').toString())).sort(), ['n', 't']);
@@ -110,4 +110,17 @@ test('config: names match Script Properties; DEV_LOGIN refused in Azure; missing
   assert.ok(p.some((x) => /PUBLIC_BASE_URL/.test(x))); assert.ok(p.some((x) => /GOOGLE_OAUTH_CLIENT_ID/.test(x)));
   assert.ok(!p.join(' ').includes('shh-secret'), 'secret values are never printed');
   assert.deepEqual(testConfig().allowedDomains, ['avvaiyarpadasalai.org', 'amchats.org', 'namaps.org', 'apsamerica.org']);
+});
+
+test('v0.8.2: a failed sign-in code exchange is logged with Google\'s reason and the fix — never the code or secret', async () => {
+  const { describeOAuthExchangeError } = await import('../src/auth/google');
+  const r = 'https://aps-dashboard-ap.azurewebsites.net/';
+  const body = (error: string) => Object.assign(new Error('bad request'), { response: { data: { error, error_description: 'x' } } });
+  assert.match(describeOAuthExchangeError(body('invalid_grant'), r), /^invalid_grant — the sign-in code was already used or expired/);
+  assert.match(describeOAuthExchangeError(body('redirect_uri_mismatch'), r), /must contain exactly https:\/\/aps-dashboard-ap\.azurewebsites\.net\/ /);
+  assert.match(describeOAuthExchangeError(body('invalid_client'), r), /google-oauth-client-secret do not match/);
+  assert.match(describeOAuthExchangeError(new Error('invalid_client: Unauthorized'), r), /^invalid_client/);
+  assert.match(describeOAuthExchangeError(new Error('fetch failed'), r), /could not reach Google/);
+  const line = describeOAuthExchangeError(Object.assign(new Error('4/0AbCdEfSecretCode client_secret=GOCSPX-abc'), { response: { data: { error: 'invalid_grant' } } }), r);
+  assert.ok(!/4\/0AbCdEf|GOCSPX|client_secret/.test(line), 'nothing secret in the log line: ' + line);
 });

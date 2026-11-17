@@ -220,23 +220,21 @@ t('before release: backend refuses (NOT_YET_AVAILABLE) and audits, whatever the 
   assert.ok(r.message.includes('It will become available at:\nFriday, October 16, 2026 – 6:15 PM EST'));
   assert.strictEqual(cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', last(), 'Download_Status'), 'NOT_YET_AVAILABLE');
 });
-t('exactly at release: allowed; wrong APSID / missing confirmation / tampered class / wrong class / unknown id / teacher all rejected + audited', async () => {
+t('exactly at release: allowed; r126 APSID never typed (a sent APSID is ignored) / missing confirmation / tampered class / wrong class / unknown id / teacher all rejected + audited', async () => {
   D.set('2026-10-16T22:15:00Z'); // 6:15:00 PM EDT
   assert.strictEqual(J(G.getMyExamQuestionPapers(bala)).papers[0].state, 'AVAILABLE');
-  let r = J(await dl(bala, { apsId: 'APS9999' })); assert.strictEqual(r.code, 'INVALID_APSID'); assert.ok(r.message.startsWith('The APSID entered does not match your student account.'));
-  r = J(await dl(bala, { apsId: 'aps 9998' })); assert.strictEqual(r.code, 'INVALID_APSID');
-  r = J(await dl(bala, { confirmed: false })); assert.strictEqual(r.code, 'CONFIRMATION_REQUIRED');
+  let r = J(await dl(bala, { confirmed: false })); assert.strictEqual(r.code, 'CONFIRMATION_REQUIRED');
   r = J(await dl(bala, { className: 'NILAI 3 - PA | FRI 9:00 - 10:30 PM EST | AY26-27' })); assert.strictEqual(r.code, 'INVALID_CLASS');
   r = J(await dl(bala, { grade: 'NILAI 3' })); assert.strictEqual(r.code, 'INVALID_CLASS');
   r = J(await dl(bala, { examId: 'EXM-20260101-AAAAAA' })); assert.strictEqual(r.code, 'INVALID_EXAM');
   r = J(await dl(bala, { studentEmail: 'chitra_aps2003@avvaiyarpadasalai.org' })); assert.strictEqual(r.code, 'UNAUTHORIZED');
-  r = J(await dl(raja, { apsId: 'APS1234' })); assert.strictEqual(r.code, 'INVALID_CLASS'); assert.strictEqual(r.message, 'This question paper is not assigned to your class.');
+  r = J(await dl(raja, {})); assert.strictEqual(r.code, 'INVALID_CLASS'); assert.ok(r.message.startsWith('This question paper is not for your class.'), r.message); assert.ok(!/C\d|EQP-|NILAI/.test(r.message), 'no internal details for students');
   r = J(await dl(bala, { questionPaperId: 'EQP-20261014-ZZZZZZZZ' })); assert.strictEqual(r.code, 'QUESTION_PAPER_NOT_FOUND');
   r = J(await dl(bala, { questionPaperId: '1' })); assert.strictEqual(r.code, 'QUESTION_PAPER_NOT_FOUND');
   r = J(await dl(tTwo)); assert.strictEqual(r.code, 'UNAUTHORIZED');
   assert.throws(() => G.downloadExamQuestionPaper('bogus', { questionPaperId: ids.C2 }), /SESSION_EXPIRED/);
   const audit = rows('EXAM_QUESTION_PAPER_AUDIT').map(x => cell('EXAM_QUESTION_PAPER_AUDIT', x, 'Event_Type'));
-  ['INVALID_APSID', 'UNAUTHORIZED_DOWNLOAD_ATTEMPT', 'DOWNLOAD_ATTEMPTED', 'STUDENT_VIEWED_EXAM', 'DOWNLOAD_WINDOW_OPENED'].forEach(e => assert.ok(audit.includes(e), e));
+  ['UNAUTHORIZED_DOWNLOAD_ATTEMPT', 'DOWNLOAD_ATTEMPTED', 'STUDENT_VIEWED_EXAM', 'DOWNLOAD_WINDOW_OPENED'].forEach(e => assert.ok(audit.includes(e), e));
 });
 let firstOut;
 t('valid download: personalized PDF with name, APSID, class, exam and EST time on EVERY page; original untouched; archived; named per spec', async () => {
@@ -260,17 +258,19 @@ t('valid download: personalized PDF with name, APSID, class, exam and EST time o
   assert.strictEqual(saved.length, 1, 'personalized copy archived privately');
   const ev = last();
   assert.deepStrictEqual(['Download_Status', 'Student_Full_Name', 'APSID', 'Student_Email', 'Verification_Status', 'Confirmation_Checked', 'Download_Attempt_Count', 'Download_Date_Time_EST', 'User_Agent'].map(h => cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', ev, h)),
-    ['DOWNLOAD_COMPLETED', 'Bala', 'APS2002', 'bala_aps2002@avvaiyarpadasalai.org', 'VERIFIED', 'TRUE', '1', '2026-10-16 18:17:00', 'test-UA']);
+    ['DOWNLOAD_COMPLETED', 'Bala', 'APS2002', 'bala_aps2002@avvaiyarpadasalai.org', 'ACCOUNT_VERIFIED', 'TRUE', '1', '2026-10-16 18:17:00', 'test-UA']);
   assert.ok(/^S-/.test(cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', ev, 'Session_ID')) && !cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', ev, 'Session_ID').includes('tok_'), 'session hashed, never the token');
   assert.strictEqual(cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', ev, 'Personalized_File_ID'), saved[0].id);
 });
-t('each student gets a UNIQUE copy; APSID not in email is accepted as unverifiable but recorded', async () => {
-  const c = await dl(chitra, { apsId: 'APS2003' });
+t('each student gets a UNIQUE copy; r126: email without _apsNNNN → APSXXX (account email stamped); a wrong APSID sent by an old page is ignored', async () => {
+  const c = await dl(chitra, { apsId: 'APS9999' });
   assert.strictEqual(c.state, 'READY'); assert.notStrictEqual(c.base64, firstOut.base64);
   assert.ok(pdfText(c.base64, 1).includes('Student: Chitra') && !pdfText(c.base64, 1).includes('Bala'));
+  assert.ok(pdfText(c.base64, 1).includes('APS2003') && !pdfText(c.base64, 1).includes('APS9999'), 'APSID from the account, never from the browser');
   const d = await dl(deva, { apsId: 'APS3001' });
-  assert.strictEqual(d.state, 'READY');
-  assert.strictEqual(cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', last(), 'Verification_Status'), 'APSID_NOT_VERIFIABLE_FROM_EMAIL');
+  assert.strictEqual(d.state, 'READY'); assert.strictEqual(d.apsId, 'APSXXX');
+  assert.ok(pdfText(d.base64, 1).includes('APSXXX') && pdfText(d.base64, 1).includes('deva@avvaiyarpadasalai.org') && !pdfText(d.base64, 1).includes('APS3001'));
+  assert.deepStrictEqual(['Verification_Status', 'APSID', 'Entered_APSID'].map(h => cell('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT', last(), h)), ['ACCOUNT_VERIFIED_NO_APSID_IN_EMAIL', 'APSXXX', '']);
 });
 t('DOWNLOAD KEY: unique per student + paper, printed (red) at top AND bottom of every page, recorded in the audit + summary, stable on re-download, searchable', async () => {
   const key = firstOut.downloadKey;
@@ -406,7 +406,7 @@ t('HM/Admin: all classes, tiles, filters, suspicious activity, CSV export, audit
   assert.strictEqual(J(G.getExamQuestionPaperMonitoring(hm, { teacher: 'Teacher Three' })).papers.length, 1);
   assert.strictEqual(J(G.getExamQuestionPaperMonitoring(hm, { dateFrom: '2026-10-17' })).papers.length, 1, 'date range');
   const types = m.suspicious.map(s => s.type);
-  ['MULTIPLE_INVALID_APSID', 'OTHER_CLASS_OR_UNKNOWN_PAPER', 'ACCOUNT_OR_DATA_MISMATCH', 'BEFORE_RELEASE', 'AFTER_CLOSE', 'REPEATED_DOWNLOADS_SHORT_PERIOD'].forEach(x => assert.ok(types.includes(x), x + ' in ' + types));
+  ['OTHER_CLASS_OR_UNKNOWN_PAPER', 'ACCOUNT_OR_DATA_MISMATCH', 'BEFORE_RELEASE', 'AFTER_CLOSE', 'REPEATED_DOWNLOADS_SHORT_PERIOD'].forEach(x => assert.ok(types.includes(x), x + ' in ' + types));
   const csv = J(G.exportExamQuestionPaperAudit(admin, {}));
   assert.ok(csv.csv.startsWith('"Student","APSID","Email","Class","Teacher","Exam"'));
   assert.ok(csv.csv.includes('"Bala","APS2002"') && csv.csv.includes('"2"'));
@@ -424,7 +424,7 @@ t('admin preview is watermarked PREVIEW and audited as ADMIN_OVERRIDE', async ()
   await assert.rejects(async () => G.previewExamQuestionPaper(bod, { questionPaperId: ids.C2 }), /Only Admin can preview/);
   assert.ok(J(G.getExamQuestionPaperMonitoring(bod, {})).papers.length === 4, 'BOD sees monitoring (read-only)');
 });
-t('r67/r104 ⬇️ Teacher Copy: assigned class teacher + Admin from 60 min before the start, marked TEACHER COPY (no key); HM not teaching, other class, BOD, student, too early refused; student data untouched', async () => {
+t('r67/r104/r123 ⬇️ Teacher Copy: assigned class teacher + Admin from 3 hours before the start, marked TEACHER COPY (no key); HM not teaching, other class, BOD, student, too early refused; student data untouched', async () => {
   const keep = new D().toISOString(); D.set('2026-10-16T22:20:00Z'); // 6:20 PM EDT: C2 released 6:15; C3 releases 8:45 PM
   const dlBefore = rows('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT').length, sumBefore = JSON.stringify(rows('EXAM_QUESTION_PAPER_DOWNLOAD_SUMMARY'));
   const tc = (token, id) => G.downloadExamQuestionPaperTeacherCopy(token, { questionPaperId: id, ticket: crypto.randomUUID().replace(/-/g, '') });
@@ -437,7 +437,7 @@ t('r67/r104 ⬇️ Teacher Copy: assigned class teacher + Admin from 60 min befo
   await assert.rejects(async () => tc(hm, ids.C2), /not assigned to this examination/, 'r104: an HM who does not teach the class');
   assert.strictEqual((await tc(admin, ids.C2)).state, 'READY', 'Admin');
   await assert.rejects(async () => tc(tTwo, ids.C1), /not assigned to this examination/, 'another class');
-  await assert.rejects(async () => tc(admin, ids.C3), /not published at least 24 hours before the exam start time/, 'r104: C3 was re-published at 8:00 AM for its 9:00 PM exam (13 h before)');
+  assert.strictEqual((await tc(admin, ids.C3)).state, 'READY', 'r123: no 24-hour publish rule — C3 (re-published 13 h before its 9:00 PM exam) opens 3 hours before the start');
   await assert.rejects(async () => tc(bod, ids.C2), /You are not authorized to access this Teacher Copy/);
   await assert.rejects(async () => tc(bala, ids.C2), /You are not authorized to access this Teacher Copy/);
   // polling path: only the same teacher, single use
@@ -453,6 +453,7 @@ t('r67/r104 ⬇️ Teacher Copy: assigned class teacher + Admin from 60 min befo
 });
 t('r67 📧 Send to Student: confirmed send emails the student\'s own copy (PDF) from attendance@; audit SENT/FAILED; duplicate, roster, APS email, release, mail failure, roles', async () => {
   const keep = new D().toISOString(); D.set('2026-10-16T22:21:00Z');
+  env.props.EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES = '60'; // r123: Send to Student opens this long before the start (Admin setting, default 180); 60 keeps C3 (9 PM) closed at 6:21 PM for the checks below
   const mails = env.stats.mails; mails.length = 0;
   const dlBefore = rows('EXAM_QUESTION_PAPER_DOWNLOAD_AUDIT').length;
   const send = (token, id, email, extra) => G.sendExamQuestionPaperToStudent(token, Object.assign({ questionPaperId: id, studentEmail: email, confirmed: true, requestId: 'R' + crypto.randomUUID().replace(/-/g, '').slice(0, 20) }, extra || {}));
@@ -504,7 +505,9 @@ t('r67 📧 Send to Student: confirmed send emails the student\'s own copy (PDF)
   const ch = mo.students.find(x => x.email === CH); assert.strictEqual(ch.canSend, true); assert.ok(/^10\/16\/2026 06:21 PM EST$/.test(ch.lastEmailed), ch.lastEmailed);
   const deva = mo.students.find(x => x.studentName === 'Deva'); assert.strictEqual(deva.canSend, true, 'deva@avvaiyarpadasalai.org is an APS address');
   const hmMo = J(G.getExamQuestionPaperMonitoring(hm, {})); assert.strictEqual(hmMo.papers.find(p => p.courseId === 'C3').staffCanUse, false);
-  assert.ok(/Available from/.test(hmMo.papers.find(p => p.courseId === 'C3').staffBlockReason));
+  assert.ok(/Available from 10\/16\/2026 08:00 PM EST \(1 hour before the exam\)/.test(hmMo.papers.find(p => p.courseId === 'C3').staffBlockReason), hmMo.papers.find(p => p.courseId === 'C3').staffBlockReason);
+  delete env.props.EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES; // r123 default: 3 hours before the start → C3 (9 PM) is open at 6:21 PM, before its 8:45 PM student release
+  assert.strictEqual(J(G.getExamQuestionPaperMonitoring(hm, {})).papers.find(p => p.courseId === 'C3').staffCanUse, true, 'r123: Send to Student 3 h before the start');
   const bm = J(G.getExamQuestionPaperMonitoring(bod, {})); assert.strictEqual(bm.staffActions, false); assert.ok(bm.students.every(x => !x.canSend && !x.lastEmailed));
   D.set(keep);
 });

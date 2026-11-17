@@ -1,14 +1,14 @@
 {
-  "copiedAt": "2026-11-10T14:22:02Z",
-  "from": "APS-Classroom-Dashboard (release r121)",
+  "copiedAt": "2026-11-16T17:56:22.041Z",
+  "from": "APS-Classroom-Dashboard (release r126 + r127 AzureBridge.gs allow-list)",
   "files": {
     "Code.gs": {
-      "bytes": 1998192,
-      "md5": "44ef1e4219409858c968276a3738f1ce"
+      "bytes": 2029279,
+      "md5": "0cb730edb230c39c539885f78641428e"
     },
     "Dashboard.html": {
-      "bytes": 1446599,
-      "md5": "a42d2e3e6e8b65e6f8af2a511112b332"
+      "bytes": 1454901,
+      "md5": "f808cf69a64e3ee4ffb0ff8b26bbfba3"
     },
     "PdfLib.gs": {
       "bytes": 527280,
@@ -22,13 +22,13 @@
       "bytes": 2075,
       "md5": "b6a5417adbb0a22730b0c4c8700266f2"
     },
+    "AzureBridge.gs": {
+      "bytes": 8793,
+      "md5": "1a74af9e79dbf74f9254edabbf271610"
+    },
     "APS_PropertyQuota_Fix.gs": {
       "bytes": 9439,
       "md5": "4c5587bb83f6b1923d4cc3f2f9055d9e"
-    },
-    "AzureBridge.gs": {
-      "bytes": 8573,
-      "md5": "7b46c7e7c011c1f94353ca520343df95"
     }
   }
 }

@@ -1679,6 +1679,7 @@
     #examinationView .exam-grade-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:4px 12px; margin:4px 0 0 22px; font-size:12.5px; }
     #examinationView .exam-grade-list label, #examinationView .exam-grade-head label { display:flex; align-items:center; gap:6px; cursor:pointer; }
     #examinationView .exam-count { font-weight:700; }
+    #examQpSettingsBox .exam-hint { overflow-wrap:anywhere; } #examQpSettingsBox select { max-width:100%; } /* r123: long Script Property names / options never widen the box on a phone */
     #examinationView .exam-preview { background:#f8f9fa; border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-top:10px; font-size:13px; }
     #examinationView .exam-preview pre { white-space:pre-wrap; word-break:break-word; font-family:inherit; margin:6px 0 0; background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px; max-height:320px; overflow:auto; }
     #examinationView .exam-kv { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 14px; }
@@ -2214,6 +2215,8 @@ mark.ad-hit { background:#fff3b0; padding:0 1px; border-radius:2px; }
 .ac-sw[aria-checked="true"] { background:#1a73e8; } .ac-sw[aria-checked="true"]::after { left:19px; }
 .ac-sw[disabled] { cursor:not-allowed; background:#8ab4f8; } .ac-sw.ac-parentoff { opacity:.45; }
 .ac-sw:focus-visible { outline:2px solid #1a73e8; outline-offset:2px; }
+.exam-qp-who { font-size:15px; font-weight:700; padding:6px 0; } .exam-qp-student { font-size:13px; margin:2px 0 6px; } /* r126 */
+.exam-qp-batchbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px; } .exam-qp-batchbar .class-meta { flex:1 1 260px; overflow-wrap:anywhere; } .exam-qp-emailed { color:#137333; font-weight:600; } /* r125 */
 .exam-qp-autobox { margin-top:10px; padding:10px 12px; border:1px solid var(--border, #dadce0); border-radius:10px; display:flex; flex-direction:column; gap:6px; } /* r99 */
 .exam-qp-autorow { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .exam-qp-autoctl { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:14px; }
@@ -3838,15 +3841,19 @@ NO</textarea>
         <div id="examQpStaffView" hidden>
           <div class="exam-seg" id="examQpAdminBar" hidden style="margin-bottom:10px;">
             <button class="gtr-btn primary" type="button" id="examQpAddBtn" title="Create question paper records for one or more classes of the same exam.">+ Add Exam Question Paper</button>
-            <button class="gtr-btn" type="button" id="examQpSettingsBtn" title="Change the default release window and download close policy for new question papers.">Release window settings</button>
+            <button class="gtr-btn" type="button" id="examQpSettingsBtn" title="Change the default release window and download close policy for new question papers, and the 🔒 Teacher Copy download time / email.">Release window &amp; Teacher Copy settings</button>
             <button class="gtr-btn" type="button" id="examQpRebuildBtn" title="Recount the per-student summary sheet from the download events">Rebuild download summary</button>
           </div>
           <div id="examQpSettingsBox" class="exam-preview" hidden>
             <div class="exam-grid">
               <div class="gtr-field"><label for="examQpSetMinutes">Default release window (minutes before class start)</label><input type="number" id="examQpSetMinutes" min="0" max="1440" step="1" title="How many minutes before class start the question paper becomes available (default 15)."></div>
               <div class="gtr-field"><label for="examQpSetClose">Default download close policy</label><select id="examQpSetClose" title="Whether downloads stop when class starts or stay open until class ends."><option value="true">Stop download at class start</option><option value="false">Allow download after class starts (until class end)</option></select></div>
+              <!-- r123: Teacher Copy settings (apply to every published paper at once) -->
+              <div class="gtr-field"><label for="examQpSetTcOpen">🔒 Teacher Copy download opens (minutes before exam start)</label><input type="number" id="examQpSetTcOpen" min="15" max="1440" step="1" title="How long before the exam start the assigned teachers (and Admin) can download the Teacher Copy from the Dashboard. 180 = 3 hours (default)."></div>
+              <div class="gtr-field"><label for="examQpSetSendOpen">📧 Send to Student opens (minutes before exam start)</label><input type="number" id="examQpSetSendOpen" min="15" max="1440" step="1" title="How long before the exam start the class teacher / VP / HM / Admin can email a student their own question paper (Send to Student). 180 = 3 hours (default). Opens at the student release instead if that is earlier."></div>
+              <div class="gtr-field"><label for="examQpSetTcEmail">📧 Teacher Copy email (PDF to class teachers + Temp Teacher, cc VP / HM)</label><select id="examQpSetTcEmail" title="ON: 24 hours before the student release time (or within 5 minutes of Publish when published later), each class's teachers get the Teacher Copy PDF by email, with the class VP / HM in copy."><option value="true">ON — send 24 hours before release</option><option value="false">OFF — no Teacher Copy email</option></select></div>
             </div>
-            <div class="exam-hint">Saved as Script Properties EXAM_QUESTION_PAPER_RELEASE_MINUTES / EXAM_QUESTION_PAPER_CLOSE_AT_CLASS_START. Applies to new question papers; existing ones keep their own values (edit them individually).</div>
+            <div class="exam-hint">Saved as Script Properties EXAM_QUESTION_PAPER_RELEASE_MINUTES / EXAM_QUESTION_PAPER_CLOSE_AT_CLASS_START (new question papers only; existing ones keep their own values — edit them individually) and EXAM_QP_TEACHER_COPY_OPEN_MINUTES / EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES / EXAM_QP_TEACHER_COPY_EMAIL_ENABLED (Teacher Copy and Send to Student — apply to every paper at once).</div>
             <div class="gtr-btn-row"><button class="gtr-btn" type="button" id="examQpSetCancel" title="Close settings without saving.">Close</button><button class="gtr-btn primary" type="button" id="examQpSetSave" title="Save these defaults (Script Properties). Existing question papers keep their own values.">Save settings</button></div>
           </div>
 
@@ -3889,6 +3896,7 @@ NO</textarea>
             <input type="date" id="examQpFFrom" aria-label="From date" title="From exam date">
             <input type="date" id="examQpFTo" aria-label="To date" title="To exam date">
             <button class="gtr-btn" type="button" id="examQpExportBtn" hidden title="Download the filtered student download list as a CSV file.">Export CSV</button>
+            <button class="gtr-btn" type="button" id="examQpClearFilters" title="Clear the search and every filter (year, exam, grade, class, teacher, status, dates) and show everything again.">Clear filters</button>
             <button class="gtr-btn" type="button" id="examQpRefreshBtn" title="Reload the latest data.">Refresh</button>
           </div>
           <div class="exam-seg" id="examQpViews" role="tablist" style="margin-top:10px;">
@@ -3907,7 +3915,7 @@ NO</textarea>
                 <span id="examQpAutoState">OFF</span> Send Email to Student After <input type="number" id="examQpAutoMin" min="1" max="120" step="1" value="20" inputmode="numeric" aria-label="Minutes after the exam start"> Minutes</span>
               <button class="gtr-btn primary" type="button" id="examQpAutoSave">Save</button>
             </div>
-            <div class="class-meta">Students who have not downloaded the question paper within the configured time will receive the question paper by email only if they are participating in Google Meet and are eligible for the examination. Students marked absent are never emailed. The APS Dashboard stays the main way to download.</div>
+            <div class="class-meta">Students who have not downloaded the question paper within the configured time receive it by email (their own copy with their Download Key). Students marked absent are never emailed; nobody is emailed twice. Failed emails are retried every 5 minutes. The APS Dashboard stays the main way to download.</div>
             <div id="examQpAutoMsg" class="class-meta" role="status"></div>
           </div>
           <div id="examQpFocus" class="exam-preview" hidden></div>
@@ -3976,6 +3984,7 @@ NO</textarea>
           <select id="examHistStatus" aria-label="Status" title="Filter history by result."><option value="">All statuses</option><option>SUCCESS</option><option>FAILED</option><option>SKIPPED</option><option>ALREADY_EXISTS</option></select>
           <select id="examHistTopic" aria-label="Topic" title="Filter history by topic."><option value="">All topics</option></select>
           <input type="date" id="examHistDate" aria-label="Date" style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;" title="Show history for one day (EST).">
+          <button class="gtr-btn" type="button" id="examHistClearFilters" title="Clear the search and every filter (action, status, topic, date) and show the full history again.">Clear filters</button>
           <button class="gtr-btn" type="button" id="examHistRefresh" title="Reload the history.">Refresh</button>
         </div>
         <div class="exam-table-wrap"><table><thead><tr><th>Time (EST)</th><th>User</th><th>Action</th><th>Announcement ID / Assignment</th><th>Course</th><th>Topic</th><th>Scheduled</th><th>Status</th><th>Details</th></tr></thead><tbody id="examHistBody"><tr><td colspan="9">Open the tab to load history.</td></tr></tbody></table></div>
@@ -14478,6 +14487,8 @@ NO</textarea>
       tab.style.display = ok ? '' : 'none';
       if (!ok && currentView === 'examination') switchView('classes');
     }
+    /** r123: 180 → '3 h', 90 → '90 min' (Teacher Copy download time). */
+    function examQpMinutesText_(m) { m = Number(m) || 0; return m % 60 === 0 ? (m / 60) + ' h' : m + ' min'; }
     function examErrMsg_(err) { return apsFriendlyError_((err && err.message) ? err.message : String(err || '')); }
 
     /* ---------------- WEEKLY CLASS TEACHER AVAILABILITY (Oct 2026) ----------------
@@ -15364,6 +15375,11 @@ NO</textarea>
       ['examHistAction', 'examHistStatus', 'examHistTopic', 'examHistDate'].forEach(function (id) { examEl_(id).addEventListener('change', loadExaminationHistory); });
       examEl_('examHistSearch').addEventListener('input', attDebounce_(loadExaminationHistory, 400));
       examEl_('examHistRefresh').addEventListener('click', loadExaminationHistory);
+      // r124: Clear filters — reset the search and every filter, then ONE reload (no reload per field).
+      examEl_('examHistClearFilters').addEventListener('click', function () {
+        ['examHistSearch', 'examHistAction', 'examHistStatus', 'examHistTopic', 'examHistDate'].forEach(function (id) { examEl_(id).value = ''; });
+        loadExaminationHistory();
+      });
     })();
     /* =====================================================================
      *  EXAM QUESTION PAPER (Sept 28, 2026) — Examination sub-tab.
@@ -15421,7 +15437,7 @@ NO</textarea>
         examEl_('examQpAuditViewBtn').hidden = !ctx.canMonitorAll;
         examEl_('examQpRebuildBtn').hidden = !(currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin'));
         examEl_('examQpSettingsBtn').hidden = examEl_('examQpRebuildBtn').hidden;
-        examEl_('examQpMeta').textContent = 'Release ' + ctx.config.releaseMinutes + ' min before class · ' + (ctx.config.closeAtClassStart ? 'closes at class start' : 'open until class end') + ' · times EST' + (ctx.environment === 'TESTING' ? ' · TESTING' : '');
+        examEl_('examQpMeta').textContent = 'Release ' + ctx.config.releaseMinutes + ' min before class · ' + (ctx.config.closeAtClassStart ? 'closes at class start' : 'open until class end') + (ctx.config.teacherCopyOpenMinutes ? ' · Teacher Copy ' + examQpMinutesText_(ctx.config.teacherCopyOpenMinutes) + ' before' : '') + (ctx.config.sendOpenMinutes ? ' · Send to Student ' + examQpMinutesText_(ctx.config.sendOpenMinutes) + ' before' : '') + ' · times EST' + (ctx.environment === 'TESTING' ? ' · TESTING' : ''); // r123
         if (ctx.isStudent) loadMyExamQuestionPapers(); else loadExamQpMonitoring();
       }).withFailureHandler(function (err) {
         examQp.loading = false;
@@ -15459,7 +15475,7 @@ NO</textarea>
         var body;
         if (st === 'WAITING') {
           body = '<div class="class-meta">Question Paper Available In</div><div class="exam-qp-countdown" data-exam-qp-countdown="' + i + '">' + escapeHtml(examQpFmtCountdown_(p.releaseAt - examQpNow_())) + '</div>' +
-            '<div><b>Question Paper Not Yet Available</b></div><div class="class-meta">It will become available at ' + escapeHtml(p.releaseLongLabel) + '. Please wait until the question paper becomes available.</div>';
+            '<div><b>Question Paper Not Yet Available</b></div><div class="class-meta">Your question paper will be available at ' + escapeHtml(p.releaseLongLabel) + ' (before your class starts). This page updates by itself — then press Download Question Paper. No APSID is needed.</div>';
         } else if (st === 'AVAILABLE') {
           body = '<div><b>Question Paper Available</b></div><div class="class-meta">Available since ' + escapeHtml(p.releaseTimeLabel) + ' · download closes ' + escapeHtml(p.closeLabel) + '</div>' +
             '<button class="gtr-btn primary exam-qp-dl" type="button" data-exam-qp-download="' + i + '">Download Question Paper</button>';
@@ -15473,7 +15489,7 @@ NO</textarea>
         var mine = p.myDownloadCount ? '<div class="class-meta" style="margin-top:8px;">Your downloads: ' + p.myDownloadCount + ' · last ' + escapeHtml(p.myLastDownload) + '</div>' +
           (p.myDownloadKey ? '<div style="margin-top:6px;">Your download key: <span class="exam-qp-key exam-qp-key-sm">' + escapeHtml(p.myDownloadKey) + '</span> <span class="class-meta">— write it at the top of your answer sheet</span></div>' : '') : '';
         return '<div class="exam-qp-card"><span class="exam-qp-state ' + escapeHtml(st) + '">' + escapeHtml(st === 'AVAILABLE' ? 'AVAILABLE' : st) + '</span>' +
-          '<h4 style="margin-top:8px;">' + escapeHtml(p.examTitle) + '</h4><div class="class-meta">Class:</div><div style="font-size:13px;margin-bottom:8px;">' + escapeHtml(p.className) + '</div>' + body + mine + '</div>';
+          '<h4 style="margin-top:8px;">' + escapeHtml(p.examTitle) + '</h4>' + (res.student && res.student.name ? '<div class="exam-qp-student">Student: <b>' + escapeHtml(res.student.name) + '</b></div>' : '') + '<div class="class-meta">Class:</div><div style="font-size:13px;margin-bottom:8px;">' + escapeHtml(p.className) + '</div>' + body + mine + '</div>';
       }).join('');
       examQpTick_();
     }
@@ -15515,36 +15531,28 @@ NO</textarea>
     }
     function examQpCloseModal_() { examEl_('examQpModalOverlay').classList.remove('open'); }
 
-    /** Step 1 — Student verification form (known name shown, APSID typed, bilingual non-sharing confirmation). */
+    /** r126 — ONE step: the signed-in account identifies the student (no APSID typed, no second "verify" screen).
+     *  Shows name · exam · class, the Download Key note and the bilingual non-sharing confirmation → Download Question Paper.
+     *  The server re-checks everything (roster, window, lock, status). The name is typed only if the roster has none. */
     function examQpStartDownload_(p, prior) {
       var me = examQp.student.student;
       prior = prior || {};
-      var nameField = me.name ? '<input type="text" id="examQpVName" value="' + escapeHtml(me.name) + '" readonly aria-readonly="true">'
+      var nameField = me.name ? '<div class="exam-qp-who" id="examQpVWho">' + escapeHtml(me.name) + '</div><input type="hidden" id="examQpVName" value="' + escapeHtml(me.name) + '">'
         : '<input type="text" id="examQpVName" maxlength="120" placeholder="Your full name" value="' + escapeHtml(prior.fullName || '') + '">';
-      examQpModal_('Confirm Your Information',
+      examQpModal_('Download Question Paper',
         (prior.error ? '<div class="gtr-msg-block error" style="white-space:pre-line;">' + escapeHtml(prior.error) + '</div>' : '') +
-        '<div class="gtr-field"><label for="examQpVName">Student Full Name</label>' + nameField + '</div>' +
-        '<div class="gtr-field"><label for="examQpVAps">APSID (enter your APSID, e.g. APS1234)</label><input type="text" id="examQpVAps" maxlength="16" autocomplete="off" autocapitalize="characters" value="' + escapeHtml(prior.apsId || '') + '"></div>' +
-        '<dl class="exam-kv"><dt>Grade</dt><dd>' + escapeHtml(p.grade) + '</dd><dt>Class</dt><dd>' + escapeHtml(p.className) + '</dd><dt>Teacher</dt><dd>' + escapeHtml(p.teacherName || '—') + '</dd><dt>Exam</dt><dd>' + escapeHtml(p.examTitle) + '</dd></dl>' +
+        '<div class="gtr-field"><label for="examQpVName">Student</label>' + nameField + '</div>' +
+        '<dl class="exam-kv"><dt>Exam</dt><dd>' + escapeHtml(p.examTitle) + '</dd><dt>Grade</dt><dd>' + escapeHtml(p.grade) + '</dd><dt>Class</dt><dd>' + escapeHtml(p.className) + '</dd><dt>Teacher</dt><dd>' + escapeHtml(p.teacherName || '—') + '</dd></dl>' +
         '<div class="exam-qp-keynote"><b>Download Key:</b> your copy will have your personal <b style="color:#c00;">DOWNLOAD KEY</b> printed in <b style="color:#c00;">red</b> at the top and bottom of every page. ' +
           'If you write the exam on plain paper (no printer needed), <b>write this key clearly at the top of every answer sheet</b>. When you upload the photo/screenshot of your answer sheet to Google Classroom, your teacher checks this key against your download record.</div>' +
-        '<label class="exam-qp-confirm"><input type="checkbox" id="examQpVConfirm"><span>I confirm that I will not share this question paper with any other student.<br>இந்த வினாத்தாளை வேறு எந்த மாணவருடனும் பகிரமாட்டேன் என்பதை உறுதிப்படுத்துகிறேன்.</span></label>',
-        [{ label: 'Cancel', onClick: examQpCloseModal_ }, { label: 'Continue', primary: true, id: 'examQpVContinue', onClick: function () {
-          var info = { fullName: examEl_('examQpVName').value.trim(), apsId: examEl_('examQpVAps').value.trim().toUpperCase() };
-          examQpVerifyStep_(p, info);
+        '<label class="exam-qp-confirm"><input type="checkbox" id="examQpVConfirm"><span>I confirm that I will not share this question paper with any other student.<br>இந்த வினாத்தாளை வேறு எந்த மாணவருடனும் பகிரமாட்டேன் என்பதை உறுதிப்படுத்துகிறேன்.</span></label>' +
+        '<div class="class-meta" style="margin-top:6px;">Not you? Sign out and sign in with your own APS student account.</div>',
+        [{ label: 'Cancel', onClick: examQpCloseModal_ }, { label: 'Download Question Paper', primary: true, id: 'examQpVGo', onClick: function () {
+          examQpDoDownload_(p, { fullName: examEl_('examQpVName').value.trim() });
         } }]);
-      var sync = function () { examEl_('examQpVContinue').disabled = !(examEl_('examQpVConfirm').checked && examEl_('examQpVAps').value.trim() && examEl_('examQpVName').value.trim()); };
-      ['examQpVConfirm', 'examQpVAps', 'examQpVName'].forEach(function (id) { examEl_(id).addEventListener('input', sync); examEl_(id).addEventListener('change', sync); });
+      var sync = function () { examEl_('examQpVGo').disabled = !!examQp.busy || !(examEl_('examQpVConfirm').checked && examEl_('examQpVName').value.trim()); };
+      ['examQpVConfirm', 'examQpVName'].forEach(function (id) { examEl_(id).addEventListener('input', sync); examEl_(id).addEventListener('change', sync); });
       sync();
-      setTimeout(function () { var a = examEl_('examQpVAps'); if (a) a.focus(); }, 50);
-    }
-    /** Step 2 — "Please verify your information" -> Confirm & Download. */
-    function examQpVerifyStep_(p, info) {
-      examQpModal_('Please verify your information.',
-        '<dl class="exam-kv"><dt>Student Name</dt><dd>' + escapeHtml(info.fullName) + '</dd><dt>APSID</dt><dd>' + escapeHtml(info.apsId) + '</dd><dt>Grade</dt><dd>' + escapeHtml(p.grade) +
-        '</dd><dt>Class</dt><dd>' + escapeHtml(p.className) + '</dd><dt>Teacher</dt><dd>' + escapeHtml(p.teacherName || '—') + '</dd><dt>Exam</dt><dd>' + escapeHtml(p.examTitle) + '</dd></dl>' +
-        '<div class="exam-hint">A personalized copy with your name, APSID, class, exam, download time and your personal <b style="color:#c00;">DOWNLOAD KEY</b> (top and bottom of every page, in red) will be generated.</div>',
-        [{ label: 'Cancel', onClick: examQpCloseModal_ }, { label: 'Confirm & Download', primary: true, id: 'examQpVGo', onClick: function () { examQpDoDownload_(p, info); } }]);
     }
     function examQpDoDownload_(p, info) {
       if (examQp.busy) return;
@@ -15552,14 +15560,14 @@ NO</textarea>
       examEl_('examQpVGo').disabled = true;
       examEl_('examQpModalBody').insertAdjacentHTML('beforeend', '<div class="gtr-msg-block info" id="examQpVWorking" style="margin-top:10px;">Generating your personalized question paper…</div>');
       var ticket = examQpUuid_();
-      var req = { questionPaperId: p.questionPaperId, examId: p.examId, className: p.className, grade: p.grade, apsId: info.apsId, fullName: info.fullName, confirmed: true, ticket: ticket, userAgent: navigator.userAgent };
+      var req = { questionPaperId: p.questionPaperId, examId: p.examId, className: p.className, grade: p.grade, fullName: info.fullName, confirmed: true, ticket: ticket, userAgent: navigator.userAgent }; // r126: no APSID
       var tries = 0;
       var handle = function (res) {
         if (res && res.state === 'READY' && res.base64) return examQpFinish_(p, res);
         if (res && res.state === 'READY') return poll(); // server finished but returned no bytes on this path
         if (res && res.state === 'FAILED') {
           examQp.busy = false;
-          if (res.code === 'INVALID_APSID' || res.code === 'VERIFICATION_FAILED' || res.code === 'CONFIRMATION_REQUIRED') { examQpStartDownload_(p, { error: res.message, apsId: info.apsId, fullName: info.fullName }); return; }
+          if (res.code === 'VERIFICATION_FAILED' || res.code === 'CONFIRMATION_REQUIRED') { examQpStartDownload_(p, { error: res.message, fullName: info.fullName }); return; }
           examQpModal_('Download not available', '<div class="gtr-msg-block error" style="white-space:pre-line;">' + escapeHtml(res.message || 'Something went wrong.') + '</div>', [{ label: 'Close', primary: true, onClick: function () { examQpCloseModal_(); loadMyExamQuestionPapers(); } }]);
           return;
         }
@@ -15589,7 +15597,7 @@ NO</textarea>
       examQpSaveBase64_(res.base64, res.fileName);
       var box = examEl_('examQpDoneBox');
       box.hidden = false;
-      box.innerHTML = '<b>Question Paper Downloaded Successfully</b><dl class="exam-kv" style="margin:8px 0;"><dt>Student</dt><dd>' + escapeHtml(res.studentName) + '</dd><dt>APSID</dt><dd>' + escapeHtml(res.apsId) +
+      box.innerHTML = '<b>Question Paper Downloaded Successfully</b><dl class="exam-kv" style="margin:8px 0;"><dt>Student</dt><dd>' + escapeHtml(res.studentName) +
         '</dd><dt>Downloaded</dt><dd>' + escapeHtml(res.downloadedLabel) + '</dd><dt>File</dt><dd>' + escapeHtml(res.fileName) + '</dd></dl>' +
         (res.downloadKey ? '<div class="exam-qp-keybox" role="note"><div>Your DOWNLOAD KEY</div><div class="exam-qp-key" id="examQpDoneKey">' + escapeHtml(res.downloadKey) + '</div>' +
           '<div>Writing on plain paper? <b>Write this key at the top of every answer sheet.</b> Your teacher compares it with your download record when you upload your answer sheet to Google Classroom. It is also printed in red at the top and bottom of every page of your question paper.</div></div>' : '') +
@@ -15685,13 +15693,17 @@ NO</textarea>
           }).join('') : '<tr><td colspan="12">' + (m.papers.length && !examQp.showPast ? 'No question papers for today or upcoming exams. Switch <b>Display Past Exams</b> on to see completed exams.' : canManage ? 'No question papers match these filters. Change or clear the filters, or click “+ Add Exam Question Paper” to create one.' : 'No question papers match these filters. Change or clear the filters to see more.') + '</td></tr>') + '</tbody></table>';
       } else if (examQp.view === 'students') {
         var staff = !!m.staffActions; // r67: 📧 Send to Student column (Teacher / VP / HM / Admin only)
-        html = '<table><thead><tr><th>Student</th><th>APSID</th><th>Class</th><th>Exam</th><th>Download Status</th><th>Download Key</th><th>First Download</th><th>Last Download</th><th>Count</th><th>Failed</th>' + (staff ? '<th>Question Paper</th>' : '') + '</tr></thead><tbody>' +
+        var bc = staff ? examQpBatchCandidates_() : { students: 0, papers: [] }; // r125: 📧 Send to all Eligible (batch mode)
+        html = (staff ? '<div class="exam-qp-batchbar" id="examQpBatchBar"><button class="gtr-btn primary" type="button" id="examQpBatchBtn"' + (bc.students ? '' : ' disabled') +
+          ' data-tooltip="' + escapeHtml(bc.students ? 'Email the question paper (each student’s own copy with their Download Key) to every eligible student in this list who has not downloaded and has not been emailed yet. Students marked absent are skipped. Runs in batches and retries until all are sent.' : 'No eligible student in this list is waiting for an email (all downloaded, already emailed, or Send to Student is not open yet).') + '">📧 Send to all Eligible (' + bc.students + ')</button>' +
+          '<span class="class-meta">Batch mode: sends now, then continues every 5 minutes and retries failures until every eligible student has the question paper by email. Uses the current filters.</span></div>' : '') +
+          '<table><thead><tr><th>Student</th><th>APSID</th><th>Class</th><th>Exam</th><th>Download Status</th><th>Download Key</th><th>First Download</th><th>Last Download</th><th>Count</th><th>Failed</th>' + (staff ? '<th>Question Paper</th>' : '') + '</tr></thead><tbody>' +
           (m.students.some(function (s) { var pp = examQpPaper_(s.questionPaperId); return !pp || examQpShowPaper_(pp); }) ? m.students.map(function (s, i) {
             var pv = examQpPaper_(s.questionPaperId); if (pv && !examQpShowPaper_(pv)) return ''; // r92: keeps the original index (Send to Student uses it)
             var paper = staff ? examQpPaper_(s.questionPaperId) : null;
             var why = staff && !s.canSend ? (paper && paper.staffBlockReason ? paper.staffBlockReason : 'This student does not have a valid APS email address.') : '';
             return '<tr><td>' + escapeHtml(s.studentName) + '<div class="class-meta">' + apsEmailHtml_(s.email) + '</div></td><td>' + escapeHtml(s.apsId) + '</td><td>' + escapeHtml(s.shortClass) + '</td><td>' + escapeHtml(s.examTitle) +
-              '</td><td>' + examQpBadge_(s.status) + (s.autoEmailLabel ? '<div class="class-meta exam-qp-auto" data-auto="' + escapeHtml(s.autoEmail) + '">📧 ' + escapeHtml(s.autoEmailLabel) + (s.autoEmailAt ? ' · ' + escapeHtml(s.autoEmailAt.slice(11)) : '') + '</div>' : '') + '</td><td>' + (s.downloadKey ? '<span class="exam-qp-key exam-qp-key-sm">' + escapeHtml(s.downloadKey) + '</span>' : '-') + '</td><td>' + escapeHtml(s.firstDownload || '-') + '</td><td>' + escapeHtml(s.lastDownload || '-') + '</td><td>' + s.downloadCount + '</td><td>' + s.failedAttempts + '</td>' +
+              '</td><td>' + examQpBadge_(s.status) + (s.keyByEmail && s.autoEmail !== 'SENT' ? '<div class="class-meta exam-qp-emailed">📧 Question paper emailed</div>' : '') + (s.autoEmailLabel ? '<div class="class-meta exam-qp-auto" data-auto="' + escapeHtml(s.autoEmail) + '">📧 ' + escapeHtml(s.autoEmailLabel) + (s.autoEmailAt ? ' · ' + escapeHtml(s.autoEmailAt.slice(11)) : '') + '</div>' : '') + '</td><td>' + (s.downloadKey ? '<span class="exam-qp-key exam-qp-key-sm">' + escapeHtml(s.downloadKey) + '</span>' : '-') + '</td><td>' + escapeHtml(s.firstDownload || '-') + '</td><td>' + escapeHtml(s.lastDownload || '-') + '</td><td>' + s.downloadCount + '</td><td>' + s.failedAttempts + '</td>' +
               (staff ? '<td><div class="exam-qp-actions"><button class="gtr-btn exam-qp-send" type="button" data-exam-qp-send="' + i + '"' + (s.canSend ? '' : ' disabled') + ' data-tooltip="' + escapeHtml(s.canSend ? 'Email this student their own copy of the question paper (PDF attachment), after you confirm.' : why) + '">📧 Send to Student</button></div>' +
                 (s.lastEmailed ? '<div class="class-meta">Emailed ' + escapeHtml(s.lastEmailed) + '</div>' : '') + '</td>' : '') + '</tr>';
           }).join('') : '<tr><td colspan="' + (staff ? 11 : 10) + '">' + (m.students.length && !examQp.showPast ? 'No students for today or upcoming exams. Switch <b>Display Past Exams</b> on to see completed exams.' : 'No students match these filters. Students appear here once a question paper is created for their class; try clearing the search or filters.') + '</td></tr>') + '</tbody></table>';
@@ -16033,6 +16045,40 @@ NO</textarea>
       };
       apsScriptRun.withSuccessHandler(handle).withFailureHandler(function (err) { done(); showToast(examErrMsg_(err), true); }).downloadExamQuestionPaperTeacherCopy({ questionPaperId: id, ticket: ticket });
     }
+    /* r125: 📧 Send to all Eligible — students in the current list (filters + Display Past Exams) who can be emailed now,
+       have not downloaded and have no email yet. The server re-checks every paper and student (role, window, absence, sent). */
+    function examQpBatchCandidates_() {
+      var m = examQp.mon, papers = {}, n = 0;
+      (m && m.students || []).forEach(function (s) {
+        var pv = examQpPaper_(s.questionPaperId); if (pv && !examQpShowPaper_(pv)) return;
+        if (!s.canSend || s.status === 'DOWNLOADED' || s.status === 'NOT_ELIGIBLE' || s.autoEmail === 'SENT' || s.lastEmailed) return;
+        n++; papers[s.questionPaperId] = true;
+      });
+      return { students: n, papers: Object.keys(papers) };
+    }
+    function examQpSendAllEligible_() {
+      var bc = examQpBatchCandidates_();
+      if (!bc.students) return;
+      var classes = {}; (examQp.mon.students || []).forEach(function (s) { if (bc.papers.indexOf(s.questionPaperId) > -1) classes[s.shortClass + ' · ' + s.examTitle] = true; });
+      var list = Object.keys(classes).sort();
+      var requestId = 'EQB' + examQpUuid_().slice(0, 24), busy = false;
+      examQpModal_('Send the question paper to all eligible students?',
+        '<table class="exam-qp-confirm"><tr><th>Students to email</th><td>' + bc.students + '</td></tr><tr><th>Class papers</th><td>' + bc.papers.length + '</td></tr>' +
+        '<tr><th>Classes</th><td class="exam-wrap">' + escapeHtml(list.slice(0, 12).join(', ') + (list.length > 12 ? ' … +' + (list.length - 12) + ' more' : '')) + '</td></tr></table>' +
+        '<div class="class-meta" style="margin-top:10px;">Each student gets their own copy (with their Download Key) as a PDF from attendance@ to their APS email. Students who download, are marked absent or were already emailed are skipped — never a second email. The first batch is sent now; the rest continue every 5 minutes, and failed emails are retried until every eligible student has it. Recorded in the audit log.</div>',
+        [{ label: 'Cancel', onClick: examQpCloseModal_ }, { label: '📧 Send to all Eligible', primary: true, id: 'examQpBatchGo', onClick: function () {
+          if (busy) return; busy = true;
+          var b = examEl_('examQpBatchGo'); b.disabled = true; b.textContent = 'Sending… (up to a minute)';
+          apsScriptRun.withSuccessHandler(function (res) {
+            examQpCloseModal_();
+            showToast(res && res.message ? res.message : 'Done.', !(res && res.ok));
+            loadExamQpMonitoring();
+          }).withFailureHandler(function (err) {
+            busy = false; b.disabled = false; b.textContent = '📧 Send to all Eligible';
+            showToast(examErrMsg_(err), true);
+          }).sendExamQuestionPaperToAllEligible({ questionPaperIds: bc.papers, confirmed: true, requestId: requestId });
+        } }]);
+    }
     /* r67: 📧 Send to Student — confirmation dialog, then the server re-checks everything and emails the PDF. */
     function examQpSendToStudent_(s) {
       if (!s) return;
@@ -16070,6 +16116,14 @@ NO</textarea>
       ['examQpFAy', 'examQpFExam', 'examQpFGrade', 'examQpFClass', 'examQpFTeacher', 'examQpFStatus', 'examQpFFrom', 'examQpFTo'].forEach(function (id) { examEl_(id).addEventListener('change', refresh); });
       examEl_('examQpSearch').addEventListener('input', attDebounce_(function () { if (examQp.view === 'audit') loadExamQpAudit_(); else loadExamQpMonitoring(); }, 400));
       examEl_('examQpRefreshBtn').addEventListener('click', function () { if (examQp.view === 'audit') loadExamQpAudit_(); else loadExamQpMonitoring(); });
+      // r124: Clear filters — reset the search, every dropdown and date, the single-paper focus and the tile's attempt
+      // filter, keep the current view (Question Papers / Students / …) and reload ONCE.
+      examEl_('examQpClearFilters').addEventListener('click', function () {
+        ['examQpSearch', 'examQpFAy', 'examQpFExam', 'examQpFGrade', 'examQpFClass', 'examQpFTeacher', 'examQpFStatus', 'examQpFFrom', 'examQpFTo'].forEach(function (id) { examEl_(id).value = ''; });
+        examQp.focusId = ''; examQp.eventFilter = ''; examQp.selected = {};
+        examEl_('examQpFocus').hidden = true;
+        if (examQp.view === 'audit') loadExamQpAudit_(); else loadExamQpMonitoring();
+      });
       document.querySelectorAll('#examinationView [data-exam-qp-view]').forEach(function (b) { b.addEventListener('click', function () { examQp.eventFilter = ''; examQpSwitchView_(b.getAttribute('data-exam-qp-view')); }); });
       examEl_('examQpAutoExam').addEventListener('change', function () { examQp.autoExam = this.value; examQpAutoLoad_(); examQpAutoMsg_('', ''); }); // r99
       examEl_('examQpAutoToggle').addEventListener('click', function () { examQp.autoDirty = true; examQpAutoSetUi_(this.getAttribute('aria-checked') !== 'true'); examQpAutoMsg_('Press Save to apply.', ''); });
@@ -16086,6 +16140,7 @@ NO</textarea>
       examEl_('examQpFocus').addEventListener('click', function (e) { if (e.target.closest('[data-exam-qp-unfocus]')) { e.preventDefault(); examQp.focusId = ''; examQpSwitchView_('papers'); loadExamQpMonitoring(); } });
       examEl_('examQpPane').addEventListener('click', function (e) {
         if (e.target.closest('[data-exam-qp-clear-events]')) { e.preventDefault(); examQp.eventFilter = ''; renderExamQpMonitoring_(); return; }
+        if (e.target.closest('#examQpBatchBtn')) { if (!e.target.closest('#examQpBatchBtn').disabled) examQpSendAllEligible_(); return; } // r125
         var sb = e.target.closest('[data-exam-qp-send]'); // r67
         if (sb) { if (!sb.disabled) examQpSendToStudent_((examQp.mon && examQp.mon.students || [])[Number(sb.getAttribute('data-exam-qp-send'))]); return; }
         var b = e.target.closest('[data-exam-qp-act]');
@@ -16129,15 +16184,20 @@ NO</textarea>
       examEl_('examQpSettingsBtn').addEventListener('click', function () {
         examEl_('examQpSetMinutes').value = examQp.ctx.config.releaseMinutes;
         examEl_('examQpSetClose').value = String(examQp.ctx.config.closeAtClassStart);
+        examEl_('examQpSetTcOpen').value = examQp.ctx.config.teacherCopyOpenMinutes || 180; // r123
+        examEl_('examQpSetTcEmail').value = String(examQp.ctx.config.teacherCopyEmailEnabled !== false);
+        examEl_('examQpSetSendOpen').value = examQp.ctx.config.sendOpenMinutes || 180;
         examEl_('examQpSettingsBox').hidden = false;
       });
       examEl_('examQpSetCancel').addEventListener('click', function () { examEl_('examQpSettingsBox').hidden = true; });
       examEl_('examQpSetSave').addEventListener('click', function () {
         apsScriptRun.withSuccessHandler(function (cfg) {
           examQp.ctx.config.releaseMinutes = cfg.releaseMinutes; examQp.ctx.config.closeAtClassStart = cfg.closeAtClassStart;
-          examEl_('examQpSettingsBox').hidden = true; showToast('Release window saved: ' + cfg.releaseMinutes + ' min.'); loadExamQuestionPaper();
+          examQp.ctx.config.teacherCopyOpenMinutes = cfg.teacherCopyOpenMinutes; examQp.ctx.config.teacherCopyEmailEnabled = cfg.teacherCopyEmailEnabled; examQp.ctx.config.sendOpenMinutes = cfg.sendOpenMinutes; // r123
+          examEl_('examQpSettingsBox').hidden = true; showToast('Settings saved: release ' + cfg.releaseMinutes + ' min · Teacher Copy ' + examQpMinutesText_(cfg.teacherCopyOpenMinutes) + ' before · Send to Student ' + examQpMinutesText_(cfg.sendOpenMinutes) + ' before · email ' + (cfg.teacherCopyEmailEnabled ? 'ON' : 'OFF') + '.'); loadExamQuestionPaper();
         }).withFailureHandler(function (err) { showToast(examErrMsg_(err), true); })
-          .setExamQuestionPaperDefaults({ releaseMinutes: Number(examEl_('examQpSetMinutes').value), closeAtClassStart: examEl_('examQpSetClose').value === 'true' });
+          .setExamQuestionPaperDefaults({ releaseMinutes: Number(examEl_('examQpSetMinutes').value), closeAtClassStart: examEl_('examQpSetClose').value === 'true',
+            teacherCopyOpenMinutes: Number(examEl_('examQpSetTcOpen').value), sendOpenMinutes: Number(examEl_('examQpSetSendOpen').value), teacherCopyEmailEnabled: examEl_('examQpSetTcEmail').value === 'true' });
       });
       examEl_('examQpRebuildBtn').addEventListener('click', function () {
         apsScriptRun.withSuccessHandler(function (r) { showToast('Summary rebuilt: ' + r.rows + ' student rows from ' + r.events + ' events.'); loadExamQpMonitoring(); })
@@ -17046,9 +17106,8 @@ NO</textarea>
         ['[data-exam-pick-filter]', 'Type part of a class name to narrow the list.'],
         ['input[name="exam-ann-mode"][value="ALL"], input[name="exam-cw-mode"][value="ALL"]', 'Send to every active AY26-27 classroom.'],
         ['input[name="exam-ann-mode"][value="SELECT"], input[name="exam-cw-mode"][value="SELECT"]', 'Choose specific grades or classes.'],
-        ['#examQpVAps', 'Type your APSID (for example APS1234). It must match your APS account.'],
         ['#examQpVConfirm', 'Required: this confirmation is recorded in the audit log with your download.'],
-        ['#examQpVName', 'Your name from the class roster. It is printed on every page of your copy.']
+        ['#examQpVName', 'Your name from the class roster (only typed when the roster has none). It is printed on every page of your copy.']
       ],
       // Metric cards (Exam Question Paper tiles).
       tiles: {

@@ -190,16 +190,10 @@ const calls = []; let unwrapPromises = true; let uiKey = '';
   await s.click('[data-exam-qp-download]');
   await s.waitForSelector('#examQpModalOverlay.open');
   await modal(s, 'st_confirm_empty');
-  await s.fill('#examQpVAps', 'APS9999'); await s.check('#examQpVConfirm'); await s.click('#examQpVContinue');
-  await s.click('#examQpVGo');
-  await s.waitForFunction(() => /does not match your student account/.test(document.getElementById('examQpModalBody').textContent));
-  await modal(s, 'st_wrong_apsid');
+  // r126: one step — no APSID is typed
   D.set('2026-10-16T22:17:00Z');
-  await s.fill('#examQpVAps', 'aps2002');
-  if (!(await s.isChecked('#examQpVConfirm'))) await s.check('#examQpVConfirm');
+  await s.check('#examQpVConfirm');
   await modal(s, 'st_confirm_filled');
-  await s.click('#examQpVContinue');
-  await modal(s, 'st_verify');
   const dlp = s.waitForEvent('download', { timeout: 30000 });
   await s.click('#examQpVGo');
   const d = await dlp; await d.saveAs(OUT + '/student_copy.pdf');

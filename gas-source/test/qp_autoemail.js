@@ -152,7 +152,7 @@ t('before exam start + 20 min (6:49 PM): nothing evaluated, nothing sent', async
   D.set('2026-10-16T22:49:00Z'); mails().length = 0; meet({ [S(2)]: live() });
   const r = await run(); assert.strictEqual(r.evaluated, 0); assert.strictEqual(mails().length, 0); assert.strictEqual(rows(LOG).length, 0);
 });
-t('at +20 min: the 10-scenario decision table (download → Unreported Absence → Google Meet)', async () => {
+t('at +20 min: the decision table — r125: download → Unreported Absence → SEND (Google Meet no longer required, only logged)', async () => {
   D.set('2026-10-16T22:50:00Z'); mails().length = 0;
   // attendance: staff-marked ABSENT for students 4 and 6 on that class date (the existing attendance sheet; never changed here)
   const name = G.attWeekSheetNameForDate_('2026-10-16', G.getAttendanceWeek1Start_()), ash = G.getOrCreateAttendanceWeekSheet_(name), C = G.ATTENDANCE_COL_;
@@ -164,13 +164,14 @@ t('at +20 min: the 10-scenario decision table (download → Unreported Absence �
   const orig = G.apsGmailSend_; G.apsGmailSend_ = function (k, m) { if (m.to[0] === S(7)) return { ok: false, error: 'Mail service unavailable' }; return orig.apply(null, arguments); };
   const r = await run();
   G.apsGmailSend_ = orig;
-  assert.deepStrictEqual([r.papers, r.evaluated, r.sent, r.failed], [1, 10, 2, 1], JSON.stringify(r));
-  // emails: only students 2 and 9, only to their own APS email, attendance@ (existing exam sender), their own key + PDF
-  assert.deepStrictEqual(mails().map(m => m.to).sort(), [S(2), S(9)].sort());
+  assert.deepStrictEqual([r.papers, r.evaluated, r.sent, r.failed, r.remaining], [1, 10, 4, 2, 1], JSON.stringify(r)); // r125: S7 failed twice (one retry in the run)
+  // emails: students 2, 3, 8, 9 (online or not), only to their own APS email, attendance@ (existing exam sender), their own key + PDF
+  assert.deepStrictEqual(mails().map(m => m.to).sort(), [S(2), S(3), S(8), S(9)].sort());
   const m = mails().find(x => x.to === S(2));
   assert.ok(!m.cc && !m.bcc); assert.ok(/<attendance@avvaiyarpadasalai\.org>$/.test(m.from)); assert.strictEqual(m.subject, 'APS Examination – Question Paper');
   const key2 = G.examQpDownloadKey_(QP9, S(2));
-  ['Dear Student,', 'have not downloaded your examination question paper from the APS Dashboard within the assigned time', 'Since you are participating in the Google Meet examination session',
+  assert.ok(!/Google Meet/.test(m.htmlBody), 'r125: the email no longer says the student is in Google Meet');
+  ['Dear Student,', 'have not yet downloaded your examination question paper from the APS Dashboard', 'Your question paper is being provided through your Student APS Email',
     'backup delivery', 'Please use the unique download key provided', key2, 'Thank you,<br>Avvaiyar Padasalai', 'https://www.namaps.org/dashboard', 'APS3002', 'Unit Test Examination', 'NILAI 4 - KA'].forEach(x => assert.ok(m.htmlBody.includes(x), 'html: ' + x));
   assert.strictEqual(m.attachments.length, 1);
   const txt = pdfText(m.attachments[0].base64, 1);
@@ -181,12 +182,12 @@ t('at +20 min: the 10-scenario decision table (download → Unreported Absence �
   const pick = (o) => [o.Download_Status, o.Meet_Status, o.Attendance_Status, o.Eligibility, o.Email_Status, o.Result, o.Reason];
   assert.deepStrictEqual(pick(L(1)), ['DOWNLOADED', '', '', 'NOT_REQUIRED', 'NOT_REQUIRED', 'NOT_REQUIRED', 'DASHBOARD_DOWNLOADED'], 'S1');
   assert.deepStrictEqual(pick(L(2)), ['NOT_DOWNLOADED', 'ONLINE', 'NOT_RECORDED', 'ELIGIBLE', 'SENT', 'AUTO_EMAIL_SENT', 'NOT_DOWNLOADED_AFTER_CONFIGURED_TIME'], 'S2');
-  assert.deepStrictEqual(pick(L(3)), ['NOT_DOWNLOADED', 'OFFLINE', 'NOT_RECORDED', 'NOT_ELIGIBLE', 'NOT_SENT', 'AUTO_EMAIL_NOT_SENT', 'STUDENT_NOT_ONLINE'], 'S3');
+  assert.deepStrictEqual(pick(L(3)), ['NOT_DOWNLOADED', 'OFFLINE', 'NOT_RECORDED', 'ELIGIBLE', 'SENT', 'AUTO_EMAIL_SENT', 'NOT_DOWNLOADED_AFTER_CONFIGURED_TIME'], 'S3 r125: not in Meet → still sent');
   assert.deepStrictEqual(pick(L(4)), ['NOT_DOWNLOADED', 'OFFLINE', 'UNREPORTED_ABSENCE', 'NOT_ELIGIBLE', 'NOT_SENT', 'AUTO_EMAIL_NOT_SENT', 'UNREPORTED_ABSENCE'], 'S4');
   assert.strictEqual(L(5).Result, 'NOT_REQUIRED', 'S5 downloaded (offline does not matter)');
   assert.deepStrictEqual(pick(L(6)), ['NOT_DOWNLOADED', 'ONLINE', 'UNREPORTED_ABSENCE', 'NOT_ELIGIBLE', 'NOT_SENT', 'AUTO_EMAIL_NOT_SENT', 'UNREPORTED_ABSENCE'], 'S6 online + UA');
   assert.deepStrictEqual(pick(L(7)).slice(4), ['FAILED', 'AUTO_EMAIL_FAILED', 'EMAIL_DELIVERY_FAILED'], 'S7'); assert.ok(/Mail service unavailable/.test(L(7).Error_Message));
-  assert.strictEqual(L(8).Reason, 'STUDENT_NOT_ONLINE', 'S8 left before the exam started');
+  assert.deepStrictEqual([L(8).Meet_Status, L(8).Result], ['OFFLINE', 'AUTO_EMAIL_SENT'], 'S8 left before the exam started → r125: sent');
   assert.deepStrictEqual(pick(L(9)).slice(1, 6), ['JOINED', 'NOT_RECORDED', 'ELIGIBLE', 'SENT', 'AUTO_EMAIL_SENT'], 'S9 audit-log session');
   assert.strictEqual(lastFor('outside@gmail.com').Reason, 'NO_VALID_APS_EMAIL');
   const r2 = L(2);
@@ -197,30 +198,26 @@ t('at +20 min: the 10-scenario decision table (download → Unreported Absence �
   assert.strictEqual(JSON.stringify(ash.data), attBefore, 'attendance never changed');
   // existing audit trails: email audit + general audit (system actor)
   const ea = rows('EXAM_QUESTION_PAPER_EMAIL_AUDIT').map(x => [cell('EXAM_QUESTION_PAPER_EMAIL_AUDIT', x, 'Student_Email'), cell('EXAM_QUESTION_PAPER_EMAIL_AUDIT', x, 'Sender_Role'), cell('EXAM_QUESTION_PAPER_EMAIL_AUDIT', x, 'Email_Status')]);
-  assert.deepStrictEqual(ea.filter(x => x[1] === 'Automatic fallback').map(x => x[0] + ':' + x[2]).sort(), [S(2) + ':SENT', S(7) + ':FAILED', S(9) + ':SENT'].sort());
+  assert.deepStrictEqual(ea.filter(x => x[1] === 'Automatic fallback').map(x => x[0] + ':' + x[2]).sort(), [S(2) + ':SENT', S(3) + ':SENT', S(7) + ':FAILED', S(7) + ':FAILED', S(8) + ':SENT', S(9) + ':SENT'].sort());
   assert.ok(rows('EXAM_QUESTION_PAPER_AUDIT').some(x => cell('EXAM_QUESTION_PAPER_AUDIT', x, 'Event_Type') === 'QUESTION_PAPER_EMAILED' && cell('EXAM_QUESTION_PAPER_AUDIT', x, 'Result') === 'AUTO_EMAIL_SENT' && cell('EXAM_QUESTION_PAPER_AUDIT', x, 'User_Email') === 'SYSTEM'));
 });
-t('Scenario 7 / 8: next runs never re-send; NOT_SENT logged once per state; a failed send is retried at most 3 times', async () => {
+t('Scenario 7 / 8 (r125): next runs never re-send; NOT_SENT logged once per state; a failed send is retried every run (twice per run) up to 10 attempts', async () => {
   D.set('2026-10-16T22:55:00Z'); mails().length = 0;
   const before = rows(LOG).length;
   const orig = G.apsGmailSend_; G.apsGmailSend_ = function (k, m) { if (m.to[0] === S(7)) return { ok: false, error: 'Mail service unavailable' }; return orig.apply(null, arguments); };
-  let r = await run(); assert.deepStrictEqual([r.sent, r.failed], [0, 1]); assert.strictEqual(mails().length, 0, 'students 2 and 9 never emailed twice');
-  assert.strictEqual(rows(LOG).length, before + 1, 'only the retry is logged — unchanged NOT_SENT states are not repeated');
-  D.set('2026-10-16T23:00:00Z'); r = await run(); assert.strictEqual(r.failed, 1);
-  D.set('2026-10-16T23:05:00Z'); r = await run(); assert.strictEqual(r.failed, 0, 'stops after 3 failed attempts');
+  let r = await run(); assert.deepStrictEqual([r.sent, r.failed, r.remaining], [0, 2, 1]); assert.strictEqual(mails().length, 0, 'students 2, 3, 8 and 9 never emailed twice');
+  assert.strictEqual(rows(LOG).length, before + 2, 'only the retries are logged — unchanged NOT_SENT states are not repeated');
+  for (const tm of ['23:00', '23:05', '23:10']) { D.set('2026-10-16T' + tm + ':00Z'); r = await run(); assert.strictEqual(r.failed, 2, tm); }
+  D.set('2026-10-16T23:15:00Z'); r = await run(); assert.deepStrictEqual([r.failed, r.remaining], [0, 0], 'stops after 10 failed attempts');
   G.apsGmailSend_ = orig;
-  assert.strictEqual(logRows().filter(x => x.Student_Email === S(7) && x.Result === 'AUTO_EMAIL_FAILED').length, 3);
-  assert.deepStrictEqual(logRows().filter(x => x.Student_Email === S(7)).map(x => x.Attempt), ['1', '2', '3']);
+  assert.strictEqual(logRows().filter(x => x.Student_Email === S(7) && x.Result === 'AUTO_EMAIL_FAILED').length, 10);
+  assert.deepStrictEqual(logRows().filter(x => x.Student_Email === S(7)).map(x => x.Attempt), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
 });
-t('re-check until the class ends: student 3 is seen in the Meet later → sent then; Scenario 9 (Meet unknown) never sends', async () => {
-  D.set('2026-10-16T23:10:00Z'); mails().length = 0;
+t('r125: Google Meet status unknown no longer blocks; everyone eligible already emailed → nothing more; after the class end nothing happens', async () => {
+  D.set('2026-10-16T23:20:00Z'); mails().length = 0;
   snap = { at: Date.now(), byCourse: {} }; // Meet status unknown for the class
-  let r = await run(); assert.strictEqual(r.sent, 0); assert.strictEqual(mails().length, 0);
-  assert.strictEqual(lastFor(S(3)).Meet_Status, 'UNKNOWN'); assert.strictEqual(lastFor(S(3)).Reason, 'MEET_STATUS_UNKNOWN', 'r100: its own reason (not "Not Online")');
-  meet({ [S(3)]: live() });
-  r = await run(); assert.strictEqual(r.sent, 1); assert.deepStrictEqual(mails().map(m => m.to), [S(3)]);
+  let r = await run(); assert.strictEqual(r.sent, 0); assert.strictEqual(mails().length, 0, 'never a second email');
   assert.strictEqual(lastFor(S(3)).Result, 'AUTO_EMAIL_SENT');
-  // after the class end (8:00 PM) nothing more happens
   D.set('2026-10-17T00:01:00Z'); meet({ [S(8)]: live() }); mails().length = 0;
   r = await run(); assert.strictEqual(r.evaluated, 0); assert.strictEqual(mails().length, 0);
 });
@@ -239,17 +236,19 @@ t('Case 5: a Dashboard download after the automatic email keeps both records; mo
   const st = e => mo.students.find(x => x.email === e);
   assert.deepStrictEqual([st(S(2)).status, st(S(2)).autoEmail, st(S(2)).autoEmailLabel], ['DOWNLOADED', 'SENT', 'Auto Email Sent'], 'Dashboard Downloaded + Auto Email Sent');
   assert.strictEqual(st(S(4)).autoEmailLabel, 'Unreported Absence – Email Not Sent');
-  assert.strictEqual(st(S(8)).autoEmailLabel, 'Not Online – Email Not Sent');
+  assert.strictEqual(st(S(8)).autoEmailLabel, 'Auto Email Sent', 'r125: sent without Google Meet');
   assert.strictEqual(st(S(7)).autoEmailLabel, 'Auto Email Failed');
   assert.strictEqual(st(S(1)).autoEmail, '', 'downloaded on time: no automatic-email label');
-  assert.deepStrictEqual([mo.tiles.autoSent, mo.tiles.autoNotSent, mo.tiles.autoNotOnline, mo.tiles.autoUnreported], [3, 3, 1, 2], JSON.stringify(mo.tiles));
+  assert.deepStrictEqual([mo.tiles.autoSent, mo.tiles.autoNotSent, mo.tiles.autoNotOnline, mo.tiles.autoUnreported], [4, 2, 0, 2], JSON.stringify(mo.tiles));
   ['totalExams', 'eligible', 'downloaded', 'notDownloaded', 'downloadPct', 'failed', 'unauthorized', 'repeated'].forEach(k => assert.ok(k in mo.tiles, k));
   const f = J(G.getExamQuestionPaperMonitoring(admin, { questionPaperId: QP9, downloadStatus: 'AUTO_UA' }));
   assert.deepStrictEqual(f.students.map(x => x.email).sort(), [S(4), S(6)].sort());
-  assert.deepStrictEqual(J(G.getExamQuestionPaperMonitoring(admin, { questionPaperId: QP9, downloadStatus: 'AUTO_SENT' })).students.map(x => x.email).sort(), [S(2), S(3), S(9)].sort());
+  assert.deepStrictEqual(J(G.getExamQuestionPaperMonitoring(admin, { questionPaperId: QP9, downloadStatus: 'AUTO_SENT' })).students.map(x => x.email).sort(), [S(2), S(3), S(8), S(9)].sort());
   const keyN = G.examQpDownloadKey_(QP9, S(9));
   const tv = J(G.getExamQuestionPaperMonitoring(tok('tnine_aps709' + DOM, 'teacher'), { questionPaperId: QP9 }));
-  assert.strictEqual(tv.students.find(x => x.email === S(9)).autoEmailLabel, 'Auto Email Sent'); assert.ok(!JSON.stringify(tv).includes(keyN), 'the emailed key is not shown to teachers (not downloaded on the Dashboard)');
+  const tv9 = tv.students.find(x => x.email === S(9));
+  assert.deepStrictEqual([tv9.autoEmailLabel, tv9.downloadKey, tv9.keyByEmail, tv9.status], ['Auto Email Sent', keyN, true, 'ELIGIBLE'], 'r125: the class teacher sees the emailed student\'s Download Key');
+  assert.strictEqual(st(S(4)).downloadKey, '', 'absent (not emailed): no key');
   assert.ok(!JSON.stringify(J(G.getExamQuestionPaperMonitoring(bod, { questionPaperId: QP9 }))).includes(keyN));
   delete env.props.EXAM_QUESTION_PAPER_CLOSE_AT_CLASS_START; void cfg;
 });
@@ -269,7 +268,7 @@ t('another exam at 30 minutes is processed on its own schedule (Test 3 / 11): no
   D.set('2026-10-16T23:30:00Z'); snapB(); mails().length = 0;
   r = await run();
   const sentB = logRows().filter(x => x.Question_Paper_ID === QPB && x.Result === 'AUTO_EMAIL_SENT').map(x => x.Student_Email);
-  assert.deepStrictEqual(sentB, [S(8)], 'only the student in Meet, for the 30-minute exam');
+  assert.deepStrictEqual(sentB.slice().sort(), [1, 2, 3, 5, 7, 8, 9].map(S).sort(), 'r125: every student not marked absent (4, 6), online or not, for the 30-minute exam');
   assert.strictEqual(logRows().find(x => x.Question_Paper_ID === QPB && x.Student_Email === S(8)).Configured_Minutes, '30');
   const mB = mails().find(x => x.to === S(8) && x.attachments[0].name.indexOf('Oral') === 0);
   assert.ok(mB && mB.htmlBody.includes(G.examQpDownloadKey_(QPB, S(8))), 'key of THIS exam paper');
@@ -315,6 +314,69 @@ t('r100: a Dashboard download whose summary row was skipped (busy lock) still co
   const add = J(G.saveExamQuestionPaper(admin, { clientRequestId: 'req-auto-000004', examId: G.examQpFindRecord_(QP9).Exam_ID, examTitle: 'Unit Test Examination', examDate: '2026-10-16', courseIds: ['C2'] }));
   const nr = G.examQpFindRecord_(add.results[0].questionPaperId, true);
   assert.deepStrictEqual([nr.Auto_Email_Enabled, nr.Auto_Email_Minutes], ['true', '20'], 'inherits ON / 20 minutes');
+  D.set('2026-10-16T23:30:00Z');
+});
+t('r125 📧 Send to all Eligible (batch mode): roles + window, absent / already emailed skipped, first batch now, failures retried by the 5-minute run, Download Key shown to staff', async () => {
+  D.set('2026-10-16T12:00:00Z');
+  const res = J(G.saveExamQuestionPaper(admin, { clientRequestId: 'req-auto-000005', examTitle: 'Batch Exam', examDate: '2026-10-16', courseIds: ['C9'], scheduleMode: 'CUSTOM', startTime: '21:00', endTime: '22:00' }));
+  const QPD = res.results[0].questionPaperId; assert.ok(QPD, JSON.stringify(res));
+  J(await G.attachExamQuestionPaperLink(admin, { questionPaperIds: [QPD], driveLink: driveLink('SRCAUTO1_abcdefghij') }));
+  assert.strictEqual(J(G.setExamQuestionPaperStatus(admin, { action: 'PUBLISH', questionPaperIds: [QPD] })).results[0].status, 'SUCCESS');
+  assert.notStrictEqual(String(G.examQpFindRecord_(QPD, true).Auto_Email_Enabled), 'true', 'the automatic toggle stays OFF — the batch works without it');
+  const tNine = tok('tnine_aps709' + DOM, 'teacher');
+  const call = async (tk, o) => J(await G.sendExamQuestionPaperToAllEligible(tk, Object.assign({ questionPaperIds: [QPD], confirmed: true, requestId: 'EQB' + crypto.randomUUID().slice(0, 8) }, o || {})));
+  const batchMails = () => mails().filter(m => m.attachments && m.attachments[0] && m.attachments[0].name.indexOf('Batch') === 0);
+  // before the Send to Student window (3 h before the 9:00 PM start = 6:00 PM): refused with the reason, nothing queued or sent
+  D.set('2026-10-16T21:30:00Z'); mails().length = 0;
+  let r = await call(tNine);
+  assert.deepStrictEqual([r.ok, r.papers], [false, 0]); assert.ok(/Available from/.test(r.rejected[0].reason), JSON.stringify(r)); assert.strictEqual(mails().length, 0);
+  // roles (server-side): student / BOD refused; another class's teacher gets the paper rejected; confirmation required
+  D.set('2026-10-16T23:40:00Z');
+  for (const tk of [bala, bod]) await assert.rejects(async () => call(tk));
+  await assert.rejects(async () => call(tNine, { confirmed: false }), /confirm/);
+  r = await call(tTwo); assert.deepStrictEqual([r.ok, r.papers, r.rejected.length], [false, 0, 1]);
+  // student 2 was already emailed by the class teacher (📧 Send to Student) → never emailed again by the batch
+  const m1 = J(await G.sendExamQuestionPaperToStudent(tNine, { questionPaperId: QPD, studentEmail: S(2), confirmed: true, requestId: 'EQS' + crypto.randomUUID().slice(0, 8) }));
+  assert.strictEqual(m1.ok, true, JSON.stringify(m1));
+  mails().length = 0;
+  const orig = G.apsGmailSend_; G.apsGmailSend_ = function (k, m) { if (m.to[0] === S(7)) return { ok: false, error: 'Mail service unavailable' }; return orig.apply(null, arguments); };
+  r = await call(tNine, { requestId: 'EQBfixed0001' });
+  G.apsGmailSend_ = orig;
+  assert.deepStrictEqual([r.ok, r.papers, r.sent, r.failed, r.remaining], [true, 1, 5, 2, 1], JSON.stringify(r));
+  assert.ok(/1 student\(s\) still to send/.test(r.message), r.message);
+  assert.deepStrictEqual(batchMails().map(m => m.to).sort(), [1, 3, 5, 8, 9].map(S).sort(), 'not 2 (already emailed), not 4 / 6 (absent), not the outside address; 7 failed');
+  const k3 = G.examQpDownloadKey_(QPD, S(3));
+  const m3 = batchMails().find(m => m.to === S(3)); assert.ok(m3.htmlBody.includes(k3) && pdfText(m3.attachments[0].base64, 1).includes('DOWNLOAD KEY: ' + k3), 'own copy, own key');
+  const rowsD = logRows().filter(x => x.Question_Paper_ID === QPD);
+  const s3 = rowsD.filter(x => x.Student_Email === S(3)).pop();
+  assert.deepStrictEqual([s3.Result, s3.Delivery_Method, s3.Reason, s3.Configured_Minutes], ['AUTO_EMAIL_SENT', 'BATCH_EMAIL', 'BATCH_SEND_TO_ALL_ELIGIBLE', '']);
+  assert.ok(!rowsD.some(x => x.Student_Email === S(2)), 'student 2 (emailed by staff) not even logged');
+  assert.strictEqual(rowsD.filter(x => x.Student_Email === S(4)).pop().Reason, 'UNREPORTED_ABSENCE');
+  const ea = rows('EXAM_QUESTION_PAPER_EMAIL_AUDIT').filter(x => cell('EXAM_QUESTION_PAPER_EMAIL_AUDIT', x, 'Question_Paper_ID') === QPD && cell('EXAM_QUESTION_PAPER_EMAIL_AUDIT', x, 'Sender_Role') === 'Batch send');
+  assert.ok(ea.length >= 7 && ea.every(x => cell('EXAM_QUESTION_PAPER_EMAIL_AUDIT', x, 'Sender_Email') === 'tnine_aps709' + DOM), 'audited with the requesting teacher');
+  assert.ok(rows('EXAM_QUESTION_PAPER_AUDIT').some(x => cell('EXAM_QUESTION_PAPER_AUDIT', x, 'Result') === 'BATCH_REQUESTED'));
+  // a repeated click (same request id) returns the same answer without sending
+  const n0 = mails().length; const dup = await call(tNine, { requestId: 'EQBfixed0001' }); assert.strictEqual(dup.duplicate, true); assert.strictEqual(mails().length, n0);
+  assert.ok(env.stats.triggers.some(x => x.fn === 'processExamQuestionPaperAutoEmail'), '5-minute run installed');
+  // the 5-minute run continues the batch: student 7 now gets it; nobody else gets a second email
+  D.set('2026-10-16T23:45:00Z'); mails().length = 0;
+  await run();
+  assert.deepStrictEqual(batchMails().map(m => m.to), [S(7)]);
+  assert.strictEqual(logRows().filter(x => x.Question_Paper_ID === QPD && x.Student_Email === S(7)).pop().Delivery_Method, 'BATCH_EMAIL');
+  D.set('2026-10-16T23:50:00Z'); mails().length = 0; await run(); assert.strictEqual(batchMails().length, 0, 'done — nothing re-sent');
+  // the HM can press it too (every class); nothing left → sent 0
+  r = await call(hm); assert.deepStrictEqual([r.ok, r.sent, r.remaining], [true, 0, 0]); assert.ok(/Every eligible student/.test(r.message), r.message);
+  // Students list: the Download Key is shown to staff for emailed students (batch and staff email); not for absent; not for BOD
+  const mo = J(G.getExamQuestionPaperMonitoring(tNine, { questionPaperId: QPD })), st = e => mo.students.find(x => x.email === e);
+  assert.deepStrictEqual([st(S(3)).autoEmailLabel, st(S(3)).downloadKey, st(S(3)).keyByEmail], ['Batch Email Sent', k3, true]);
+  assert.deepStrictEqual([st(S(2)).downloadKey, !!st(S(2)).lastEmailed, st(S(2)).keyByEmail], [G.examQpDownloadKey_(QPD, S(2)), true, true]);
+  assert.deepStrictEqual([st(S(4)).downloadKey, st(S(4)).keyByEmail], ['', false]);
+  assert.ok(!JSON.stringify(J(G.getExamQuestionPaperMonitoring(bod, { questionPaperId: QPD }))).includes(k3), 'BOD never sees keys');
+  // after the request ends (class end 10:00 PM) the run no longer looks at this paper
+  D.set('2026-10-17T02:05:00Z'); const nD = logRows().filter(x => x.Question_Paper_ID === QPD).length; await run();
+  assert.strictEqual(logRows().filter(x => x.Question_Paper_ID === QPD).length, nD);
+  assert.ok(JSON.parse(env.props.EXAM_QP_BATCH_EMAIL_REQUESTS)[QPD], 'request stored (Script Property)');
+  delete env.props.EXAM_QP_BATCH_EMAIL_REQUESTS; // the next test re-runs earlier times
   D.set('2026-10-16T23:30:00Z');
 });
 t('locked paper and EXAM_QP_AUTO_EMAIL_ENABLED=false: nothing evaluated or sent; trigger removed when no paper is upcoming', async () => {

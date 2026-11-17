@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 4429eda76563a1bde29437233b2b46ff
+#   Part B md5    : ac78fcbc7cfac49e02c8629c6ea821d1
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -959,6 +959,10 @@ header is longer, or Code.gs fails quietly in the mock.
 - Phase 3 step 1 (v0.8.0): live data through the Apps Script bridge (`AzureBridge.gs` r122 in the live project, routed
   by `PortalBridge.gs` doPost `azure:1`; Azure `src/live/`). The Code.gs live passes and `getRealtimeStatusSnapshot` run
   on Azure; the Phase 2 stand-ins are gone. Not yet: live Meet status, heartbeat from Azure, chat. See `docs/PHASE3.md`.
+- v0.8.1 (2026-11-16): gas-source = Apps Script r126 (+ r127 AzureBridge.gs allow-list). After every Apps Script release:
+  `npm run sync-gas` (APS_GAS_PROJECT=<project>), `npm run sync-dashboard`, `npm run gen-gas`, fix the generator lists it
+  reports, add any new Script Property the copied code reads to BOTH allow-lists (AzureBridge.gs + src/live/allowlist.ts),
+  `npm test`, `npm run e2e`. Secrets (e.g. EXAM_QP_DOWNLOAD_KEY_SECRET) never come to Azure: stub the function in runtime.ts.
 - Other spreadsheets: only the IDs from the copied code's own ID functions (`EXTRA_BOOK_ID_FNS` in `src/gas/run.ts`:
   `scSpreadsheetId_`, `zhSheetId_`) can be opened, read-only, on demand. Add a function there (never a hard-coded ID)
   when another reader opens its own spreadsheet. `setNumberFormat` is a no-op (never sent to Google).

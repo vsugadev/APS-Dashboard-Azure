@@ -35,6 +35,16 @@ test('runtime services: settings + Apps Script live properties readable; writes 
   assert.throws(() => rt.SpreadsheetApp.openById('x')); // only the APS spreadsheets (+ the extra IDs the copied code computes)
 });
 
+test('r125 port: the Download Key of an EMAILED student is never computed on Azure (the HMAC secret stays in Apps Script)', async () => {
+  const main = new SnapWorkbook('m', {});
+  const rt: any = makeRuntime({ main, attendance: null, settings: {}, liveProps: { script: { EXAM_QP_DOWNLOAD_KEY_SECRET: 'never-here' }, user: {} }, isRosterHiddenStaffEmail_: () => false, apsTabAllowed_: () => true } as any);
+  assert.equal(rt.examQpDownloadKey_('EQP-20261116-AAAAAAAA', 'stu_aps1@avvaiyarpadasalai.org'), '', 'blank — never a guessed or wrong key');
+  const { liveAllowed } = await import('../src/live/allowlist');
+  assert.equal(liveAllowed('EXAM_QP_DOWNLOAD_KEY_SECRET'), false, 'the secret is never exported by the bridge');
+  for (const k of ['EXAM_QP_TEACHER_COPY_OPEN_MINUTES', 'EXAM_QP_TEACHER_COPY_EMAIL_ENABLED', 'EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES']) assert.equal(liveAllowed(k), true, k + ' (r123 Admin setting) is live data');
+  assert.equal(liveAllowed('EXAM_QP_BATCH_EMAIL_REQUESTS'), false, 'r125 batch queue: Azure sends no email — not exported');
+});
+
 test('Sheets API cells → Apps Script getValues types (dates in the spreadsheet time zone, DST-aware)', () => {
   assert.equal(serialToDate(46337.75, 'America/New_York').toISOString(), '2026-11-11T23:00:00.000Z', 'EST: 6 PM = 23:00 UTC');
   assert.equal(serialToDate(46207.5, 'America/New_York').toISOString(), '2026-07-04T16:00:00.000Z', 'EDT: noon = 16:00 UTC');

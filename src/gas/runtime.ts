@@ -212,6 +212,10 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     // Chat is not on Azure yet: a constant version (Code.gs's own fallback value) so the realtime poll never asks the page
     // to reload a chat it cannot load here.
     chatVersion_: () => '',
+    // r125 (Apps Script): staff see the Download Key of a student who was EMAILED the paper. It is an HMAC with the Apps Script
+    // secret EXAM_QP_DOWNLOAD_KEY_SECRET, which never leaves Apps Script (NEVER list) — Azure shows no key for those students
+    // (keys of Dashboard downloads come from the download log and still show). Never a guessed or wrong key.
+    examQpDownloadKey_: () => '',
   };
 }
 

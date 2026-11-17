@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-11 (v0.8.0, Phase 3 step 1). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-17 (v0.8.2, sign-in failure reason in the log). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -87,7 +87,16 @@ Values containing `|` need `az --% …` (e.g. `--linux-fx-version "NODE|22-lts"`
 
 ### Phase 3 bridge — set up once
 
-1. **Make the secret** (PowerShell; the value goes to Key Vault and to the clipboard — never into a file or chat):
+1. **Make the secret — easiest (Apps Script r128):** in the live Apps Script editor run `ONE_TIME_setAzureBridgeSecret`
+   (file `AzureBridgeSetup.gs`; owner only; creates Script Property `AZURE_BRIDGE_SECRET`, never logs it), copy the value
+   from Project Settings → Script Properties, then:
+   ```powershell
+   $s = Get-Clipboard
+   az keyvault secret set --vault-name kv-apsdashboardapu7zau2j -n apps-script-bridge-secret --value $s -o none
+   Remove-Variable s; Set-Clipboard ' '
+   ```
+   and skip the Script Property part of step 2. (`ONE_TIME_rotateAzureBridgeSecret` replaces it later.)
+   **Or make it in PowerShell** (the value goes to Key Vault and to the clipboard — never into a file or chat):
    ```powershell
    $b = New-Object byte[] 36; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
    $s = [Convert]::ToBase64String($b) -replace '[+/=]', ''
@@ -147,6 +156,7 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[Gas] … too many sheet loads` / `requested again after loading` | Developer: a read keeps asking for data the source cannot deliver — check the sheet name / range |
 | `[Gas] attendance workbook not readable` | `ATTENDANCE_SPREADSHEET_ID` not set, or the impersonated account cannot open it |
 | `[Gas] extra spreadsheet not readable` / page "Special Classes are temporarily unavailable" | `GOOGLE_IMPERSONATE_USER` cannot open the Special Classes or Zoho sync spreadsheet — share it (Viewer is enough) |
+| `[SignIn] Google token exchange failed: <reason> — <fix>` (v0.8.2) | The sign-in page said INVALID_TOKEN. `invalid_grant` = code reused / expired (reload, Back, double click) — sign in again from a fresh page; if EVERY time, client ID and secret are not the same OAuth client. `redirect_uri_mismatch` = add `PUBLIC_BASE_URL/` to the OAuth client's Authorized redirect URIs. `invalid_client` = Key Vault `google-oauth-client-secret` is wrong / rotated — New Version with the current secret, refresh, restart |
 | `[Live] Apps Script bridge not configured` | `APPS_SCRIPT_BRIDGE_URL` / `APPS_SCRIPT_BRIDGE_SECRET` missing (or Key Vault reference not resolved) — §3 |
 | `[Live] … FAILED: NOT_CONFIGURED` | Script Property `AZURE_BRIDGE_SECRET` missing / shorter than 32, or the new Apps Script version is not deployed |
 | `[Live] … FAILED: BAD_SIGNATURE` | The two secrets differ — set the same value in Key Vault and the Script Property, refresh + restart |
@@ -185,4 +195,6 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.8.2 | 2026-11-17 | Sign-in: a failed Google code exchange now logs Google's reason + the fix (`[SignIn] Google token exchange failed: …`, never the code or secret); flaky state-tamper test fixed |
+| 0.8.1 | 2026-11-16 | Apps Script r123–r126 copied (gas-source, page, copied code): Exam Question Paper monitoring now follows r123 (Teacher Copy / Send to Student times — 3 new live settings in both allow-lists, Apps Script `AzureBridge.gs` r127), r124 Clear filters, r125 batch / emailed-key display (keys of emailed students blank on Azure: the HMAC secret stays in Apps Script), r126 student download page (downloads stay on Apps Script) |
 | 0.8.0 | 2026-11-11 | Phase 3 step 1: Apps Script live-data bridge (AzureBridge.gs, r122); Code.gs live passes + realtime poll on Azure; generator copies var set-up lines; `TARGET_SPREADSHEET_ID` / role permissions passed to copied screens |

@@ -234,6 +234,17 @@ const calls = []; let hangFn = null;
     assert.ok((await page.textContent('#examHistBody')).includes('APS1234'), 'user APSID shown');
     assert.deepStrictEqual(errors, []);
   });
+  await t('r124 History: Clear filters resets search + every filter with ONE reload and shows the full history', async () => {
+    await page.selectOption('#examHistStatus', 'FAILED');
+    await page.waitForFunction(() => /1 entries/.test(document.getElementById('examHistMeta').textContent));
+    assert.strictEqual((await page.textContent('#examHistClearFilters')).trim(), 'Clear filters');
+    const n = calls.filter(c => c === 'getExaminationHistory').length;
+    await page.click('#examHistClearFilters');
+    await page.waitForFunction(() => /ANNOUNCEMENT/.test(document.getElementById('examHistBody').textContent) && /MODEL_EXAM_1/.test(document.getElementById('examHistBody').textContent));
+    assert.strictEqual(calls.filter(c => c === 'getExaminationHistory').length, n + 1, 'one reload');
+    for (const id of ['examHistSearch', 'examHistAction', 'examHistStatus', 'examHistTopic', 'examHistDate']) assert.strictEqual(await page.inputValue('#' + id), '', id + ' cleared');
+    assert.deepStrictEqual(errors, []);
+  });
   await ctx.close();
 
   await t('BOD (read-only): tab visible, read-only note, publish buttons disabled, search still works', async () => {

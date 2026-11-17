@@ -92,3 +92,13 @@ Azure request ──► AppsScriptLiveSource (src/live/liveSource.ts)
   the live snapshot. Property classification test.
 - Browser: the page shows the teacher who is online in the live snapshot, and the realtime poll answers from Azure.
 - `npm test` 41 pass; browser 10 pass.
+
+## Step 1b — Apps Script r123–r126 copied (v0.8.1, 2026-11-16)
+
+- `npm run sync-gas` from the Apps Script project (r126) → `gas-source/` (Code.gs, Dashboard.html; `SNAPSHOT.json`), `npm run sync-dashboard` → `public/Dashboard.html`, `npm run gen-gas` → `src/gas/scope.generated.ts`. `gas-source/test/` refreshed with the r126 regression suite; `docs/reference/` Help Guide + architecture doc refreshed.
+- Generator (`tools/gen-gas-scope.js`): `examQpTeacherCopyLeadOk_` removed (gone in r123); added `examQpTeacherCopyOpenMinutes_`, `examQpTeacherCopyEmailEnabled_`, `examQpSendOpenMinutes_`, `examQpMinutesLabel_` and the constant `EXAM_QP_BATCH_`; `examQpDownloadKey_` is now Azure-provided.
+- **Download Key of emailed students (r125):** an HMAC with Script Property `EXAM_QP_DOWNLOAD_KEY_SECRET` (NEVER list — never leaves Apps Script). `src/gas/runtime.ts` provides `examQpDownloadKey_ → ''`, so Azure's Students list shows no key for a student who was only emailed (keys of Dashboard downloads come from the download log and still show). Sharing the secret through Key Vault would be a separate, explicit decision.
+- **Allow-lists (both copies):** `EXAM_QP_TEACHER_COPY_OPEN_MINUTES`, `EXAM_QP_TEACHER_COPY_EMAIL_ENABLED`, `EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES` (r123 Admin settings — the copied monitoring reads them). `EXAM_QP_BATCH_EMAIL_REQUESTS` (r125) is not exported: Azure sends no email. ⚠️ Apps Script must deploy the updated `AzureBridge.gs` (**r127**) — until then Azure uses the defaults (3 h / ON), which is what the school uses today.
+- Not on Azure (unchanged): the student download (r126 one-click), Teacher Copy, Send to Student, Send to all Eligible and every email — they stay on Apps Script.
+- Tests: `npm test` 42/42 (new: emailed key never computed on Azure; r123 settings live, secret and batch queue never exported); `npm run e2e` 10/10; `npm run test:gas` exam suites (qp 32, qp_autoemail 12, teachercopy 18, exam, ui_qp 17, ui_exam 21, e2e) pass on the new `gas-source/`.
+

@@ -11212,7 +11212,8 @@ const EXAM_QP_PAPER_HEADER = ['Question_Paper_ID', 'Exam_ID', 'Exam_Title', 'Aca
   'Created_By', 'Created_Date_Time', 'Updated_By', 'Updated_Date_Time', 'File_Size_Bytes', 'Page_Count', 'Version_History', 'Row_Version',
   'Source_Drive_Link', 'Source_Drive_File_ID', 'Schedule_Mode',
   'Auto_Email_Enabled', 'Auto_Email_Minutes', // r99: "Send Email to Student After X Minutes" (per exam; blank = OFF)
-  'Teacher_Copy_Email_Sent_At', 'Teacher_Copy_Email_Sent_To']; // r104: the 60-minute Teacher Copy email (written only by the background run)
+  'Teacher_Copy_Email_Sent_At', 'Teacher_Copy_Email_Sent_To', // r104: the Teacher Copy email (written only by the background run)
+  'Teacher_Copy_Email_Version']; // r123: Version|Published_Date_Time the email was sent for (a replaced PDF / re-publish sends an UPDATED copy)
 const EXAM_QP_DOWNLOAD_HEADER = ['Audit_ID', 'Question_Paper_ID', 'Exam_ID', 'Exam_Title', 'Academic_Year', 'Grade', 'Class_Name', 'Section',
   'Class_Start_Date', 'Class_Start_Time', 'Release_Date_Time', 'Student_Full_Name', 'APSID', 'Student_Email', 'Teacher_Name', 'Teacher_APSID',
   'Authenticated_User_Email', 'Verification_Status', 'Confirmation_Checked', 'Download_Status', 'Download_Date', 'Download_Time',
@@ -11238,7 +11239,8 @@ function examQpConfig_() {
   const releaseMinutes = isFinite(minutesRaw) && minutesRaw >= 0 && minutesRaw <= 1440 ? Math.round(minutesRaw) : EXAM_QP_CONFIG.DEFAULT_RELEASE_MINUTES;
   const closeRaw = String(props.getProperty(EXAM_QP_CONFIG.CLOSE_AT_START_PROP) || String(EXAM_QP_CONFIG.DEFAULT_CLOSE_AT_CLASS_START)).trim().toLowerCase();
   const hmRaw = String(props.getProperty(EXAM_QP_CONFIG.HM_CAN_MANAGE_PROP) || 'false').trim().toLowerCase();
-  return { releaseMinutes: releaseMinutes, closeAtClassStart: closeRaw !== 'false', hmCanManage: hmRaw === 'true' };
+  return { releaseMinutes: releaseMinutes, closeAtClassStart: closeRaw !== 'false', hmCanManage: hmRaw === 'true',
+    teacherCopyOpenMinutes: examQpTeacherCopyOpenMinutes_(), teacherCopyEmailEnabled: examQpTeacherCopyEmailEnabled_(), sendOpenMinutes: examQpSendOpenMinutes_() }; // r123
 }
 
 /** A window of [start, start) would never open: closing at class start needs at least 1 release minute. */
@@ -11672,7 +11674,8 @@ function getExamQuestionPaperContext(sessionToken) {
   const out = {
     role: v.role, canManage: v.canManage, canMonitorAll: v.canMonitorAll, isTeacher: v.isTeacher, isStudent: v.isStudent,
     readOnly: v.isReadOnly, canExport: v.canExport, canPreview: v.canPreview,
-    config: { releaseMinutes: v.cfg.releaseMinutes, closeAtClassStart: v.cfg.closeAtClassStart, hmCanManage: v.cfg.hmCanManage, supportedAcademicYear: EXAM_QP_CONFIG.SUPPORTED_ACADEMIC_YEAR },
+    config: { releaseMinutes: v.cfg.releaseMinutes, closeAtClassStart: v.cfg.closeAtClassStart, hmCanManage: v.cfg.hmCanManage, supportedAcademicYear: EXAM_QP_CONFIG.SUPPORTED_ACADEMIC_YEAR,
+      teacherCopyOpenMinutes: v.cfg.teacherCopyOpenMinutes, teacherCopyEmailEnabled: v.cfg.teacherCopyEmailEnabled, sendOpenMinutes: v.cfg.sendOpenMinutes }, // r123
     environment: getDashboardEnvironment_().key, serverNow: Date.now(), classes: []
   };
   if (v.isAdmin) { try { examQpEnsureSetup_(); } catch (e) { console.error('[ExamQP] setup failed: ' + (e && e.message)); } }
@@ -12186,7 +12189,7 @@ function setExamQuestionPaperStatus(sessionToken, payload) {
   return { action: action, results: results };
 }
 
-/** Admin: change the default release window / close policy (Script Properties) — no code change needed. */
+/** Admin: change the default release window / close policy + (r123) Teacher Copy download time / email ON-OFF (Script Properties) — no code change needed. */
 function setExamQuestionPaperDefaults(sessionToken, payload) {
   apsRequireTabForToken_(sessionToken, 'exam.questionPaper'); // r56: Admin Control → Access Control
   const v = examQpViewer_(sessionToken);
@@ -12195,11 +12198,27 @@ function setExamQuestionPaperDefaults(sessionToken, payload) {
   const minutes = Number(payload && payload.releaseMinutes);
   const closeAtStart = !!(payload && payload.closeAtClassStart);
   examQpValidateWindowSetting_(minutes, closeAtStart);
+  // r123: Teacher Copy download time (minutes before the exam start) and the Teacher Copy email ON / OFF — optional (older pages omit them)
+  const minutesOf = function (key, current, label) { // optional field: an older page that omits it keeps the stored value
+    const has = payload && payload[key] !== undefined && payload[key] !== null && payload[key] !== '';
+    const m = has ? Number(payload[key]) : current;
+    if (!(Math.floor(m) === m && m >= EXAM_QP_TCOPY_.MIN_OPEN_MINUTES && m <= EXAM_QP_TCOPY_.MAX_OPEN_MINUTES)) {
+      throw new Error(label + ' time must be a whole number of minutes between ' + EXAM_QP_TCOPY_.MIN_OPEN_MINUTES + ' and ' + EXAM_QP_TCOPY_.MAX_OPEN_MINUTES + ' (180 = 3 hours).');
+    }
+    return m;
+  };
+  const openMinutes = minutesOf('teacherCopyOpenMinutes', examQpTeacherCopyOpenMinutes_(), 'Teacher Copy download');
+  const sendMinutes = minutesOf('sendOpenMinutes', examQpSendOpenMinutes_(), 'Send to Student');
+  const emailOn = payload && typeof payload.teacherCopyEmailEnabled === 'boolean' ? payload.teacherCopyEmailEnabled : examQpTeacherCopyEmailEnabled_();
   const props = PropertiesService.getScriptProperties();
   props.setProperty(EXAM_QP_CONFIG.RELEASE_MINUTES_PROP, String(minutes));
   props.setProperty(EXAM_QP_CONFIG.CLOSE_AT_START_PROP, String(closeAtStart));
-  examQpAudit_(v, [{ type: EXAM_QP_EVENTS.SETTINGS_UPDATED, result: 'SUCCESS', metadata: { releaseMinutes: minutes, closeAtClassStart: closeAtStart } }]);
-  return { releaseMinutes: minutes, closeAtClassStart: closeAtStart };
+  props.setProperty(EXAM_QP_TCOPY_.OPEN_MINUTES_PROP, String(openMinutes));
+  props.setProperty(EXAM_QP_TCOPY_.EMAIL_ENABLED_PROP, String(emailOn));
+  props.setProperty(EXAM_QP_TCOPY_.SEND_OPEN_MINUTES_PROP, String(sendMinutes));
+  examQpAudit_(v, [{ type: EXAM_QP_EVENTS.SETTINGS_UPDATED, result: 'SUCCESS', metadata: { releaseMinutes: minutes, closeAtClassStart: closeAtStart, teacherCopyOpenMinutes: openMinutes, teacherCopyEmailEnabled: emailOn, sendOpenMinutes: sendMinutes } }]);
+  if (emailOn) { try { examQpAutoSyncTrigger_(); } catch (eTr) { console.warn('[ExamQP] trigger check: ' + (eTr && eTr.message)); } } // a published paper may now need the 5-minute run
+  return { releaseMinutes: minutes, closeAtClassStart: closeAtStart, teacherCopyOpenMinutes: openMinutes, teacherCopyEmailEnabled: emailOn, sendOpenMinutes: sendMinutes };
 }
 
 /* ------------------------------ student ----------------------------- */
@@ -12279,8 +12298,9 @@ function examQpSummariesFor_(qpIds, email) {
 
 const EXAM_QP_MESSAGES_ = {
   UNAUTHORIZED: 'You are not authorized to access this question paper.',
-  INVALID_CLASS: 'This question paper is not assigned to your class.',
-  INVALID_STUDENT: 'You are not enrolled in an eligible class for this question paper.',
+  // r126: friendlier student messages (the technical reason stays in the download log only)
+  INVALID_CLASS: 'This question paper is not for your class. Your student account is not eligible for this examination.\nPlease contact your Class Teacher or APS Tech Support if you believe this is incorrect.',
+  INVALID_STUDENT: 'We couldn\'t identify your APS student account in an active class.\nPlease make sure you are signed in with your APS student account, or contact APS Tech Support.',
   INVALID_APSID: 'The APSID entered does not match your student account.\nPlease verify your APSID and try again.',
   QUESTION_PAPER_NOT_FOUND: 'This question paper could not be found.',
   QUESTION_PAPER_CANCELLED: 'This question paper has been cancelled.',
@@ -12289,7 +12309,7 @@ const EXAM_QP_MESSAGES_ = {
   CONFIRMATION_REQUIRED: 'Please confirm that you will not share this question paper with any other student.',
   VERIFICATION_FAILED: 'Please confirm your name to continue.',
   DOWNLOAD_WINDOW_CLOSED: 'The download window for this question paper has closed. Please contact your Class Teacher.',
-  DOWNLOAD_FAILED: 'We could not generate your personalized question paper.\nPlease try again or contact APS Tech Support.'
+  DOWNLOAD_FAILED: 'We couldn\'t download your question paper. Please try again.\nIf it still does not work, contact your Class Teacher — they can email it to you.'
 };
 
 /** General-audit event type for each download outcome. */
@@ -12389,7 +12409,7 @@ function examQpUpsertSummary_(ev, completed, now, meta) {
  * student, paper exists + published + not cancelled/locked, class is AY26-27
  * and the student is enrolled in exactly that class, optional browser-sent
  * exam/grade/class values must match, server time inside [release, close),
- * non-sharing confirmation, APSID matches the APS account. Every outcome is
+ * non-sharing confirmation; the APSID comes from the signed-in account (r126: never typed). Every outcome is
  * audited. Returns a structured context; ok=false carries a friendly message.
  */
 function examQpValidateDownload_(ctx) {
@@ -12430,16 +12450,14 @@ function examQpValidateDownload_(ctx) {
   if (nowMs >= w.close.getTime()) return fail(S.DOWNLOAD_WINDOW_CLOSED, 'Attempt ' + Math.floor((nowMs - w.close.getTime()) / 60000) + ' min after close (' + examQpLabel_(w.close) + ').');
   ctx.confirmed = req.confirmed === true;
   if (!ctx.confirmed) return fail(S.CONFIRMATION_REQUIRED, 'Non-sharing confirmation not checked.');
-  ctx.enteredApsId = String(req.apsId || '').trim().toUpperCase().replace(/\s+/g, '');
+  // r126: the APSID is NEVER typed by the student. The signed-in APS account (verified Google sign-in → server session →
+  // class roster, checked above) identifies the student; the APSID comes from the account email (`_apsNNNN@`), or
+  // 'APSXXX' when the email has none (the account email is stamped on every page either way). Any apsId the browser
+  // still sends (an old page) is ignored.
+  ctx.enteredApsId = '';
   const expected = extractAPSID_(v.email);
-  if (expected !== 'NA') {
-    if (ctx.enteredApsId !== expected) { ctx.verification = 'APSID_MISMATCH'; return fail(S.INVALID_APSID, 'Entered ' + (ctx.enteredApsId || '(blank)') + ', account ' + expected + '.'); }
-    ctx.verification = 'VERIFIED';
-  } else {
-    if (!/^APS[0-9A-Z]{1,10}$/.test(ctx.enteredApsId)) { ctx.verification = 'APSID_INVALID_FORMAT'; return fail(S.INVALID_APSID, 'Entered ' + (ctx.enteredApsId || '(blank)') + ' (account email has no APSID).'); }
-    ctx.verification = 'APSID_NOT_VERIFIABLE_FROM_EMAIL';
-    ctx.accountApsId = ctx.enteredApsId;
-  }
+  ctx.accountApsId = expected !== 'NA' ? expected : 'APSXXX';
+  ctx.verification = expected !== 'NA' ? 'ACCOUNT_VERIFIED' : 'ACCOUNT_VERIFIED_NO_APSID_IN_EMAIL';
   if (!ctx.studentName) {
     ctx.studentName = examQpClean_(req.fullName, 120);
     if (!ctx.studentName) { ctx.verification = 'NAME_MISSING'; return fail(S.VERIFICATION_FAILED, 'No roster name and no name entered.'); }
@@ -12742,7 +12760,10 @@ function examQpStaffPaperBlock_(r, nowMs) {
   if (examQpBool_(r.Locked)) return 'This question paper is locked. Please ask the Admin to unlock it.';
   const w = examQpWindowOf_(r);
   if (!w) return EXAM_QP_MESSAGES_.INVALID_EXAM;
-  if (nowMs < w.release.getTime()) return 'Available from ' + examQpLabel_(w.release) + ' — the same time as for students.';
+  // r123: opens EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES before the exam start (Admin setting, default 3 hours) — or at the student
+  // release if that is earlier. Who may send is unchanged (examQpStaffAccess_: own-class Teacher / VP / HM, Head Master, Admin).
+  const mins = examQpSendOpenMinutes_(), open = Math.min(w.release.getTime(), w.start.getTime() - mins * 60000);
+  if (nowMs < open) return 'Available from ' + examQpLabel_(new Date(open)) + ' (' + examQpMinutesLabel_(mins) + ' before the exam).';
   return '';
 }
 function examQpStaffViewer_(sessionToken) {
@@ -12764,26 +12785,50 @@ function examQpPersonName_(course, email) {
 }
 
 /* ==========================================================================
- * r104 — Teacher Copy rules (Examination → Exam Question Paper).
+ * r104 — Teacher Copy rules (Examination → Exam Question Paper).  r123: timing, email with PDF, HM / VP cc, Temp Teacher.
  *  - Who: the class's own teachers (Primary + co-teachers on the Google Classroom; never the HM / admin / support
  *    accounts in ROSTER_HIDDEN_STAFF_EMAILS that sit in many classes) + Admin / Super Admin (oversight).
- *  - When: Status PUBLISHED, published at least 24 h before the exam start (Published_Date_Time, APS_TZ), not
- *    cancelled / locked, PDF attached; download opens 60 min before the start (the time of the email).
- *  - Email: 60 min before the start, from donotreply@ (mail profile TICKETS) to each assigned teacher, a link to
- *    the Dashboard only (no PDF). Sent from the existing 5-minute exam run; Teacher_Copy_Email_Sent_To on the paper
- *    row + a cache claim make it idempotent. Student download / keys are untouched.
+ *  - Download (r123): Status PUBLISHED, not cancelled / locked, PDF attached; opens EXAM_QP_TEACHER_COPY_OPEN_MINUTES
+ *    before the exam start (default 180 = 3 hours; Admin sets it in Examination → Exam Question Paper → Settings).
+ *    The r104 "published at least 24 h before" rule is gone: the same paper is now emailed even when published later.
+ *  - Email (r123): ONE email per class paper, 24 hours before the student release time (or within 5 minutes of Publish
+ *    when published later), from donotreply@ (mail profile TICKETS):
+ *      To = the class's teachers + any Temp Teacher assigned to the class on the exam date (TEMP_TEACHER_ASSIGNMENTS),
+ *      Cc = the class's own VP / HM (Class Support, from the Course Description / Room),
+ *      attached = the paper stamped "TEACHER COPY – <class>" (no student key).
+ *    Sent from the existing 5-minute exam run. Teacher_Copy_Email_Sent_To / _Version on the paper row + a cache claim
+ *    make it idempotent; a recipient added later (e.g. a Temp Teacher) gets their own copy; a replaced PDF or a
+ *    re-publish sends an UPDATED copy to everyone. Student download / keys are untouched.
  * ========================================================================== */
-const EXAM_QP_TCOPY_ = { MIN_PUBLISH_MS: 24 * 3600000, OPEN_BEFORE_MS: 60 * 60000, EMAIL_BEFORE_MS: 60 * 60000, EMAIL_ENABLED_PROP: 'EXAM_QP_TEACHER_COPY_EMAIL_ENABLED' };
-const EXAM_QP_TCOPY_TRACK_COLS_ = ['Teacher_Copy_Email_Sent_At', 'Teacher_Copy_Email_Sent_To'];
+const EXAM_QP_TCOPY_ = {
+  EMAIL_ENABLED_PROP: 'EXAM_QP_TEACHER_COPY_EMAIL_ENABLED',
+  OPEN_MINUTES_PROP: 'EXAM_QP_TEACHER_COPY_OPEN_MINUTES', DEFAULT_OPEN_MINUTES: 180, MIN_OPEN_MINUTES: 15, MAX_OPEN_MINUTES: 1440, // r123
+  SEND_OPEN_MINUTES_PROP: 'EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES', // r123: 📧 Send to Student — its own time (same default / range)
+  EMAIL_BEFORE_RELEASE_MS: 24 * 3600000, RUN_BUDGET_MS: 75000, MAX_PAPERS_PER_RUN: 15 // r123: PDF stamping is slow — the rest waits for the next 5-minute run
+};
+const EXAM_QP_TCOPY_TRACK_COLS_ = ['Teacher_Copy_Email_Sent_At', 'Teacher_Copy_Email_Sent_To', 'Teacher_Copy_Email_Version'];
 const EXAM_QP_TCOPY_MSG_ = {
   NOT_PUBLISHED: 'Teacher Copy is unavailable because the examination question paper has not been published.',
-  NOT_24H: 'Teacher Copy is unavailable because the question paper was not published at least 24 hours before the exam start time.',
   UNAUTHORIZED: 'You are not authorized to access this Teacher Copy.',
   NOT_ASSIGNED: 'Teacher Copy is unavailable because you are not assigned to this examination.',
   FAILED: 'Unable to download the Teacher Copy. Please try again or contact APS Tech Support.',
   CANCELLED: 'Teacher Copy is unavailable because this examination was cancelled.'
 };
 function examQpTeacherCopyEmailEnabled_() { return String(PropertiesService.getScriptProperties().getProperty(EXAM_QP_TCOPY_.EMAIL_ENABLED_PROP) || 'true').trim().toLowerCase() !== 'false'; }
+/** r123: minutes before the exam start when the Teacher Copy download opens (Script Property; default 180). */
+function examQpTeacherCopyOpenMinutes_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(EXAM_QP_TCOPY_.OPEN_MINUTES_PROP);
+  const n = raw === null || raw === undefined || String(raw).trim() === '' ? NaN : Number(raw);
+  return Math.floor(n) === n && n >= EXAM_QP_TCOPY_.MIN_OPEN_MINUTES && n <= EXAM_QP_TCOPY_.MAX_OPEN_MINUTES ? n : EXAM_QP_TCOPY_.DEFAULT_OPEN_MINUTES;
+}
+/** r123: minutes before the exam start when 📧 Send to Student opens (Script Property; default 180, 15–1440). */
+function examQpSendOpenMinutes_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(EXAM_QP_TCOPY_.SEND_OPEN_MINUTES_PROP);
+  const n = raw === null || raw === undefined || String(raw).trim() === '' ? NaN : Number(raw);
+  return Math.floor(n) === n && n >= EXAM_QP_TCOPY_.MIN_OPEN_MINUTES && n <= EXAM_QP_TCOPY_.MAX_OPEN_MINUTES ? n : EXAM_QP_TCOPY_.DEFAULT_OPEN_MINUTES;
+}
+/** "3 hours" / "1 hour" / "90 minutes". */
+function examQpMinutesLabel_(m) { return m % 60 === 0 ? (m / 60) + (m === 60 ? ' hour' : ' hours') : m + ' minutes'; }
 /** The class's assigned teachers [{ email, name }] from the synced course (no API call). */
 function examQpTeacherCopyTeachers_(course, courses) {
   if (!course) return [];
@@ -12798,11 +12843,33 @@ function examQpTeacherCopyTeachers_(course, courses) {
   (course.teachers || []).forEach(function (t) { if (t && t.email) add(t.email, t.name); });
   return out;
 }
-/** true when the paper was published at least 24 h before its exam start (APS time zone). */
-function examQpTeacherCopyLeadOk_(r, w) {
-  w = w || examQpWindowOf_(r);
-  const pub = examQpParseTs_(r && r.Published_Date_Time);
-  return !!(w && pub && w.start.getTime() - pub.getTime() >= EXAM_QP_TCOPY_.MIN_PUBLISH_MS);
+/**
+ * r123: recipients of one class paper's Teacher Copy email on its exam date.
+ * to = assigned teachers + Temp Teacher(s) whose assignment covers the exam date; cc = the class's own VP / HM
+ * (course.classSupport roles VP / HM). Nobody appears twice (To wins). [{ email, name, kind }]
+ */
+function examQpTeacherCopyRecipients_(r, course, courses, ttmRows) {
+  const seen = {};
+  const to = examQpTeacherCopyTeachers_(course, courses).map(function (t) { seen[t.email] = true; return { email: t.email, name: t.name, kind: 'TEACHER' }; });
+  const day = String(r.Class_Date || '');
+  (ttmRows || []).forEach(function (x) {
+    if (String(x.Classroom_ID) !== String(course.id)) return;
+    const open = x.Status === 'SCHEDULED' || x.Status === 'ACTIVE' || (x.Status === 'FAILED' && x.Failed_Stage === 'REMOVE');
+    if (!open || !(String(x.Start_Date) <= day && day <= String(x.Removal_Date))) return;
+    const e = normalizeEmail_(x.Temp_Teacher_Email);
+    if (!e || seen[e]) return;
+    seen[e] = true; to.push({ email: e, name: x.Temp_Teacher_Name ? teacherDisplayName_(x.Temp_Teacher_Name) : e, kind: 'TEMP_TEACHER' });
+  });
+  const cc = [];
+  (course.classSupport || []).forEach(function (s) {
+    const roles = (s && s.roles) || [];
+    const isHm = roles.indexOf('HM') > -1, isVp = roles.indexOf('VP') > -1;
+    if (!isHm && !isVp) return;
+    const e = normalizeEmail_(s.email);
+    if (!e || seen[e]) return;
+    seen[e] = true; cc.push({ email: e, name: e, kind: isHm ? 'HM' : 'VP' });
+  });
+  return { to: to, cc: cc };
 }
 /** Who may use the Teacher Copy of one paper — { ok, label } or { ok:false, message, reason }. Never decided by the browser. */
 function examQpTeacherCopyAccess_(v, r, course, courses) {
@@ -12822,9 +12889,8 @@ function examQpTeacherCopyBlock_(r, nowMs) {
   if (examQpBool_(r.Locked)) return 'This question paper is locked. Please ask the Admin to unlock it.';
   const w = examQpWindowOf_(r);
   if (!w) return EXAM_QP_MESSAGES_.INVALID_EXAM;
-  if (!examQpTeacherCopyLeadOk_(r, w)) return EXAM_QP_TCOPY_MSG_.NOT_24H;
-  const open = w.start.getTime() - EXAM_QP_TCOPY_.OPEN_BEFORE_MS;
-  if (nowMs < open) return 'Teacher Copy will be available from ' + examQpLabel_(new Date(open)) + ' (60 minutes before the exam).';
+  const mins = examQpTeacherCopyOpenMinutes_(), open = w.start.getTime() - mins * 60000; // r123: configurable (default 3 hours)
+  if (nowMs < open) return 'Teacher Copy will be available from ' + examQpLabel_(new Date(open)) + ' (' + examQpMinutesLabel_(mins) + ' before the exam).';
   return '';
 }
 function examQpTeacherCopyCanFetch_(sessionToken, qpId) {
@@ -12833,118 +12899,213 @@ function examQpTeacherCopyCanFetch_(sessionToken, qpId) {
     return !!(r && examQpTeacherCopyAccess_(v, r, examQpCourseFor_(r)).ok && !examQpTeacherCopyBlock_(r, Date.now()));
   } catch (e) { return false; }
 }
-/** A paper whose Teacher Copy email may still be due (keeps the 5-minute run alive until its exam starts). */
+/** A paper whose Teacher Copy email may still be due (keeps the 5-minute run alive until its exam starts). r123: no 24-hour publish rule. */
 function examQpTeacherCopyEmailPending_(r, nowMs) {
   if (!examQpTeacherCopyEmailEnabled_() || !r || r.Status !== EXAM_QP_STATUS.PUBLISHED || !r.Question_Paper_File) return false;
   const w = examQpWindowOf_(r);
-  return !!(w && w.start.getTime() > nowMs && examQpTeacherCopyLeadOk_(r, w));
+  return !!(w && w.start.getTime() > nowMs);
 }
-function examQpTeacherCopySubject_(r, course, teacherName) {
+/** r123: what the email was sent for — a replaced PDF (Version) or a re-publish starts a new one. */
+function examQpTeacherCopyVersion_(r) { return 'v' + String(r.Version || '') + '|' + String(r.Published_Date_Time || ''); }
+function examQpTeacherCopySubject_(r, course, updated) {
   const cls = String((course && course.name) || r.Class_Name || '').replace(/\s*\|\s*AY\d{2}-\d{2}\s*$/i, '').trim();
-  return 'CONFIDENTIAL - ' + String(r.Exam_Title || '').trim() + ' - ' + cls + ' - ' + teacherName;
+  return 'CONFIDENTIAL - ' + (updated ? 'UPDATED - ' : '') + String(r.Exam_Title || '').trim() + ' - ' + cls + ' - TEACHER COPY';
 }
+/** r123: the class email — Tamil first, then a short English version (d = { examTitle, className, startLabel, releaseLabel, toNames, ccLabel, attached, dashboardUrl, updated }). */
 function examQpTeacherCopyHtml_(d) {
-  const e = htmlEscape_, p = function (t, x) { return '<p style="font-size:14px;line-height:1.6;margin:0 0 12px;' + (x || '') + '">' + t + '</p>'; };
-  const body = '<div style="background:#fce8e6;border:2px solid #c5221f;border-radius:8px;padding:12px 14px;margin:0 0 16px;color:#a50e0e;font-size:17px;font-weight:700;">🔴 CONFIDENTIAL — DO NOT SHARE</div>' +
-    p('Dear Teacher,') +
-    p('The Teacher Copy for the upcoming examination is being provided <b>ONLY</b> to the assigned APS teacher for examination administration and reference purposes.') +
+  const e = htmlEscape_, p = function (t, x) { return '<p style="font-size:14px;line-height:1.7;margin:0 0 10px;' + (x || '') + '">' + t + '</p>'; };
+  const li = function (items) { return '<ul style="font-size:14px;line-height:1.7;margin:0 0 12px;padding-left:20px;">' + items.map(function (t) { return '<li style="margin:0 0 4px;">' + t + '</li>'; }).join('') + '</ul>'; };
+  const rows = [['தேர்வு / Examination', d.examTitle], ['வகுப்பு / Class', d.className], ['தேர்வு தொடக்கம் / Exam start', d.startLabel], ['மாணவர்களுக்கு வெளியீடு / Student release', d.releaseLabel], ['ஆசிரியர்(கள்) / Teacher(s)', d.toNames]];
+  if (d.ccLabel) rows.push(['நகல் / Copy to (VP / HM)', d.ccLabel]);
+  const body = '<div style="background:#fce8e6;border:2px solid #c5221f;border-radius:8px;padding:12px 14px;margin:0 0 16px;color:#a50e0e;font-size:17px;font-weight:700;">🔴 இரகசியம் — யாருடனும் பகிர வேண்டாம்<br><span style="font-size:14px;">CONFIDENTIAL — DO NOT SHARE</span></div>' +
+    (d.updated ? '<div style="background:#fef7e0;border:1px solid #f9ab00;border-radius:8px;padding:8px 12px;margin:0 0 14px;font-size:14px;font-weight:700;color:#7a4f01;">திருத்தப்பட்ட வினாத்தாள் — இந்தப் பிரதியையே பயன்படுத்தவும்; முந்தைய பிரதியை நீக்கவும்.<br>UPDATED question paper — please use this copy and delete the earlier one.</div>' : '') +
+    p('அன்புள்ள ' + e(d.toNames || 'ஆசிரியர்') + ' அவர்களுக்கு,') + p('வணக்கம்!') +
+    p(d.attached ? 'கீழ்க்காணும் தேர்வுக்கான <b>ஆசிரியர் பிரதி (Teacher Copy)</b> இத்துடன் <b>PDF ஆக இணைக்கப்பட்டுள்ளது</b> (ஒவ்வொரு பக்கத்திலும் TEACHER COPY எனக் குறிக்கப்பட்டுள்ளது). இது இந்த வகுப்பின் ஆசிரியர்(கள்) மற்றும் வகுப்பு VP / HM ஆகியோருக்கு மட்டுமே, தேர்வு நடத்துவதற்கும் குறிப்புக்காகவும் வழங்கப்படுகிறது.'
+      : 'வினாத்தாள் மின்னஞ்சலில் இணைக்க முடியாத அளவுக்குப் பெரியது. APS Dashboard-இல் Examination → Exam Question Paper → <b>🔒 Download Teacher Copy</b> மூலம் பதிவிறக்கவும்.') +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:14px;margin:0 0 14px;">' +
-    [['Examination', d.examTitle], ['Google Classroom', d.className], ['Exam Start', d.startLabel], ['Teacher', d.teacherName]].map(function (x) { return '<tr><td style="padding:3px 14px 3px 0;color:#5f6368;">' + e(x[0]) + '</td><td style="padding:3px 0;font-weight:700;">' + e(x[1]) + '</td></tr>'; }).join('') + '</table>' +
-    p('<b style="color:#a50e0e;">DO NOT forward, share, screenshot, copy, upload, or distribute this question paper to students, parents, other teachers, or anyone else.</b>') +
-    p('This Teacher Copy is intended <b>ONLY</b> as a reference in case a student experiences a delay or trouble downloading the question paper.') +
-    '<div style="font-size:15px;font-weight:700;margin:18px 0 6px;">STUDENT QUESTION PAPER</div>' +
-    p('Please <b>ALWAYS</b> recommend that students download the question paper directly from the APS Dashboard using their <b>UNIQUE DOWNLOAD KEY</b>.') +
-    p('The Teacher Copy should <b>NOT</b> be used as a replacement for the student\'s official APS Dashboard download.') +
-    p('Please keep this question paper strictly confidential until the examination is officially completed.') +
-    p('<b>Teacher Copy:</b><br>Sign in to the APS Dashboard → Examination → Exam Question Paper → <b>🔒 Download Teacher Copy</b>.<br><a href="' + e(d.dashboardUrl) + '" style="color:#1a73e8;">' + e(d.dashboardUrl) + '</a>') +
-    p('Thank you,<br><br>APS Tech Support Team<br>Avvaiyar Padasalai', 'margin-top:18px;') +
-    '<div style="border-top:1px solid #e0e0e0;margin-top:16px;padding-top:10px;font-size:12px;color:#5f6368;line-height:1.5;"><b>Confidentiality Notice:</b><br>This question paper is intended only for the assigned APS teacher.<br>Do not share, forward, copy, screenshot, upload, or distribute it.</div>';
-  return apsEmailShell_('CONFIDENTIAL — Teacher Copy', body, { buttonUrl: d.dashboardUrl, buttonLabel: 'OPEN APS DASHBOARD', preheader: 'CONFIDENTIAL Teacher Copy — ' + d.examTitle + ' — ' + d.startLabel });
+    rows.map(function (x) { return '<tr><td style="padding:3px 14px 3px 0;color:#5f6368;vertical-align:top;">' + e(x[0]) + '</td><td style="padding:3px 0;font-weight:600;">' + e(x[1]) + '</td></tr>'; }).join('') + '</table>' +
+    li(['<b style="color:#a50e0e;">இந்த வினாத்தாளை மாணவர்கள், பெற்றோர், பிற ஆசிரியர்கள் அல்லது வேறு யாருடனும் பகிரவோ, அனுப்பவோ, படம் எடுக்கவோ, நகலெடுக்கவோ, பதிவேற்றவோ கூடாது.</b>',
+      'மாணவர்கள் தங்களின் தனிப்பட்ட பதிவிறக்கக் குறியீட்டுடன் (<b>UNIQUE DOWNLOAD KEY</b>) APS Dashboard-இல் இருந்தே வினாத்தாளைப் பதிவிறக்க வேண்டும். இந்த ஆசிரியர் பிரதி, ஒரு மாணவருக்குப் பதிவிறக்கத்தில் சிக்கல் ஏற்பட்டால் குறிப்புக்காக மட்டுமே.',
+      'தேர்வு முழுமையாக முடியும் வரை இதை இரகசியமாக வைத்திருக்கவும்.']) +
+    p('நன்றி,<br>APS தொழில்நுட்ப உதவிக் குழு<br>ஔவையார் பாடசாலை', 'margin-top:14px;') +
+    '<div style="border-top:1px dashed #dadce0;margin:18px 0 12px;"></div>' +
+    '<div style="font-size:13px;font-weight:700;color:#5f6368;margin:0 0 6px;">English</div>' +
+    p('Dear ' + e(d.toNames || 'Teacher') + ',') +
+    p(d.attached ? 'The <b>Teacher Copy</b> for this exam is <b>attached</b> (PDF, marked TEACHER COPY), for the class teacher(s) and the class VP / HM only — a reference in case a student cannot download the paper.'
+      : 'The question paper is too large to attach — please download it from the APS Dashboard (Examination → Exam Question Paper → Download Teacher Copy).') +
+    p('<b style="color:#a50e0e;">Do not share, forward, copy, screenshot or upload it.</b> Students must download from the APS Dashboard with their <b>UNIQUE DOWNLOAD KEY</b>. Keep it confidential until the exam is over.') +
+    p('Thank you,<br>APS Tech Support Team, Avvaiyar Padasalai') +
+    '<div style="border-top:1px solid #e0e0e0;margin-top:16px;padding-top:10px;font-size:12px;color:#5f6368;line-height:1.5;"><b>இரகசிய அறிவிப்பு / Confidentiality Notice:</b> இந்த வினாத்தாள் வகுப்பின் ஆசிரியர்(கள்) மற்றும் VP / HM-க்கு மட்டுமே. / For the class teacher(s) and the class VP / HM only. Do not share, forward, copy, screenshot, upload, or distribute it.</div>';
+  return apsEmailShell_('CONFIDENTIAL — Teacher Copy', body, { buttonUrl: d.dashboardUrl, buttonLabel: 'OPEN APS DASHBOARD', preheader: 'இரகசியம் — ஆசிரியர் பிரதி / CONFIDENTIAL Teacher Copy — ' + d.examTitle + ' — ' + d.startLabel });
 }
 function examQpTeacherCopyText_(d) {
-  return ['🔴 CONFIDENTIAL — DO NOT SHARE', '', 'Dear Teacher,', '',
-    'The Teacher Copy for the upcoming examination is being provided ONLY to the assigned APS teacher for examination administration and reference purposes.', '',
-    'Examination: ' + d.examTitle, 'Google Classroom: ' + d.className, 'Exam Start: ' + d.startLabel, 'Teacher: ' + d.teacherName, '',
-    'DO NOT forward, share, screenshot, copy, upload, or distribute this question paper to students, parents, other teachers, or anyone else.', '',
-    'This Teacher Copy is intended ONLY as a reference in case a student experiences a delay or trouble downloading the question paper.', '',
-    'STUDENT QUESTION PAPER', '', 'Please ALWAYS recommend that students download the question paper directly from the APS Dashboard using their UNIQUE DOWNLOAD KEY.', '',
-    'The Teacher Copy should NOT be used as a replacement for the student\'s official APS Dashboard download.', '',
-    'Please keep this question paper strictly confidential until the examination is officially completed.', '',
-    'Teacher Copy:', 'Sign in to the APS Dashboard -> Examination -> Exam Question Paper -> Download Teacher Copy', d.dashboardUrl, '',
-    'Thank you,', '', 'APS Tech Support Team', 'Avvaiyar Padasalai', '', 'Confidentiality Notice:', 'This question paper is intended only for the assigned APS teacher.', 'Do not share, forward, copy, screenshot, upload, or distribute it.'].join('\n');
+  return ['🔴 இரகசியம் — யாருடனும் பகிர வேண்டாம் / CONFIDENTIAL — DO NOT SHARE', '']
+    .concat(d.updated ? ['திருத்தப்பட்ட வினாத்தாள் — இந்தப் பிரதியையே பயன்படுத்தவும்; முந்தைய பிரதியை நீக்கவும். / UPDATED question paper — please use this copy and delete the earlier one.', ''] : [])
+    .concat(['அன்புள்ள ' + (d.toNames || 'ஆசிரியர்') + ' அவர்களுக்கு,', '', 'வணக்கம்!', '',
+      d.attached ? 'கீழ்க்காணும் தேர்வுக்கான ஆசிரியர் பிரதி (Teacher Copy) இத்துடன் PDF ஆக இணைக்கப்பட்டுள்ளது (ஒவ்வொரு பக்கத்திலும் TEACHER COPY எனக் குறிக்கப்பட்டுள்ளது). இது இந்த வகுப்பின் ஆசிரியர்(கள்) மற்றும் வகுப்பு VP / HM ஆகியோருக்கு மட்டுமே, தேர்வு நடத்துவதற்கும் குறிப்புக்காகவும் வழங்கப்படுகிறது.'
+        : 'வினாத்தாள் மின்னஞ்சலில் இணைக்க முடியாத அளவுக்குப் பெரியது. APS Dashboard-இல் Examination -> Exam Question Paper -> Download Teacher Copy மூலம் பதிவிறக்கவும்.', '',
+      'தேர்வு / Examination: ' + d.examTitle, 'வகுப்பு / Class: ' + d.className, 'தேர்வு தொடக்கம் / Exam start: ' + d.startLabel, 'மாணவர்களுக்கு வெளியீடு / Student release: ' + d.releaseLabel, 'ஆசிரியர்(கள்) / Teacher(s): ' + d.toNames])
+    .concat(d.ccLabel ? ['நகல் / Copy to (VP / HM): ' + d.ccLabel] : [])
+    .concat(['',
+      '- இந்த வினாத்தாளை மாணவர்கள், பெற்றோர், பிற ஆசிரியர்கள் அல்லது வேறு யாருடனும் பகிரவோ, அனுப்பவோ, படம் எடுக்கவோ, நகலெடுக்கவோ, பதிவேற்றவோ கூடாது.',
+      '- மாணவர்கள் தங்களின் தனிப்பட்ட பதிவிறக்கக் குறியீட்டுடன் (UNIQUE DOWNLOAD KEY) APS Dashboard-இல் இருந்தே வினாத்தாளைப் பதிவிறக்க வேண்டும். இந்த ஆசிரியர் பிரதி, ஒரு மாணவருக்குப் பதிவிறக்கத்தில் சிக்கல் ஏற்பட்டால் குறிப்புக்காக மட்டுமே.',
+      '- தேர்வு முழுமையாக முடியும் வரை இதை இரகசியமாக வைத்திருக்கவும்.', '',
+      'நன்றி,', 'APS தொழில்நுட்ப உதவிக் குழு', 'ஔவையார் பாடசாலை', '', '---', 'English', '',
+      'Dear ' + (d.toNames || 'Teacher') + ',', '',
+      d.attached ? 'The Teacher Copy for this exam is attached (PDF, marked TEACHER COPY), for the class teacher(s) and the class VP / HM only — a reference in case a student cannot download the paper.'
+        : 'The question paper is too large to attach — please download it from the APS Dashboard (Examination -> Exam Question Paper -> Download Teacher Copy).', '',
+      'Do not share, forward, copy, screenshot or upload it. Students must download from the APS Dashboard with their UNIQUE DOWNLOAD KEY. Keep it confidential until the exam is over.', '',
+      'Thank you,', 'APS Tech Support Team, Avvaiyar Padasalai', '',
+      'இரகசிய அறிவிப்பு / Confidentiality Notice: for the class teacher(s) and the class VP / HM only. Do not share, forward, copy, screenshot, upload, or distribute it.']).join('\n');
 }
-/** Records the teachers just emailed on the paper row (two cells, no Row_Version bump), under the exam lock. */
-function examQpTeacherCopyMarkSent_(qpId, emails, ts) {
+/** Records who was just emailed on the paper row (three cells, no Row_Version bump), under the exam lock. A new version starts a new list. */
+function examQpTeacherCopyMarkSent_(qpId, emails, ts, version) {
   return examQpWithLock_(function () {
     const meta = examQpSheet_(EXAM_QP_CONFIG.SHEET_PAPERS, EXAM_QP_PAPER_HEADER);
     const last = meta.sheet.getLastRow(); if (last < 2) return false;
-    const idCol = meta.col.Question_Paper_ID, atCol = meta.col.Teacher_Copy_Email_Sent_At, toCol = meta.col.Teacher_Copy_Email_Sent_To;
-    if (idCol === undefined || atCol === undefined || toCol === undefined) return false;
+    const idCol = meta.col.Question_Paper_ID, atCol = meta.col.Teacher_Copy_Email_Sent_At, toCol = meta.col.Teacher_Copy_Email_Sent_To, verCol = meta.col.Teacher_Copy_Email_Version;
+    if (idCol === undefined || atCol === undefined || toCol === undefined || verCol === undefined) return false;
     const ids = meta.sheet.getRange(2, idCol + 1, last - 1, 1).getValues();
     for (let i = 0; i < ids.length; i++) {
       if (String(ids[i][0]) !== qpId) continue;
-      const cur = String(meta.sheet.getRange(i + 2, toCol + 1, 1, 1).getValues()[0][0] || '').split(',').map(function (x) { return normalizeEmail_(x); }).filter(Boolean);
+      const sameVer = String(meta.sheet.getRange(i + 2, verCol + 1, 1, 1).getValues()[0][0] || '') === String(version || '');
+      const cur = sameVer ? String(meta.sheet.getRange(i + 2, toCol + 1, 1, 1).getValues()[0][0] || '').split(',').map(function (x) { return normalizeEmail_(x); }).filter(Boolean) : [];
       emails.forEach(function (e) { if (cur.indexOf(e) === -1) cur.push(e); });
       meta.sheet.getRange(i + 2, atCol + 1, 1, 1).setNumberFormat('@').setValues([[ts]]);
       meta.sheet.getRange(i + 2, toCol + 1, 1, 1).setNumberFormat('@').setValues([[cur.join(',')]]);
+      meta.sheet.getRange(i + 2, verCol + 1, 1, 1).setNumberFormat('@').setValues([[String(version || '')]]);
       return true;
     }
     return false;
   }, 20000).value;
 }
 /**
- * One pass of the 60-minute Teacher Copy email (called by the existing 5-minute exam run). Idempotent:
- * Teacher_Copy_Email_Sent_To on the paper row + a per-teacher cache claim. Returns { due, sent, failed, skipped, pending }.
+ * r123 — one pass of the Teacher Copy email (called by the existing 5-minute exam run). Due from 24 hours before the
+ * student release time until the exam starts. One email per class paper (To teachers + Temp Teacher, Cc VP / HM, PDF
+ * attached). Idempotent: Teacher_Copy_Email_Sent_To / _Version + a per-paper cache claim. Returns a Promise of
+ * { due, sent, failed, skipped, pending }.
  */
-function examQpTeacherCopyEmailRun_(now) {
+function examQpTeacherCopyEmailRun_(now, opts) {
+  opts = opts || {}; // { dates: {'yyyy-MM-dd': true}, budgetMs, maxPapers } — sendTeacherCopyNowForDates: these exam dates now, no 24-h wait
   const out = { due: 0, sent: 0, failed: 0, skipped: 0, pending: false };
-  if (!examQpTeacherCopyEmailEnabled_()) return out;
-  const nowMs = now.getTime(), records = examQpReadRecords_(true);
+  if (!opts.dates && !examQpTeacherCopyEmailEnabled_()) return Promise.resolve(out);
+  const budgetMs = opts.budgetMs || EXAM_QP_TCOPY_.RUN_BUDGET_MS, maxPapers = opts.maxPapers || EXAM_QP_TCOPY_.MAX_PAPERS_PER_RUN;
+  const nowMs = now.getTime(), t0 = Date.now(), records = examQpReadRecords_(true);
   const due = records.filter(function (r) {
+    if (opts.dates) {
+      if (!opts.dates[String(r.Class_Date)] || r.Status !== EXAM_QP_STATUS.PUBLISHED || !r.Question_Paper_File) return false;
+      const ww = examQpWindowOf_(r);
+      if (!ww || ww.start.getTime() <= nowMs) { out.started = (out.started || 0) + 1; return false; } // the exam has started: never emailed
+      if (examQpBool_(r.Locked)) { out.locked = (out.locked || 0) + 1; return false; }
+      return r.Academic_Year === EXAM_QP_CONFIG.SUPPORTED_ACADEMIC_YEAR;
+    }
     if (!examQpTeacherCopyEmailPending_(r, nowMs)) return false;
     out.pending = true;
-    if (examQpBool_(r.Locked)) return false;
-    const w = examQpWindowOf_(r);
-    return nowMs >= w.start.getTime() - EXAM_QP_TCOPY_.EMAIL_BEFORE_MS && r.Academic_Year === EXAM_QP_CONFIG.SUPPORTED_ACADEMIC_YEAR;
+    if (examQpBool_(r.Locked) || r.Academic_Year !== EXAM_QP_CONFIG.SUPPORTED_ACADEMIC_YEAR) return false;
+    return nowMs >= examQpWindowOf_(r).release.getTime() - EXAM_QP_TCOPY_.EMAIL_BEFORE_RELEASE_MS;
   });
-  if (!due.length) return out;
-  const courses = readAllCoursesFromCache_(), cache = CacheService.getScriptCache(), dashboardUrl = apsDashboardUrl_(), sys = { email: 'SYSTEM', role: 'SYSTEM' };
-  due.forEach(function (r) {
-    out.due++;
+  if (!due.length) return Promise.resolve(out);
+  const courses = readAllCoursesFromCache_(), cache = CacheService.getScriptCache(), dashboardUrl = ctaDashboardUrl_(), sys = { email: 'SYSTEM', role: 'SYSTEM' }; // r123: the public Dashboard address (APS_DASHBOARD_PUBLIC_URL) — never the editor's /dev link
+  const isAps = function (x) { return x.email.slice(-EXAM_QP_APS_DOMAIN_.length) === EXAM_QP_APS_DOMAIN_; };
+  let ttm = null; const ttmOnce = function () { if (ttm === null) { try { ttm = ttmRows_(); } catch (eT) { ttm = []; console.warn('[ExamQP teacher copy] Temp Teacher list not read: ' + (eT && eT.message)); } } return ttm; };
+  const srcMemo = {};
+  let papers = 0;
+  const one = function (r) {
     const course = courses.filter(function (c) { return String(c.id) === String(r.Course_ID); })[0];
-    if (!course || !examIsAllowedCourseName_(course.name)) return;
-    const done = String(r.Teacher_Copy_Email_Sent_To || '').split(',').map(function (x) { return normalizeEmail_(x); }).filter(Boolean);
-    const w = examQpWindowOf_(r), sentNow = [];
-    const teachers = examQpTeacherCopyTeachers_(course, courses);
-    if (!teachers.length) {
+    if (!course || !examIsAllowedCourseName_(course.name)) return Promise.resolve();
+    const version = examQpTeacherCopyVersion_(r), sameVer = String(r.Teacher_Copy_Email_Version || '') === version;
+    const done = sameVer ? String(r.Teacher_Copy_Email_Sent_To || '').split(',').map(function (x) { return normalizeEmail_(x); }).filter(Boolean) : [];
+    const updated = !sameVer && !!String(r.Teacher_Copy_Email_Version || '');
+    const rc = examQpTeacherCopyRecipients_(r, course, courses, ttmOnce());
+    // No teacher at all → the class VP / HM receive it directly (still logged); nobody → skipped, logged once.
+    let to = rc.to, cc = rc.cc;
+    if (!to.length) {
       const k0 = 'eqtc_none_' + r.Question_Paper_ID;
-      if (!cache.get(k0)) { cache.put(k0, '1', 21600); out.skipped++; console.warn('[ExamQP teacher copy] ' + r.Question_Paper_ID + ': no assigned teacher — email not sent');
-        examQpAudit_(sys, [{ type: EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_SKIPPED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name, result: 'SKIPPED', reason: 'No assigned teacher on the class.' }]); }
-      return;
+      if (!cache.get(k0)) { cache.put(k0, '1', 21600); out.skipped++; console.warn('[ExamQP teacher copy] ' + r.Question_Paper_ID + ': no assigned teacher' + (cc.length ? ' — sent to the class VP / HM' : ' — email not sent'));
+        examQpAudit_(sys, [{ type: EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_SKIPPED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name, result: 'SKIPPED', reason: 'No assigned teacher on the class.' + (cc.length ? ' Sent to the class VP / HM instead.' : '') }]); }
+      if (!cc.length) return Promise.resolve();
+      to = cc; cc = [];
     }
-    teachers.forEach(function (t) {
-      if (done.indexOf(t.email) > -1) return;
-      const claim = 'eqtc_' + Utilities.base64EncodeWebSafe(r.Question_Paper_ID + '|' + t.email).slice(0, 200);
-      if (cache.get(claim)) return; // another run is sending it right now
-      if (t.email.slice(-EXAM_QP_APS_DOMAIN_.length) !== EXAM_QP_APS_DOMAIN_) {
-        cache.put(claim, 'skip', 21600); out.skipped++;
-        examQpAudit_(sys, [{ type: EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_SKIPPED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name, result: 'SKIPPED', reason: 'Teacher has no APS email address.', metadata: { teacher: t.name } }]);
-        return;
-      }
-      cache.put(claim, '1', 21600);
-      const d = { examTitle: String(r.Exam_Title || ''), className: String(course.name || r.Class_Name).replace(/\s*\|\s*AY\d{2}-\d{2}\s*$/i, '').trim(), startLabel: examQpLabel_(w.start), teacherName: t.name, dashboardUrl: dashboardUrl };
-      let res;
-      try { res = apsGmailSend_('TICKETS', { to: [t.email], cc: [], replyTo: attMailAdminCc_(), subject: examQpTeacherCopySubject_(r, course, t.name), html: examQpTeacherCopyHtml_(d), text: examQpTeacherCopyText_(d) }); }
-      catch (eS) { res = { ok: false, error: srmSafeErr_(eS) }; }
-      if (res && res.ok) { sentNow.push(t.email); out.sent++; }
-      else { cache.remove(claim); out.failed++; }
-      examQpAudit_(sys, [{ type: res && res.ok ? EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_SENT : EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_FAILED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name,
-        result: res && res.ok ? 'SENT' : 'FAILED', reason: res && res.ok ? '' : String(res && res.error || 'send failed').slice(0, 200), metadata: { to: t.email, minutesBefore: Math.round((w.start.getTime() - nowMs) / 60000) } }]);
+    to.concat(cc).filter(function (x) { return !isAps(x); }).forEach(function (x) {
+      const k1 = 'eqtc_nonaps_' + Utilities.base64EncodeWebSafe(r.Question_Paper_ID + '|' + x.email).slice(0, 200);
+      if (cache.get(k1)) return; cache.put(k1, '1', 21600); out.skipped++;
+      examQpAudit_(sys, [{ type: EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_SKIPPED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name, result: 'SKIPPED', reason: 'Teacher has no APS email address.', metadata: { teacher: x.name, kind: x.kind } }]);
     });
-    if (sentNow.length) { try { examQpTeacherCopyMarkSent_(r.Question_Paper_ID, sentNow, examQpTs_(now)); } catch (eM) { console.error('[ExamQP teacher copy] not recorded (cache claim still prevents a resend for 6 h): ' + (eM && eM.message)); } }
+    const toNew = to.filter(function (x) { return isAps(x) && done.indexOf(x.email) === -1; });
+    const ccNew = done.length ? [] : cc.filter(function (x) { return isAps(x); }); // the VP / HM get it once per version; later additions go to the new person only
+    if (!toNew.length) return Promise.resolve();
+    if (papers >= maxPapers || Date.now() - t0 > budgetMs) { out.deferred = (out.deferred || 0) + 1; return Promise.resolve(); } // next run
+    const claim = 'eqtc2_' + Utilities.base64EncodeWebSafe(r.Question_Paper_ID + '|' + version + '|' + toNew.map(function (x) { return x.email; }).join(',')).slice(0, 200);
+    if (cache.get(claim)) return Promise.resolve(); // another run is sending it right now
+    cache.put(claim, '1', 21600);
+    papers++; out.due++;
+    const w = examQpWindowOf_(r), shortClass = String(r.Class_Name).split('|')[0].trim(), sendNow = new Date();
+    const finish = function (ok, err, attached) {
+      const all = toNew.concat(ccNew).map(function (x) { return x.email; });
+      if (ok) { out.sent++; try { examQpTeacherCopyMarkSent_(r.Question_Paper_ID, all, examQpTs_(sendNow), version); } catch (eM) { console.error('[ExamQP teacher copy] not recorded (cache claim still prevents a resend for 6 h): ' + (eM && eM.message)); } }
+      else { out.failed++; try { cache.remove(claim); } catch (eC) { /* expires */ } }
+      examQpAudit_(sys, [{ type: ok ? EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_SENT : EXAM_QP_EVENTS.TEACHER_COPY_EMAIL_FAILED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name,
+        result: ok ? 'SENT' : 'FAILED', reason: ok ? '' : String(err || 'send failed').slice(0, 200),
+        metadata: { to: toNew.map(function (x) { return x.email + (x.kind === 'TEMP_TEACHER' ? ' (temp teacher)' : ''); }).join(', '), cc: ccNew.map(function (x) { return x.email + ' (' + x.kind + ')'; }).join(', '),
+          attached: !!attached, updated: updated, minutesBeforeStart: Math.round((w.start.getTime() - sendNow.getTime()) / 60000) } }]);
+    };
+    const send = function (bytes, fileName) {
+      const d = { examTitle: String(r.Exam_Title || ''), className: String(course.name || r.Class_Name).replace(/\s*\|\s*AY\d{2}-\d{2}\s*$/i, '').trim(), startLabel: examQpLabel_(w.start), releaseLabel: examQpLabel_(w.release),
+        toNames: toNew.map(function (x) { return x.name; }).join(', '), ccLabel: ccNew.map(function (x) { return x.email + ' (' + x.kind + ')'; }).join(', '),
+        attached: !!bytes, dashboardUrl: dashboardUrl, updated: updated };
+      let res;
+      try {
+        res = apsGmailSend_('TICKETS', { to: toNew.map(function (x) { return x.email; }), cc: ccNew.map(function (x) { return x.email; }), replyTo: attMailAdminCc_(), subject: examQpTeacherCopySubject_(r, course, updated),
+          html: examQpTeacherCopyHtml_(d), text: examQpTeacherCopyText_(d), attachments: bytes ? [Utilities.newBlob(bytes, 'application/pdf', fileName)] : undefined });
+      } catch (eS) { res = { ok: false, error: srmSafeErr_(eS) }; }
+      finish(!!(res && res.ok), res && res.error, !!bytes);
+    };
+    let src = srcMemo[r.Question_Paper_File];
+    if (!src) {
+      try { src = srcMemo[r.Question_Paper_File] = Utilities.base64Encode(DriveApp.getFileById(r.Question_Paper_File).getBlob().getBytes()); }
+      catch (eSrc) { finish(false, 'The question paper PDF could not be read.', false); return Promise.resolve(); }
+    }
+    const stamp = { name: 'TEACHER COPY - ' + shortClass, apsId: 'NA', email: '', className: r.Class_Name, shortClass: shortClass, examTitle: r.Exam_Title,
+      downloadedLabel: examQpLabel_(sendNow), questionPaperId: r.Question_Paper_ID, downloadKey: '', watermark: 'TEACHER COPY' };
+    const fileName = 'TEACHER_COPY_' + examQpFileName_(r, 'CLASS', shortClass, sendNow);
+    return examQpPersonalizePdf_(src, stamp).then(function (b64) {
+      const bytes = Utilities.base64Decode(b64);
+      if (bytes.length > EXAM_QP_SEND_MAX_BYTES_) { send(null, ''); return; } // too large: the email still goes, with the Dashboard download
+      try { examQpFolders_().personalized.createFile(Utilities.newBlob(bytes, 'application/pdf', 'EMAILED_' + fileName)); } catch (eArc) { console.error('[ExamQP teacher copy] copy not archived: ' + (eArc && eArc.message)); }
+      send(bytes, fileName);
+    }).catch(function (eP) { console.error('[ExamQP teacher copy] personalize: ' + (eP && eP.stack || eP)); finish(false, 'The Teacher Copy PDF could not be generated.', false); });
+  };
+  let chain = Promise.resolve();
+  due.forEach(function (r) { chain = chain.then(function () { return one(r); }).catch(function (eOne) { console.error('[ExamQP teacher copy] ' + r.Question_Paper_ID + ': ' + (eOne && eOne.message)); }); });
+  return chain.then(function () {
+    console.log('[ExamQP teacher copy] due ' + out.due + ', sent ' + out.sent + ', failed ' + out.failed + ', skipped ' + out.skipped + (out.deferred ? ', next run ' + out.deferred : ''));
+    return out;
   });
-  console.log('[ExamQP teacher copy] due ' + out.due + ', sent ' + out.sent + ', failed ' + out.failed + ', skipped ' + out.skipped);
-  return out;
+}
+
+/**
+ * r123 — Apps Script editor, script owner only: send the Teacher Copy email NOW (no 24-hour wait) for every published,
+ * not locked / cancelled paper whose exam date is in `dates` (['yyyy-MM-dd', …]; default = today and the next 2 days,
+ * APS time zone) and whose exam has not started. Same rules as the automatic email (To class teachers + Temp Teacher,
+ * Cc class VP / HM, PDF attached); classes already emailed for the current paper version are skipped, so it is safe to
+ * run again. Works even when the automatic Teacher Copy email is switched OFF. If the log says "next run N", run it again.
+ */
+function sendTeacherCopyNowForDates(dates) {
+  apsRequireOwnerOrTrigger_(null);
+  const now = new Date();
+  let list = Array.isArray(dates) ? dates : [];
+  if (!list.length) list = [0, 1, 2].map(function (n) { return Utilities.formatDate(new Date(now.getTime() + n * 86400000), APS_TZ, 'yyyy-MM-dd'); });
+  const set = {};
+  list.forEach(function (d) { const v = String(d || '').trim(); if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Exam dates must look like 2026-11-14 (got "' + v + '").'); set[v] = true; });
+  console.log('[ExamQP teacher copy] send now for exam dates: ' + Object.keys(set).join(', '));
+  examQpAudit_({ email: 'SYSTEM', role: 'SYSTEM' }, [{ type: EXAM_QP_EVENTS.SETTINGS_UPDATED, result: 'SUCCESS', reason: 'Teacher Copy email — send now (editor)', metadata: { dates: Object.keys(set) } }]);
+  return examQpTeacherCopyEmailRun_(now, { dates: set, budgetMs: 300000, maxPapers: 60 }).then(function (out) {
+    const msg = 'Teacher Copy send now — classes emailed: ' + out.sent + ', failed: ' + out.failed + ', skipped: ' + out.skipped +
+      (out.started ? ', exam already started (not sent): ' + out.started : '') + (out.locked ? ', locked (not sent): ' + out.locked : '') +
+      (out.deferred ? ' — ' + out.deferred + ' left: run sendTeacherCopyNowForDates again' : '') + '. Details: EXAM_QUESTION_PAPER_AUDIT (TEACHER_COPY_EMAIL_*).';
+    console.log('[ExamQP teacher copy] ' + msg);
+    return msg;
+  });
 }
 
 /** ⬇️ Download Teacher Copy — same ticket protocol as the student download / Admin preview. */
@@ -13118,7 +13279,8 @@ function sendExamQuestionPaperToStudent(sessionToken, req) {
  * ========================================================================== */
 const EXAM_QP_AUTO_ = {
   HANDLER: 'processExamQuestionPaperAutoEmail', SHEET: 'EXAM_QUESTION_PAPER_AUTO_EMAIL_LOG', ENABLED_PROP: 'EXAM_QP_AUTO_EMAIL_ENABLED',
-  DEFAULT_MINUTES: 20, MIN_MINUTES: 1, MAX_MINUTES: 120, EVERY_MINUTES: 5, MAX_FAILS: 3, RUN_BUDGET_MS: 240000, MAX_SENDS_PER_RUN: 40, METHOD: 'AUTO_EMAIL_FALLBACK',
+  // r125: MAX_FAILS 3 → 10 (failed emails are retried every 5-minute run, and once more in the same run, until delivered or the window ends)
+  DEFAULT_MINUTES: 20, MIN_MINUTES: 1, MAX_MINUTES: 120, EVERY_MINUTES: 5, MAX_FAILS: 10, RUN_BUDGET_MS: 240000, MAX_SENDS_PER_RUN: 40, METHOD: 'AUTO_EMAIL_FALLBACK',
   RUN_KEY: 'examQpAuto_run_v1', CLAIM_PREFIX: 'examQpAuto_claim_'
 };
 const EXAM_QP_AUTO_HEADER_ = ['Log_ID', 'Evaluated_Date_Time_EST', 'Exam_ID', 'Exam_Title', 'Exam_Date', 'Exam_Start_Time', 'Question_Paper_ID', 'Course_ID', 'Class_Name',
@@ -13127,8 +13289,97 @@ const EXAM_QP_AUTO_HEADER_ = ['Log_ID', 'Evaluated_Date_Time_EST', 'Exam_ID', 'E
 const EXAM_QP_AUTO_REASON_ = {
   SENT: 'NOT_DOWNLOADED_AFTER_CONFIGURED_TIME', NOT_ONLINE: 'STUDENT_NOT_ONLINE', UA: 'UNREPORTED_ABSENCE',
   DOWNLOADED: 'DASHBOARD_DOWNLOADED', NO_EMAIL: 'NO_VALID_APS_EMAIL', FAILED: 'EMAIL_DELIVERY_FAILED',
-  MEET_UNKNOWN: 'MEET_STATUS_UNKNOWN' // r100: no Google Meet data for this class at the exam time (e.g. a custom-time exam) — never sent
+  MEET_UNKNOWN: 'MEET_STATUS_UNKNOWN', // r100: no Google Meet data for this class at the exam time (e.g. a custom-time exam) — never sent (r125: historic rows only)
+  BATCH: 'BATCH_SEND_TO_ALL_ELIGIBLE' // r125: sent by "📧 Send to all Eligible" (staff button) — batch mode
 };
+/**
+ * r125 — "📧 Send to all Eligible" (batch mode) + Google Meet no longer required.
+ *  - Every student who has NOT downloaded, has a valid APS email, is NOT marked absent for that class date and has not
+ *    already been emailed this paper (automatic / batch log SENT, or a staff 📧 Send to Student SENT) gets their own
+ *    personalized copy (same Download Key) — whether or not they are seen in Google Meet (Meet status is still logged).
+ *  - Automatic (per exam toggle, unchanged): from exam start + X minutes until class end.
+ *  - Batch (button on the Students list; class Teacher / VP / HM of the class, Head Master, Admin — same rule as Send to
+ *    Student): the papers are queued in Script Property EXAM_QP_BATCH_EMAIL_REQUESTS ({ qpId: { at, by, until } }); the
+ *    first batch is sent at once, then the same 5-minute run continues — up to 40 emails per run, failures retried
+ *    (in the same run and the next runs, max 10 attempts per student) — until every eligible student is emailed or the
+ *    request ends (class end, at least 2 hours after the request). Never a second email to the same student.
+ */
+const EXAM_QP_BATCH_ = { PROP: 'EXAM_QP_BATCH_EMAIL_REQUESTS', METHOD: 'BATCH_EMAIL', UI_BUDGET_MS: 50000, UI_MAX_SENDS: 25, MIN_KEEP_MS: 2 * 3600000, MAX_PAPERS: 200 };
+/** Active batch requests { qpId: { at, by, until } } (expired ones dropped). */
+function examQpBatchRequests_(nowMs) {
+  let o = {};
+  try { o = JSON.parse(PropertiesService.getScriptProperties().getProperty(EXAM_QP_BATCH_.PROP) || '{}') || {}; } catch (e) { o = {}; }
+  const out = {}, t = nowMs || Date.now();
+  Object.keys(o).forEach(function (k) { if (o[k] && Number(o[k].until) > t) out[k] = o[k]; });
+  return out;
+}
+/** Adds / extends requests under the script lock; prunes expired ones. entries = { qpId: { at, by, until } }. */
+function examQpBatchRequestAdd_(entries) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const cur = examQpBatchRequests_(Date.now());
+    Object.keys(entries).forEach(function (k) { const e = entries[k]; cur[k] = { at: e.at, by: e.by, until: Math.max(Number(e.until) || 0, cur[k] ? Number(cur[k].until) || 0 : 0) }; });
+    PropertiesService.getScriptProperties().setProperty(EXAM_QP_BATCH_.PROP, JSON.stringify(cur));
+    return cur;
+  } finally { lock.releaseLock(); }
+}
+/**
+ * r125 — "📧 Send to all Eligible" (Examination → Exam Question Paper → Students). req = { questionPaperIds: [...], confirmed: true, requestId }.
+ * Who: the same rule as 📧 Send to Student — per paper, examQpStaffAccess_ (class Teacher / VP / HM of that class, Head Master,
+ * Admin) and the Send window (examQpStaffPaperBlock_). Everything is re-checked here; the browser only names the papers.
+ * Queues the accepted papers (batch mode), sends the first batch now (≤ 25 emails / 50 s) and lets the 5-minute run
+ * continue with retries until every eligible student is emailed.
+ */
+function sendExamQuestionPaperToAllEligible(sessionToken, req) {
+  const v = examQpStaffViewer_(sessionToken);
+  requireDashboardMutationPermission_({ email: v.email, role: v.role }, 'email question papers to students');
+  req = req || {};
+  if (req.confirmed !== true) throw new Error('Please confirm before sending the question papers.');
+  const requestId = String(req.requestId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  if (!requestId) throw new Error('Missing request id — reload the page and try again.');
+  if (!examQpAutoEnabled_()) throw new Error('Question paper emails are switched off for the whole school (EXAM_QP_AUTO_EMAIL_ENABLED = false). Please contact the Admin.');
+  const cache = CacheService.getScriptCache(), dupKey = 'examQpBatch_' + requestId;
+  const prior = cache.get(dupKey);
+  if (prior) { try { const p = JSON.parse(prior); p.duplicate = true; return p; } catch (eP) { /* fall through */ } }
+  const ids = (Array.isArray(req.questionPaperIds) ? req.questionPaperIds : []).map(function (x) { return String(x || '').trim(); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+  if (!ids.length) throw new Error('No question paper selected.');
+  if (ids.length > EXAM_QP_BATCH_.MAX_PAPERS) throw new Error('Too many question papers at once (max ' + EXAM_QP_BATCH_.MAX_PAPERS + '). Narrow the filters and try again.');
+  const now = new Date(), nowMs = now.getTime(), courses = readAllCoursesFromCache_();
+  const accepted = {}, entries = {}, rejected = [];
+  ids.forEach(function (id) {
+    const r = examQpFindRecord_(id, true);
+    const course = r ? courses.filter(function (c) { return String(c.id) === String(r.Course_ID); })[0] || null : null;
+    const label = r ? String(r.Class_Name).split('|')[0].trim() : id;
+    if (!r || !examQpStaffAccess_(v, r, course)) { rejected.push({ questionPaperId: id, className: label, reason: EXAM_QP_MESSAGES_.UNAUTHORIZED }); return; }
+    const block = examQpStaffPaperBlock_(r, nowMs);
+    if (block) { rejected.push({ questionPaperId: id, className: label, reason: block }); return; }
+    const w = examQpWindowOf_(r);
+    accepted[id] = true;
+    entries[id] = { at: examQpTs_(now), by: v.email, until: Math.max(w ? w.end.getTime() : 0, nowMs + EXAM_QP_BATCH_.MIN_KEEP_MS) };
+  });
+  const n = Object.keys(accepted).length;
+  const base = { ok: n > 0, papers: n, rejected: rejected, sent: 0, failed: 0, remaining: 0, background: false };
+  const finish = function (o) {
+    o.message = !n ? 'Nothing was sent: ' + (rejected[0] ? rejected[0].reason : 'no question paper can be sent now.')
+      : o.background ? 'Batch send started for ' + n + ' class paper(s). Another email run is already in progress — it continues every 5 minutes until every eligible student is emailed.'
+      : 'Sent ' + o.sent + ' email(s)' + (o.failed ? ', ' + o.failed + ' attempt(s) failed' : '') + '. ' +
+        (o.remaining ? o.remaining + ' student(s) still to send — the batch continues every 5 minutes (failures are retried) until every eligible student is emailed.' : 'Every eligible student of the ' + n + ' class paper(s) has been emailed (or downloaded / is marked absent).') +
+        (rejected.length ? ' ' + rejected.length + ' class paper(s) skipped.' : '');
+    try { cache.put(dupKey, JSON.stringify(o), 600); } catch (eC) { /* ignore */ }
+    return o;
+  };
+  if (!n) return finish(base);
+  examQpBatchRequestAdd_(entries);
+  try { examQpAutoEnsureTrigger_(true); } catch (eT) { console.warn('[ExamQP batch] trigger: ' + (eT && eT.message)); }
+  examQpAudit_(v, Object.keys(accepted).map(function (id) { const r = examQpFindRecord_(id, true); return { type: EXAM_QP_EVENTS.QUESTION_PAPER_EMAILED, examId: r.Exam_ID, qpId: id, className: r.Class_Name, result: 'BATCH_REQUESTED',
+    reason: 'Send to all Eligible (batch mode) requested', metadata: { method: EXAM_QP_BATCH_.METHOD, until: examQpTs_(new Date(entries[id].until)) } }; }));
+  return Promise.resolve(examQpAutoRun_(new Date(), { onlyQp: accepted, budgetMs: EXAM_QP_BATCH_.UI_BUDGET_MS, maxSends: EXAM_QP_BATCH_.UI_MAX_SENDS })).then(function (res) {
+    res = res || {};
+    if (res.skipped) return finish(Object.assign(base, { background: true }));
+    return finish(Object.assign(base, { sent: res.sent || 0, failed: res.failed || 0, remaining: res.remaining || 0 }));
+  });
+}
 function examQpAutoEnabled_() {
   return String(PropertiesService.getScriptProperties().getProperty(EXAM_QP_AUTO_.ENABLED_PROP) || 'true').trim().toLowerCase() !== 'false';
 }
@@ -13144,7 +13395,8 @@ function examQpAutoSyncTrigger_() {
   const need = (examQpAutoEnabled_() && recs.some(function (r) {
     if (r.Status !== EXAM_QP_STATUS.PUBLISHED || !examQpBool_(r.Auto_Email_Enabled)) return false;
     const w = examQpWindowOf_(r); return !!w && w.end.getTime() > nowMs;
-  })) || recs.some(function (r) { return examQpTeacherCopyEmailPending_(r, nowMs); }); // r104: the same 5-minute run sends the Teacher Copy email
+  })) || recs.some(function (r) { return examQpTeacherCopyEmailPending_(r, nowMs); }) // r104: the same 5-minute run sends the Teacher Copy email
+    || (examQpAutoEnabled_() && Object.keys(examQpBatchRequests_(nowMs)).length > 0); // r125: a batch send is still running
   return examQpAutoEnsureTrigger_(need);
 }
 /**
@@ -13187,8 +13439,8 @@ function setExamQuestionPaperAutoEmail(sessionToken, req) {
   // r100: the Google Meet check only covers each class's regular class time — warn for custom-time papers
   const custom = enabled ? recs.filter(function (r) { return examQpScheduleModeOf_(r) === 'CUSTOM'; }).length : 0;
   return { ok: true, examId: examId, enabled: enabled, minutes: enabled ? minutes : null, papers: recs.length, changed: changed.length, scheduler: trigger, customTimePapers: custom,
-    message: (enabled ? 'ON — ' + minutes + ' minutes after the exam start, students who have not downloaded and are in the class Google Meet get their question paper by email.' : 'OFF — no automatic email for this exam.') +
-      (custom ? ' Note: ' + custom + ' class paper(s) of this exam use a custom date/time; Google Meet participation can only be confirmed during a class\'s regular class time, so those students may not be emailed.' : '') };
+    message: (enabled ? 'ON — ' + minutes + ' minutes after the exam start, every eligible student who has not downloaded (and is not marked absent) gets their question paper by email.' : 'OFF — no automatic email for this exam.') +
+      (custom ? ' Note: ' + custom + ' class paper(s) of this exam use a custom date/time; the email is sent from that exam start + ' + (enabled ? minutes : '') + ' minutes until its end time.' : '') };
 }
 /** "***-***-9M2": enough to match an answer sheet in the log; the full key is never stored here. */
 function examQpAutoKeyRef_(key) { return key ? '***-***-' + String(key).slice(-3) : ''; }
@@ -13205,7 +13457,7 @@ function examQpAutoState_(qpSet, strict) {
       if (qpSet && !qpSet[o.Question_Paper_ID]) return;
       const k = o.Question_Paper_ID + '|' + normalizeEmail_(o.Student_Email);
       const s = out[k] || (out[k] = { sent: false, fails: 0, last: null, sentAt: '' });
-      if (o.Result === 'AUTO_EMAIL_SENT') { s.sent = true; s.sentAt = String(o.Evaluated_Date_Time_EST); }
+      if (o.Result === 'AUTO_EMAIL_SENT') { s.sent = true; s.sentAt = String(o.Evaluated_Date_Time_EST); s.batch = o.Delivery_Method === EXAM_QP_BATCH_.METHOD; }
       if (o.Result === 'AUTO_EMAIL_FAILED') s.fails++;
       s.last = o;
     });
@@ -13244,8 +13496,8 @@ function examQpAutoEmailHtml_(d) {
     rows.map(function (x, i) { const bg = i % 2 ? '#ffffff' : '#f8f9fa'; return '<tr><td style="padding:8px 10px;background:' + bg + ';color:#5f6368;width:38%;vertical-align:top;">' + e(x[0]) + '</td><td style="padding:8px 10px;background:' + bg + ';font-weight:600;vertical-align:top;word-break:break-word;overflow-wrap:anywhere;' + (x[0] === 'Your Download Key' ? 'color:#c5221f;' : '') + '">' + e(x[1]) + '</td></tr>'; }).join('') + '</table>';
   const body = '<div style="border-left:4px solid #1a73e8;padding:4px 0 4px 12px;margin:0 0 14px;"><div style="font-size:18px;font-weight:700;line-height:1.35;color:#202124;">APS Examination – Question Paper</div></div>' +
     '<p style="font-size:15px;line-height:1.55;margin:0 0 12px;">Dear Student,</p>' +
-    '<p style="font-size:15px;line-height:1.55;">Our system shows that you have not downloaded your examination question paper from the APS Dashboard within the assigned time.</p>' +
-    '<p style="font-size:15px;line-height:1.55;">Since you are participating in the Google Meet examination session, your question paper is being provided through your Student APS Email as a backup delivery.</p>' + table +
+    '<p style="font-size:15px;line-height:1.55;">Our system shows that you have not yet downloaded your examination question paper from the APS Dashboard.</p>' +
+    '<p style="font-size:15px;line-height:1.55;">Your question paper is being provided through your Student APS Email as a backup delivery.</p>' + table +
     '<p style="font-size:14px;line-height:1.55;margin:16px 0 0;">Please use the unique download key provided: <b style="color:#c5221f;">' + e(d.downloadKey) + '</b>. The question paper is attached as a PDF — your personal copy, carrying this key; write it at the top of your answer sheet, as usual.</p>' +
     '<p style="font-size:14px;line-height:1.55;">Please do not share this question paper with any other student. The APS Dashboard remains the official way to download your question paper: <a href="' + e(d.dashboardUrl) + '">' + e(d.dashboardUrl.replace(/^https?:\/\//, '')) + '</a></p>' +
     '<p style="margin:16px 0 0;font-size:14px;line-height:1.5;">Thank you,<br>Avvaiyar Padasalai</p>';
@@ -13253,8 +13505,8 @@ function examQpAutoEmailHtml_(d) {
 }
 function examQpAutoEmailText_(d) {
   return ['APS Examination – Question Paper', '', 'Dear Student,', '',
-    'Our system shows that you have not downloaded your examination question paper from the APS Dashboard within the assigned time.', '',
-    'Since you are participating in the Google Meet examination session, your question paper is being provided through your Student APS Email as a backup delivery.', '',
+    'Our system shows that you have not yet downloaded your examination question paper from the APS Dashboard.', '',
+    'Your question paper is being provided through your Student APS Email as a backup delivery.', '',
     'Student Name: ' + d.studentName, 'Student APSID: ' + d.apsId, 'Examination: ' + d.examTitle, 'Class / Grade: ' + d.classGrade, 'Exam Start: ' + d.startLabel, 'Your Download Key: ' + d.downloadKey, '',
     'Please use the unique download key provided: ' + d.downloadKey + '. The question paper is attached as a PDF - your personal copy, carrying this key; write it at the top of your answer sheet, as usual.',
     'Please do not share this question paper with any other student.', '', 'APS Dashboard: ' + d.dashboardUrl, '', 'Thank you,', 'Avvaiyar Padasalai'].join('\n');
@@ -13262,11 +13514,13 @@ function examQpAutoEmailText_(d) {
 /** Time trigger (every 5 minutes while a published paper is upcoming). */
 function processExamQuestionPaperAutoEmail(e) {
   apsRequireTriggerCall_(e, EXAM_QP_AUTO_.HANDLER);
-  const now = new Date();
-  let tc = null;
-  try { tc = examQpTeacherCopyEmailRun_(now); } catch (eT) { console.error('[ExamQP teacher copy] ' + (eT && eT.message)); } // r104: never blocks the student fallback
-  if (tc && !tc.pending && !examQpAutoEnabled_()) { try { examQpAutoEnsureTrigger_(false); } catch (eR) { /* next run */ } } // r104: nothing left for this run to do
-  return examQpAutoRun_(now);
+  // r104 / r123: the Teacher Copy email first (it never blocks the student fallback), then the student fallback on a fresh clock.
+  return Promise.resolve().then(function () { return examQpTeacherCopyEmailRun_(new Date()); })
+    .catch(function (eT) { console.error('[ExamQP teacher copy] ' + (eT && eT.message)); return null; })
+    .then(function (tc) {
+      if (tc && !tc.pending && !examQpAutoEnabled_()) { try { examQpAutoEnsureTrigger_(false); } catch (eR) { /* next run */ } } // nothing left for this run to do
+      return examQpAutoRun_(new Date());
+    });
 }
 /** Editor / owner only: install / remove the 5-minute check (normally automatic: installed on Publish, removed when no paper is upcoming). */
 function createExamQuestionPaperAutoEmailTrigger() { apsRequireOwnerOrTrigger_(null); return { installed: examQpAutoEnsureTrigger_(true) }; }
@@ -13283,8 +13537,10 @@ function examQpAutoEnsureTrigger_(on) {
  * One pass. Returns a Promise of { papers, evaluated, sent, notSent, failed, logged } (or { skipped }).
  * Single-flight (cache key) + a per-student claim, so overlapping runs never send twice.
  */
-function examQpAutoRun_(now) {
+function examQpAutoRun_(now, opts) {
   if (!examQpAutoEnabled_()) return Promise.resolve({ skipped: 'disabled' });
+  opts = opts || {}; // r125: { onlyQp: { qpId: true }, budgetMs, maxSends } — the "Send to all Eligible" first batch
+  const only = opts.onlyQp || null, budgetMs = opts.budgetMs || EXAM_QP_AUTO_.RUN_BUDGET_MS, maxSends = opts.maxSends || EXAM_QP_AUTO_.MAX_SENDS_PER_RUN;
   const cache = CacheService.getScriptCache(), nowMs = now.getTime(), t0 = Date.now();
   const runKey = EXAM_QP_AUTO_.RUN_KEY + '_' + getDashboardEnvironment_().key;
   if (cache.get(runKey)) return Promise.resolve({ skipped: 'running' });
@@ -13292,18 +13548,24 @@ function examQpAutoRun_(now) {
   const release = function (x) { try { cache.remove(runKey); } catch (eR) { /* expires */ } return x; };
   try {
     const records = examQpReadRecords_(true);
-    const out = { papers: 0, evaluated: 0, sent: 0, notSent: 0, failed: 0, logged: 0 };
+    const out = { papers: 0, evaluated: 0, sent: 0, notSent: 0, failed: 0, logged: 0, remaining: 0 };
     let upcoming = false;
     const due = [];
+    const batch = examQpBatchRequests_(nowMs); // r125
     records.forEach(function (r) {
-      if (r.Status !== EXAM_QP_STATUS.PUBLISHED || !r.Question_Paper_File || !examQpBool_(r.Auto_Email_Enabled)) return; // the per-exam toggle (OFF by default)
-      const w = examQpWindowOf_(r), minutes = examQpAutoMinutesOf_(r);
-      if (!w || !minutes) return;
-      if (w.end.getTime() > nowMs) upcoming = true;
+      if (only && !only[r.Question_Paper_ID]) return;
+      if (r.Status !== EXAM_QP_STATUS.PUBLISHED || !r.Question_Paper_File) return;
+      const autoOn = examQpBool_(r.Auto_Email_Enabled), b = batch[r.Question_Paper_ID]; // the per-exam toggle (OFF by default) / a batch request
+      if (!autoOn && !b) return;
+      const w = examQpWindowOf_(r), minutes = autoOn ? examQpAutoMinutesOf_(r) : 0;
+      if (!w || (!minutes && !b)) return;
+      if (w.end.getTime() > nowMs || b) upcoming = true;
       if (examQpBool_(r.Locked)) return; // a locked paper is never delivered (same rule as the Dashboard)
-      if (nowMs >= w.start.getTime() + minutes * 60000 && nowMs <= w.end.getTime()) due.push({ r: r, w: w, minutes: minutes });
+      const autoDue = !!minutes && nowMs >= w.start.getTime() + minutes * 60000 && nowMs <= w.end.getTime();
+      const batchDue = !!b && nowMs <= Number(b.until) && !examQpStaffPaperBlock_(r, nowMs); // r125: same window as 📧 Send to Student
+      if (autoDue || batchDue) due.push({ r: r, w: w, minutes: autoDue ? minutes : 0, batch: !autoDue, by: b ? String(b.by || '') : '' });
     });
-    if (!upcoming && !records.some(function (r) { return examQpTeacherCopyEmailPending_(r, nowMs); })) { try { examQpAutoEnsureTrigger_(false); } catch (eT) { /* next run */ } } // r104: kept while a Teacher Copy email is due
+    if (!only && !upcoming && !records.some(function (r) { return examQpTeacherCopyEmailPending_(r, nowMs); })) { try { examQpAutoEnsureTrigger_(false); } catch (eT) { /* next run */ } } // r104: kept while a Teacher Copy email is due
     if (!due.length) return Promise.resolve(release(out));
     const courses = readAllCoursesFromCache_();
     const qpSet = {};
@@ -13315,7 +13577,8 @@ function examQpAutoRun_(now) {
     examQpReadEvents_(qpSet).forEach(function (ev) { if (ev.Download_Status === EXAM_QP_DOWNLOAD_STATUS.DOWNLOAD_COMPLETED) dlEvents[ev.Question_Paper_ID + '|' + normalizeEmail_(ev.Student_Email || ev.Authenticated_User_Email)] = true; });
     let state;
     try { state = examQpAutoState_(qpSet, true); } catch (eLog) { return Promise.resolve(release({ skipped: 'log unavailable — nothing sent this run' })); } // r100: never re-send on a failed read
-    let snapshot = null;
+    const staffSent = examQpLastSentMap_(qpSet); // r125: a student already emailed by staff (📧 Send to Student) is never emailed again
+    let snapshot = null; // r125: Google Meet is no longer required — its status is only written to the log
     try { snapshot = classMeetLiveSnapshot_(courses, now, false); } catch (eS) { snapshot = null; }
     const attMemo = {}, logs = [], sends = [];
     due.forEach(function (d) {
@@ -13329,10 +13592,11 @@ function examQpAutoRun_(now) {
         out.evaluated++;
         const k = r.Question_Paper_ID + '|' + email, s = state[k];
         if (s && s.sent) return; // idempotent: never a second automatic email
+        if (staffSent[k]) return; // r125: already emailed by a teacher / VP / HM / Admin
         const base = {
           Exam_ID: r.Exam_ID, Exam_Title: r.Exam_Title, Exam_Date: r.Class_Date, Exam_Start_Time: examQpTimeLabel_(d.w.start), Question_Paper_ID: r.Question_Paper_ID,
           Course_ID: r.Course_ID, Class_Name: r.Class_Name, Student_Name: st.name || email, Student_APSID: getAPSIdFromEmail(email), Student_Email: email,
-          Configured_Minutes: String(d.minutes), Delivery_Method: EXAM_QP_AUTO_.METHOD, Attempt: String((s ? s.fails : 0) + 1)
+          Configured_Minutes: d.minutes ? String(d.minutes) : '', Delivery_Method: d.batch ? EXAM_QP_BATCH_.METHOD : EXAM_QP_AUTO_.METHOD, Attempt: String((s ? s.fails : 0) + 1)
         };
         const note = function (o) { // NOT_SENT / NOT_REQUIRED: logged once per state change
           if (s && s.last && s.last.Result === o.Result && s.last.Reason === o.Reason && s.last.Meet_Status === o.Meet_Status && s.last.Attendance_Status === o.Attendance_Status) return;
@@ -13350,8 +13614,8 @@ function examQpAutoRun_(now) {
         const meet = examQpAutoMeet_(snapshot, r.Course_ID, email, startMs);
         const meetLabel = meet === 'ONLINE' ? 'ONLINE' : meet === 'JOINED' ? 'JOINED' : meet === 'UNKNOWN' ? 'UNKNOWN' : 'OFFLINE';
         if (attStatus === 'UNREPORTED_ABSENCE') { note({ Download_Status: 'NOT_DOWNLOADED', Meet_Status: meetLabel, Attendance_Status: attStatus, Eligibility: 'NOT_ELIGIBLE', Email_Status: 'NOT_SENT', Result: 'AUTO_EMAIL_NOT_SENT', Reason: EXAM_QP_AUTO_REASON_.UA }); return; }
-        if (meet !== 'ONLINE' && meet !== 'JOINED') { note({ Download_Status: 'NOT_DOWNLOADED', Meet_Status: meetLabel, Attendance_Status: attStatus, Eligibility: 'NOT_ELIGIBLE', Email_Status: 'NOT_SENT', Result: 'AUTO_EMAIL_NOT_SENT', Reason: meet === 'UNKNOWN' ? EXAM_QP_AUTO_REASON_.MEET_UNKNOWN : EXAM_QP_AUTO_REASON_.NOT_ONLINE }); return; }
-        sends.push({ r: r, w: d.w, st: st, email: email, base: Object.assign(base, { Download_Status: 'NOT_DOWNLOADED', Meet_Status: meetLabel, Attendance_Status: attStatus, Eligibility: 'ELIGIBLE' }) });
+        // r125: no Google Meet check any more — eligible = not downloaded, valid APS email, not marked absent, not yet emailed
+        sends.push({ r: r, w: d.w, st: st, email: email, batch: d.batch, by: d.by, fails: s ? s.fails : 0, base: Object.assign(base, { Download_Status: 'NOT_DOWNLOADED', Meet_Status: meetLabel, Attendance_Status: attStatus, Eligibility: 'ELIGIBLE' }) });
       });
     });
     const writeLogs = function (list) {
@@ -13364,10 +13628,10 @@ function examQpAutoRun_(now) {
     };
     logs.forEach(function (o) { if (o.Result === 'AUTO_EMAIL_NOT_SENT') out.notSent++; });
     writeLogs(logs);
-    const srcMemo = {};
+    const srcMemo = {}, sentSet = {}, retry = [];
     let stop = false;
     const sendOne = function (x) {
-      if (stop || out.sent + out.failed >= EXAM_QP_AUTO_.MAX_SENDS_PER_RUN || Date.now() - t0 > EXAM_QP_AUTO_.RUN_BUDGET_MS) return Promise.resolve();
+      if (stop || out.sent + out.failed >= maxSends || Date.now() - t0 > budgetMs) return Promise.resolve();
       const claim = EXAM_QP_AUTO_.CLAIM_PREFIX + x.r.Question_Paper_ID + '|' + x.email;
       // r100: the claim lasts until this paper's window ends (+1 h, max 6 h), so even a lost SENT log row can never cause a second email
       const claimSec = Math.max(900, Math.min(21600, Math.ceil((x.w.end.getTime() - Date.now()) / 1000) + 3600));
@@ -13377,10 +13641,12 @@ function examQpAutoRun_(now) {
       const shortClass = String(r.Class_Name).split('|')[0].trim(), studentName = x.st.name || email, apsId = getAPSIdFromEmail(email);
       const done = function (ok, err) {
         const row = Object.assign({}, x.base, { Email_Status: ok ? 'SENT' : 'FAILED', Key_Reference: examQpAutoKeyRef_(key), Result: ok ? 'AUTO_EMAIL_SENT' : 'AUTO_EMAIL_FAILED',
-          Reason: ok ? EXAM_QP_AUTO_REASON_.SENT : EXAM_QP_AUTO_REASON_.FAILED, Error_Message: ok ? '' : String(err || '').replace(/(Bearer|token|secret|private_key)[^\s,)]*/gi, '$1 [hidden]').slice(0, 300) });
+          Reason: ok ? (x.batch ? EXAM_QP_AUTO_REASON_.BATCH : EXAM_QP_AUTO_REASON_.SENT) : EXAM_QP_AUTO_REASON_.FAILED, Error_Message: ok ? '' : String(err || '').replace(/(Bearer|token|secret|private_key)[^\s,)]*/gi, '$1 [hidden]').slice(0, 300) });
         writeLogs([row]);
-        if (ok) out.sent++; else out.failed++;
-        examQpSendAudit_({ Send_ID: examQpNewId_('EQS', 8), Sent_Date_Time_EST: examQpTs_(now2), Sender_Email: 'SYSTEM', Sender_Role: 'Automatic fallback', Student_Name: studentName, Student_APSID: apsId,
+        if (ok) { out.sent++; sentSet[x.r.Question_Paper_ID + '|' + email] = true; } else out.failed++;
+        x.fails++;
+        if (!ok && !stop && !x.retried && x.fails < EXAM_QP_AUTO_.MAX_FAILS) { x.retried = true; retry.push(x); } // r125: one more try in this run
+        examQpSendAudit_({ Send_ID: examQpNewId_('EQS', 8), Sent_Date_Time_EST: examQpTs_(now2), Sender_Email: x.batch ? (x.by || 'SYSTEM') : 'SYSTEM', Sender_Role: x.batch ? 'Batch send' : 'Automatic fallback', Student_Name: studentName, Student_APSID: apsId,
           Student_Email: email, Exam_Title: r.Exam_Title, Exam_ID: r.Exam_ID, Question_Paper_ID: r.Question_Paper_ID, Class_Grade: shortClass, Email_Status: ok ? 'SENT' : 'FAILED', Error_Message: row.Error_Message, Request_ID: row.Reason });
         examQpAudit_({ email: 'SYSTEM', role: 'SYSTEM' }, [{ type: EXAM_QP_EVENTS.QUESTION_PAPER_EMAILED, examId: r.Exam_ID, qpId: r.Question_Paper_ID, className: r.Class_Name, studentName: studentName, apsId: apsId,
           result: ok ? 'AUTO_EMAIL_SENT' : 'AUTO_EMAIL_FAILED', reason: row.Reason + (ok ? '' : ': ' + row.Error_Message), metadata: { to: email, method: EXAM_QP_AUTO_.METHOD, meet: x.base.Meet_Status } }]);
@@ -13411,7 +13677,14 @@ function examQpAutoRun_(now) {
     };
     let chain = Promise.resolve();
     sends.forEach(function (x) { chain = chain.then(function () { return sendOne(x); }); });
+    // r125: failed sends get a second try in the same run (fresh attempt number; the cache claim was released on failure)
+    chain = chain.then(function () {
+      let c2 = Promise.resolve();
+      retry.forEach(function (x) { c2 = c2.then(function () { x.base = Object.assign({}, x.base, { Attempt: String(x.fails + 1) }); return sendOne(x); }); });
+      return c2;
+    });
     return chain.then(function () {
+      out.remaining = sends.filter(function (x) { return !sentSet[x.r.Question_Paper_ID + '|' + x.email]; }).length; // r125: still to send (next run)
       if (out.sent || out.failed || out.notSent) console.log('[ExamQP auto] ' + JSON.stringify(out));
       return release(out);
     }, function (eC) { release(null); throw eC; });
@@ -13422,7 +13695,7 @@ function examQpAutoStatusMap_(qpSet) {
   const out = {}, st = examQpAutoState_(qpSet);
   Object.keys(st).forEach(function (k) {
     const s = st[k], l = s.last || {};
-    if (s.sent) out[k] = { code: 'SENT', label: 'Auto Email Sent', at: s.sentAt };
+    if (s.sent) out[k] = { code: 'SENT', label: s.batch ? 'Batch Email Sent' : 'Auto Email Sent', at: s.sentAt }; // r125
     else if (l.Result === 'AUTO_EMAIL_FAILED') out[k] = { code: 'FAILED', label: 'Auto Email Failed', at: String(l.Evaluated_Date_Time_EST) };
     else if (l.Reason === EXAM_QP_AUTO_REASON_.UA) out[k] = { code: 'UA', label: 'Unreported Absence – Email Not Sent', at: String(l.Evaluated_Date_Time_EST) };
     else if (l.Reason === EXAM_QP_AUTO_REASON_.NOT_ONLINE) out[k] = { code: 'NOT_ONLINE', label: 'Not Online – Email Not Sent', at: String(l.Evaluated_Date_Time_EST) };
@@ -13505,7 +13778,8 @@ function getExamQuestionPaperMonitoring(sessionToken, filters) {
   const papers = [], students = [];
   const staffOn = v.isAdmin || v.isHm || v.isTeacher; // r67 (never BOD / students)
   const lastSent = staffOn ? examQpLastSentMap_(qpSet) : {};
-  const autoMap = records.some(function (r) { return String(r.Auto_Email_Enabled || '') !== ''; }) ? examQpAutoStatusMap_(qpSet) : {}; // r99: automatic email state (no key); r100: no sheet read when the setting was never used
+  // r125: staff always see the automatic / batch email state (a batch send works even when the per-exam toggle was never used)
+  const autoMap = (staffOn || records.some(function (r) { return String(r.Auto_Email_Enabled || '') !== ''; })) ? examQpAutoStatusMap_(qpSet) : {}; // r99: automatic email state (no key); r100: no sheet read when the setting was never used
   const tiles = { totalExams: 0, totalClasses: 0, totalStudents: 0, published: 0, pending: 0, eligible: 0, downloaded: 0, notDownloaded: 0, downloadPct: 0, failed: 0, repeated: 0, unauthorized: 0, todaysExams: 0,
     autoSent: 0, autoNotSent: 0, autoNotOnline: 0, autoUnreported: 0 };
   const examSet = {}, classSet = {}, studentSet = {};
@@ -13520,7 +13794,7 @@ function getExamQuestionPaperMonitoring(sessionToken, filters) {
     const roster = c ? (c.students || []) : [];
     const staffBlock = staffOn ? examQpStaffPaperBlock_(r, nowMs) : 'n/a'; // r67: Teacher Copy / Send to Student
     if (staffOn) { cr.staffCanUse = !staffBlock; cr.staffBlockReason = staffBlock; }
-    if (staffOn) { // r104: Teacher Copy has its own rules (assigned teacher / Admin, 24-hour publish rule, opens 60 min before) — Send to Student keeps staffCanUse
+    if (staffOn) { // r104 / r123: Teacher Copy has its own rules (assigned teacher / Admin; opens the configured time before the exam) — Send to Student keeps staffCanUse
       cr.tcopyShow = examQpTeacherCopyAccess_(v, r, c, courses).ok;
       const tb = cr.tcopyShow ? examQpTeacherCopyBlock_(r, nowMs) : 'n/a';
       cr.tcopyCanUse = cr.tcopyShow && !tb; cr.tcopyBlockReason = cr.tcopyShow ? tb : '';
@@ -13557,7 +13831,9 @@ function getExamQuestionPaperMonitoring(sessionToken, filters) {
         grade: r.Grade, teacherName: r.Teacher_Name, studentName: s.name || (a && a.name) || '', apsId: getAPSIdFromEmail(email), email: email,
         status: st, downloadCount: a ? a.count : 0, failedAttempts: a ? a.failed : 0,
         firstDownload: a && a.first ? examQpLabel_(examQpParseTs_(a.first)) : '', lastDownload: a && a.last ? examQpLabel_(examQpParseTs_(a.last)) : '',
-        releaseLabel: cr.releaseLabel, downloadKey: a && a.count ? (a.key || '') : '',
+        // r125: the Download Key is also shown (staff only) once the paper was emailed — automatic / batch email or 📧 Send to Student
+        releaseLabel: cr.releaseLabel, downloadKey: a && a.count ? (a.key || '') : (staffOn && ((au && au.code === 'SENT') || sent) ? examQpDownloadKey_(r.Question_Paper_ID, email) : ''),
+        keyByEmail: !(a && a.count) && staffOn && ((au && au.code === 'SENT') || !!sent),
         autoEmail: au ? au.code : '', autoEmailLabel: au ? au.label : '', autoEmailAt: au && au.at && examQpParseTs_(au.at) ? examQpLabel_(examQpParseTs_(au.at)) : '' // r99
       };
       if (/^AUTO_/.test(f.status)) { // r99 tiles / filter
