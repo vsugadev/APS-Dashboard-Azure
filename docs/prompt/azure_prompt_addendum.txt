@@ -216,6 +216,9 @@ header is longer, or Code.gs fails quietly in the mock.
 - Phase 3 step 1 (v0.8.0): live data through the Apps Script bridge (`AzureBridge.gs` r122 in the live project, routed
   by `PortalBridge.gs` doPost `azure:1`; Azure `src/live/`). The Code.gs live passes and `getRealtimeStatusSnapshot` run
   on Azure; the Phase 2 stand-ins are gone. Not yet: live Meet status, heartbeat from Azure, chat. See `docs/PHASE3.md`.
+- v0.9.0 (2026-11-17): Phase 3 step 2 heartbeat — Azure sends its signed-in users' e-mails (session only) through the
+  signed bridge (action heartbeat, AzureBridge.gs r131 — the ONLY bridge write: presence + Last Login DB, APS e-mails,
+  ≤ 200/call). src/live/heartbeat.ts; AZURE_HEARTBEAT=off disables. Next: Google API phase (live Meet) or write phase.
 - v0.8.1 (2026-11-16): gas-source = Apps Script r126 (+ r127 AzureBridge.gs allow-list). After every Apps Script release:
   `npm run sync-gas` (APS_GAS_PROJECT=<project>), `npm run sync-dashboard`, `npm run gen-gas`, fix the generator lists it
   reports, add any new Script Property the copied code reads to BOTH allow-lists (AzureBridge.gs + src/live/allowlist.ts),

@@ -65,18 +65,26 @@ export class AppsScriptLiveSource implements LiveSource {
 
   /** One signed request. Errors carry a short code only — never the secret, the body or Google's page. */
   private async fetchOnce(): Promise<LiveSnapshot> {
-    const p = JSON.stringify({ action: 'liveSnapshot', v: 1 });
-    const ts = String(this.now()), nonce = crypto.randomUUID();
-    const sig = crypto.createHmac('sha256', this.secret).update(ts + '.' + nonce + '.' + p).digest('hex');
-    const res = await this.fetchImpl(this.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ azure: 1, p, ts, nonce, sig }), redirect: 'follow' });
-    if (!res.ok) throw new Error('HTTP_' + res.status);
-    let j: any;
-    try { j = JSON.parse(await res.text()); } catch { throw new Error('NOT_JSON (check APPS_SCRIPT_BRIDGE_URL is the /exec address)'); }
-    if (!j || j.ok !== true) throw new Error(String((j && j.code) || 'BRIDGE_ERROR').replace(/[^A-Z_]/g, '').slice(0, 40) || 'BRIDGE_ERROR');
-    const r = j.result || {};
+    const r = (await bridgeCall(this.url, this.secret, { action: 'liveSnapshot', v: 1 }, this.fetchImpl, this.now)) || {};
     const f = filterLive({ script: strMap(r.script), user: strMap(r.user) });
     return { ...f, at: this.now(), ok: true };
   }
+}
+
+/**
+ * One signed bridge request (shared by the snapshot and the r131 heartbeat): HMAC-SHA256(secret, ts.nonce.p).
+ * Returns the bridge's `result`; throws Error(<SHORT_CODE>) — never the secret, the body or Google's page.
+ */
+export async function bridgeCall(url: string, secret: string, payload: Record<string, unknown>, fetchImpl: FetchLike, now: () => number = Date.now): Promise<any> {
+  const p = JSON.stringify(payload);
+  const ts = String(now()), nonce = crypto.randomUUID();
+  const sig = crypto.createHmac('sha256', secret).update(ts + '.' + nonce + '.' + p).digest('hex');
+  const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ azure: 1, p, ts, nonce, sig }), redirect: 'follow' });
+  if (!res.ok) throw new Error('HTTP_' + res.status);
+  let j: any;
+  try { j = JSON.parse(await res.text()); } catch { throw new Error('NOT_JSON (check APPS_SCRIPT_BRIDGE_URL is the /exec address)'); }
+  if (!j || j.ok !== true) throw new Error(String((j && j.code) || 'BRIDGE_ERROR').replace(/[^A-Z_]/g, '').slice(0, 40) || 'BRIDGE_ERROR');
+  return j.result;
 }
 
 function strMap(o: unknown): Record<string, string> {

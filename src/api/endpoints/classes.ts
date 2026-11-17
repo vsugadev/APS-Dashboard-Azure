@@ -237,7 +237,16 @@ export function registerClasses(reg: Registry): void {
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */
   reg.register('getDashboardData', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
+    ctx.heartbeat?.note(s.email); // Phase 3 step 2: same as Code.gs recordHeartbeat_ on every load / refresh
+
     const courses = (await ctx.data.readCourses()) as C[];
     return buildClassesView(ctx, { email: s.email, role: s.role }, courses, new Date());
+  });
+  /** recordDashboardSignOff — Code.gs records one last heartbeat when the tab is hidden / closed; Azure sends it to
+   *  Apps Script the same way (always, not throttled). The session e-mail only — never a browser-supplied one. */
+  reg.register('recordDashboardSignOff', async (ctx, [token]) => {
+    const s = await requireSession(ctx, token);
+    ctx.heartbeat?.note(s.email, true);
+    return null;
   });
 }

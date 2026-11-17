@@ -5,6 +5,7 @@
 import type { AppConfig } from '../config';
 import type { DataSource } from '../data/types';
 import type { LiveSource } from '../live/liveSource';
+import type { HeartbeatSink } from '../live/heartbeat';
 import type { SessionStore, Session } from '../auth/sessions';
 import { SESSION_EXPIRED_MSG } from '../auth/sessions';
 import type { GoogleAuth, VerifiedClaims } from '../auth/google';
@@ -20,6 +21,8 @@ export interface AppContext {
   data: DataSource;
   /** Apps Script's live Script / User Properties (Phase 3 bridge); EmptyLiveSource when not configured. */
   live: LiveSource;
+  /** Phase 3 step 2: heartbeats of Azure's own signed-in users → Apps Script (presence + Last Login DB). Optional (tests). */
+  heartbeat?: HeartbeatSink;
   sessions: SessionStore;
   google: GoogleAuth;
   nonces: StateNonces;

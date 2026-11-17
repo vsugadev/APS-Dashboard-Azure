@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -20,6 +20,10 @@
  *   - The Azure app keeps the snapshot ~20 s and calls only while someone uses the Azure dashboard. Successful calls
  *     are not logged to Portal_Bridge_Log (no sheet write per call); failures go to the execution log (no values).
  *   - The lists are mirrored in the Azure project (src/live/allowlist.ts); its tests fail if they ever differ.
+ *   - r131 — second action, heartbeat (the ONLY write): { action:'heartbeat', v:1, emails:[…] } — people using the Azure
+ *     dashboard (Azure sends the e-mail of its own signed-in sessions, batched every ~15 s) are recorded exactly like
+ *     a visit here (recordHeartbeat_): "online now" (presenceMap) and Last Login → DB slot (lastLoginMap). Only
+ *     APS-domain e-mails, at most 200 per call, one lock + one write per store per call; nothing else can be written.
  * ========================================================================== */
 var AZURE_BRIDGE_LIVE_KEYS_ = [
   'APS_CLASSES_ALWAYS_SHOW_EMAILS', 'APS_CLASSES_PRIMARY_ONLY_PREFIXES', 'APS_CLASSROOM_ROSTER_ACADEMIC_YEAR',
@@ -59,6 +63,8 @@ var AZURE_BRIDGE_NEVER_KEYS_ = [
 var AZURE_BRIDGE_NEVER_RE_ = /SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|SERVICE_ACCOUNT|API_KEY|CLIENT_ID|OAUTH|REFRESH|NONCE|SESSION/i;
 var AZURE_BRIDGE_NONCE_PREFIX_ = 'aps_az_nonce_';
 var AZURE_BRIDGE_MAX_SKEW_MS_ = 5 * 60 * 1000;
+var AZURE_BRIDGE_MAX_P_ = 20000;        // r131: a heartbeat batch (≤ 200 e-mails) — was 2000 for the snapshot request
+var AZURE_BRIDGE_MAX_HEARTBEATS_ = 200;
 
 /** True only for an allow-listed, non-secret key. */
 function azureBridgeAllowed_(key) {
@@ -73,8 +79,9 @@ function azureBridgeDoPost_(body) {
   var out;
   try {
     var req = azureBridgeVerify_(body);
-    if (req.action !== 'liveSnapshot') throw portalErr_('BAD_REQUEST', 'Unknown action.');
-    out = { ok: true, result: azureBridgeLiveSnapshot_() };
+    if (req.action === 'liveSnapshot') out = { ok: true, result: azureBridgeLiveSnapshot_() };
+    else if (req.action === 'heartbeat') out = { ok: true, result: azureBridgeHeartbeats_(req) }; // r131
+    else throw portalErr_('BAD_REQUEST', 'Unknown action.');
   } catch (err) {
     out = { ok: false, code: err && err.portalCode || 'ERROR', message: err && err.portalCode ? String(err.message) : 'The APS Dashboard could not complete this request.' };
     console.error('[AzureBridge] ' + (err && err.portalCode ? 'refused: ' + err.portalCode : zhSafeErr_(err)));
@@ -87,7 +94,7 @@ function azureBridgeVerify_(body) {
   var secret = String(PropertiesService.getScriptProperties().getProperty('AZURE_BRIDGE_SECRET') || '');
   if (secret.length < 32) throw portalErr_('NOT_CONFIGURED', 'The Azure bridge is not configured on the Dashboard (AZURE_BRIDGE_SECRET).');
   var p = String(body.p || ''), ts = String(body.ts || ''), nonce = String(body.nonce || ''), sig = String(body.sig || '');
-  if (p.length > 2000 || !/^\d{12,14}$/.test(ts) || !/^[0-9a-f-]{36}$/i.test(nonce) || !/^[0-9a-f]{64}$/.test(sig)) throw portalErr_('BAD_REQUEST', 'Malformed request.');
+  if (p.length > AZURE_BRIDGE_MAX_P_ || !/^\d{12,14}$/.test(ts) || !/^[0-9a-f-]{36}$/i.test(nonce) || !/^[0-9a-f]{64}$/.test(sig)) throw portalErr_('BAD_REQUEST', 'Malformed request.');
   var expect = portalHex_(Utilities.computeHmacSha256Signature(ts + '.' + nonce + '.' + p, secret));
   var diff = expect.length ^ sig.length;
   for (var i = 0; i < expect.length && i < sig.length; i++) diff |= expect.charCodeAt(i) ^ sig.charCodeAt(i);
@@ -114,4 +121,43 @@ function azureBridgeLiveSnapshot_() {
     script: pick(PropertiesService.getScriptProperties().getProperties()),
     user: pick(PropertiesService.getUserProperties().getProperties())
   };
+}
+
+/**
+ * r131 — heartbeats from the Azure dashboard: the same records as recordHeartbeat_ (Code.gs) for a batch of people —
+ * presenceMap (online now; login time kept within the online window; entries older than 24 h dropped) and the
+ * Last Login DB slot (only moved forward). One script lock and one write per store for the whole batch; a busy lock
+ * records nothing ({ busy:true }) and Azure sends the batch again. Only syntactically valid APS-domain e-mails.
+ */
+function azureBridgeHeartbeats_(req) {
+  var list = Array.isArray(req.emails) ? req.emails.slice(0, AZURE_BRIDGE_MAX_HEARTBEATS_) : [];
+  var seen = {}, emails = [];
+  list.forEach(function (e) { var n = normalizeEmail_(String(e || '')); if (n && !seen[n] && isApsEmailAllowed_(n)) { seen[n] = true; emails.push(n); } });
+  var ignored = list.length - emails.length;
+  if (!emails.length) return { recorded: 0, ignored: ignored };
+  var lock = LockService.getScriptLock(), locked = false;
+  try { locked = lock.tryLock(5000); } catch (e) { locked = false; }
+  if (!locked) return { recorded: 0, ignored: ignored, busy: true };
+  try {
+    var now = new Date(), iso = now.toISOString();
+    var map = getPresenceMap_();
+    emails.forEach(function (n) {
+      var ex = map[n];
+      var fresh = !ex || (now.getTime() - new Date(ex.lastSeen).getTime()) > PRESENCE_ONLINE_WINDOW_MINUTES * 60000;
+      map[n] = { lastSeen: iso, loginAt: fresh ? iso : (ex.loginAt || iso) };
+    });
+    Object.keys(map).forEach(function (k) { if (!map[k] || (now.getTime() - new Date(map[k].lastSeen).getTime()) > 86400000) delete map[k]; });
+    apsBigSetSafe_(PRESENCE_PROP_KEY, JSON.stringify(map), 'Online status');
+    var raw = apsBigGet_(LAST_LOGIN_PROP_KEY), ll = raw ? JSON.parse(raw) : {}, changed = false;
+    emails.forEach(function (n) {
+      var rawEntry = ll[n], entry = normalizeLastLoginEntry_(rawEntry);
+      var ch = JSON.stringify(rawEntry || null) !== JSON.stringify(entry);
+      if (!entry.db || now.getTime() > new Date(entry.db).getTime()) { entry.db = iso; ch = true; }
+      if (ch) { ll[n] = entry; changed = true; }
+    });
+    if (changed) apsBigSetSafe_(LAST_LOGIN_PROP_KEY, JSON.stringify(ll), 'Last login');
+    return { recorded: emails.length, ignored: ignored };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { /* ignore */ }
+  }
 }

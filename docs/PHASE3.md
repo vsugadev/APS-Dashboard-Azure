@@ -67,7 +67,6 @@ Azure request ──► AppsScriptLiveSource (src/live/liveSource.ts)
 | Part | Why | When |
 |---|---|---|
 | Live Google Meet status on class cards ("In class now" from Meet), class-card live box | Meet REST / Admin Reports APIs under a script lock, kept in Apps Script's cache | with the Google API phase |
-| Heartbeat from Azure page loads (Azure users appear online / last login "DB") | a write | write phase |
 | Chat | Gmail / chat store | later (chat version is a constant on Azure, so the page never reloads it) |
 | `mailReady` flags on Coverage / Removal screens | mail credentials never leave Apps Script; Azure sends no email | write phase |
 
@@ -101,4 +100,15 @@ Azure request ──► AppsScriptLiveSource (src/live/liveSource.ts)
 - **Allow-lists (both copies):** `EXAM_QP_TEACHER_COPY_OPEN_MINUTES`, `EXAM_QP_TEACHER_COPY_EMAIL_ENABLED`, `EXAM_QP_SEND_TO_STUDENT_OPEN_MINUTES` (r123 Admin settings — the copied monitoring reads them). `EXAM_QP_BATCH_EMAIL_REQUESTS` (r125) is not exported: Azure sends no email. ⚠️ Apps Script must deploy the updated `AzureBridge.gs` (**r127**) — until then Azure uses the defaults (3 h / ON), which is what the school uses today.
 - Not on Azure (unchanged): the student download (r126 one-click), Teacher Copy, Send to Student, Send to all Eligible and every email — they stay on Apps Script.
 - Tests: `npm test` 42/42 (new: emailed key never computed on Azure; r123 settings live, secret and batch queue never exported); `npm run e2e` 10/10; `npm run test:gas` exam suites (qp 32, qp_autoemail 12, teachercopy 18, exam, ui_qp 17, ui_exam 21, e2e) pass on the new `gas-source/`.
+
+## Step 2 — Heartbeat from the Azure dashboard (v0.9.0, 2026-11-17)
+
+**Goal:** a person using the Azure dashboard shows 🟢 online and gets a Last Login (DB) exactly as on Apps Script — needed before anyone can switch.
+
+- **Same triggers as Code.gs:** `getDashboardData` (page load + 5-minute refresh) and `recordDashboardSignOff` (tab hidden / closed; now registered on Azure). Only the **session** e-mail is used, never a browser argument.
+- **Azure (`src/live/heartbeat.ts`, `BridgeHeartbeat`):** queues e-mails, sends one signed batch every 15 s (`bridgeCall`, shared with the snapshot), each person at most once a minute (sign-off always); up to 200 per call, 2 000 queued; a failed batch is kept and sent with the next one; `BAD_REQUEST` (Apps Script older than r131) pauses heartbeats 10 minutes with one log line. App setting **`AZURE_HEARTBEAT=off`** disables it (`NoopHeartbeat`); also off when the bridge is not configured or in fixture mode.
+- **Apps Script (`AzureBridge.gs` r131):** second action `heartbeat` — the ONLY write through the bridge. `azureBridgeHeartbeats_`: APS-domain e-mails only (`isApsEmailAllowed_`), de-duplicated, ≤ 200; one script lock (5 s; busy → `{busy:true}`, Azure retries) and one write per store for the batch — the same records as `recordHeartbeat_`: `presenceMap` (lastSeen; loginAt kept within `PRESENCE_ONLINE_WINDOW_MINUTES`; entries older than 24 h dropped) and the Last Login `db` slot (only moved forward). Request size limit 2 000 → 20 000 characters (`AZURE_BRIDGE_MAX_P_`).
+- **Seen on Azure:** the person's own dot appears after the next batch (≤ 15 s) and snapshot refresh (≤ 20 s) — the next realtime poll; Apps Script shows them at once on its next read.
+- **Deploy:** Apps Script `AzureBridge.gs` r131 → Deploy → New version (same /exec). Azure v0.9.0 via GitHub Actions. Either order works (Azure pauses heartbeats until r131 answers).
+- **Tests:** `test/live.test.ts` — real Code.gs + PortalBridge.gs + AzureBridge.gs: signed batch records presence + Last Login (APS only; same spell keeps login time; >24 h dropped; nothing else written; wrong secret refused; ≤ 200); sender: throttle, sign-off forced, retry, pause on old Apps Script, no e-mail / secret in logs. `test/api.test.ts` — `getDashboardData` / `recordDashboardSignOff` use the session e-mail only. `npm test` 47/47, `npm run e2e` 10/10.
 

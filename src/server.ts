@@ -10,6 +10,7 @@ import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
 import { secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
+import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
 import { serviceAccountTokenProvider } from './google/serviceAccount';
 import { MemorySessionStore } from './auth/sessions';
 import { googleAuth, StateNonces } from './auth/google';
@@ -38,7 +39,8 @@ export function createContext(cfg: AppConfig): AppContext {
   const data = cfg.dataMode === 'fixture' ? FixtureDataSource.fromFile(cfg.fixturePath) : new SheetsDataSource(cfg, serviceAccountTokenProvider(cfg));
   const live = cfg.dataMode === 'fixture' ? FixtureLiveSource.fromFile(cfg.fixturePath)
     : bridgeUsable(cfg) ? new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new EmptyLiveSource();
-  return { cfg, data, live, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+  const heartbeat = cfg.dataMode !== 'fixture' && cfg.heartbeatEnabled && bridgeUsable(cfg) ? new BridgeHeartbeat(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new NoopHeartbeat();
+  return { cfg, data, live, heartbeat, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
 }
 
 /** Start-up self-check of the Apps Script live-data bridge (Phase 3): key counts only, never names' values. */

@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-17 (v0.8.3, bridge secret fingerprint check). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-17 (v0.9.0, Phase 3 step 2: heartbeat). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -25,7 +25,8 @@ reaches Azure through a signed, read-only bridge (Phase 3). Nothing on Azure cha
 | **Other read-only screens** (Phase 2 step 6) | ✅ view | 62 more calls: Admin Control lists, Teacher Appreciation reports, Assignment Monitoring, Class change / grade change requests, Leave, Coverage, Examination history / monitoring, Reference letters, Special Classes, Temp Teacher, Tickets, Zoho sync history, Tamil Thadam search. Buttons that save / send / sync still say "not on Azure yet" |
 | Grading, Add Student, chat, Classroom / Drive / Gmail / Zoho previews and checks | ⏳ | Need Google services Azure does not use yet |
 | **Live data** (Phase 3): online now, last login, onboarded, manual class status, on-call banner, Hide/Show, realtime poll (live / Teacher NOT in Class / Needs Tech Support flags), sync status | ✅ view | From Apps Script's Script / User Properties through the bridge (refreshed every 20 s). Needs the bridge settings below |
-| Live Google Meet status on class cards, heartbeat from Azure page loads, chat | ⏳ | Meet / Reports APIs; writes |
+| **Heartbeat** (v0.9.0): people using Azure show 🟢 online and get Last Login (DB) | ✅ | Sent to Apps Script through the signed bridge (`AzureBridge.gs` r131, action heartbeat), batched every 15 s. Setting `AZURE_HEARTBEAT=off` stops it |
+| Live Google Meet status on class cards, chat | ⏳ | Meet / Reports APIs |
 | Every save / email / sync | ⏳ | Shows "not on Azure yet" — use the Apps Script dashboard |
 
 ---
@@ -158,6 +159,8 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[Gas] extra spreadsheet not readable` / page "Special Classes are temporarily unavailable" | `GOOGLE_IMPERSONATE_USER` cannot open the Special Classes or Zoho sync spreadsheet — share it (Viewer is enough) |
 | `[Live] … BAD_SIGNATURE` + `[Live] Azure's secret: N characters, fingerprint xxxxxxxx` (v0.8.3) | Run `ONE_TIME_azureBridgeFingerprint` in the Apps Script editor. Different fingerprint (or length) = Key Vault `apps-script-bridge-secret` is not the Apps Script value: copy it with `ONE_TIME_showAzureBridgeSecret` into a New Version, update the setting (version-pinned Secret Identifier forces a re-read), restart. Same fingerprint but still failing = the /exec URL is another project / deployment |
 | `[SignIn] Google token exchange failed: <reason> — <fix>` (v0.8.2) | The sign-in page said INVALID_TOKEN. `invalid_grant` = code reused / expired (reload, Back, double click) — sign in again from a fresh page; if EVERY time, client ID and secret are not the same OAuth client. `redirect_uri_mismatch` = add `PUBLIC_BASE_URL/` to the OAuth client's Authorized redirect URIs. `invalid_client` = Key Vault `google-oauth-client-secret` is wrong / rotated — New Version with the current secret, refresh, restart |
+| `[Live] heartbeat not sent: BAD_REQUEST … deploy AzureBridge.gs r131` (v0.9.0) | Apps Script still runs the bridge without the heartbeat action — replace `AzureBridge.gs` (r131) → Deploy → New version. Heartbeats pause 10 minutes and then try again; reading live data is not affected |
+| `[Live] heartbeat not sent: <code> — kept` | Temporary (Apps Script busy / network): the batch is sent again 15 s later |
 | `[Live] Apps Script bridge not configured` | `APPS_SCRIPT_BRIDGE_URL` / `APPS_SCRIPT_BRIDGE_SECRET` missing (or Key Vault reference not resolved) — §3 |
 | `[Live] … FAILED: NOT_CONFIGURED` | Script Property `AZURE_BRIDGE_SECRET` missing / shorter than 32, or the new Apps Script version is not deployed |
 | `[Live] … FAILED: BAD_SIGNATURE` | The two secrets differ — set the same value in Key Vault and the Script Property, refresh + restart |
@@ -196,6 +199,7 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.9.0 | 2026-11-17 | Phase 3 step 2: heartbeat — `getDashboardData` / `recordDashboardSignOff` on Azure send the session e-mail through the signed bridge (Apps Script `AzureBridge.gs` r131 `heartbeat`: presence + Last Login DB, APS e-mails only, ≤ 200 per call, one lock / one write); batched 15 s, once per person per minute (sign-off always); `AZURE_HEARTBEAT=off`; shared `bridgeCall` |
 | 0.8.3 | 2026-11-17 | Bridge: the secret is trimmed (a pasted space / line break no longer breaks it); on `BAD_SIGNATURE` the log shows `[Live] Azure's secret: N characters, fingerprint xxxxxxxx` to compare with Apps Script `ONE_TIME_azureBridgeFingerprint` (never the value) |
 | 0.8.2 | 2026-11-17 | Sign-in: a failed Google code exchange now logs Google's reason + the fix (`[SignIn] Google token exchange failed: …`, never the code or secret); flaky state-tamper test fixed |
 | 0.8.1 | 2026-11-16 | Apps Script r123–r126 copied (gas-source, page, copied code): Exam Question Paper monitoring now follows r123 (Teacher Copy / Send to Student times — 3 new live settings in both allow-lists, Apps Script `AzureBridge.gs` r127), r124 Clear filters, r125 batch / emailed-key display (keys of emailed students blank on Azure: the HMAC secret stays in Apps Script), r126 student download page (downloads stay on Apps Script) |

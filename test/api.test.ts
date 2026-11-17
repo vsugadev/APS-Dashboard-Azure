@@ -87,7 +87,7 @@ test('errors never reach the browser with tokens, keys or stack traces', async (
   assert.equal(safeErrorMessage('-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY----- x'), '[hidden] x');
   const { READS2 } = require('../src/api/endpoints/reads');
   const { ATTENDANCE_READS, LIVE_READS } = require('../src/api/endpoints/classes');
-  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'getStartupBundle']
+  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'recordDashboardSignOff', 'getStartupBundle']
     .concat(ATTENDANCE_READS, LIVE_READS, Object.values(READS2).flat() as string[]).sort());
 });
 
@@ -98,4 +98,19 @@ test('page renderer: fills exactly the five Code.gs template values, script-safe
   assert.equal(jsonForScript({ a: '</script><b>' }), '{"a":"\\u003c/script\\u003e\\u003cb\\u003e"}');
   const html = new DashboardPage(pageFile()).render({ authUrl: 'https://x/?a=1&b="2"', token: 't-1', user: { name: '</script>' }, error: null });
   assert.ok(html.includes('href="https://x/?a=1&amp;b=&quot;2&quot;"')); assert.ok(html.includes('var t = ("t-1")')); assert.ok(!html.includes('</script>"'));
+});
+
+test('Phase 3 step 2: getDashboardData and recordDashboardSignOff send the SESSION e-mail as a heartbeat (sign-off always); no session → refused', async () => {
+  const { testContext, D } = await import('./helpers');
+  const { buildRegistry } = await import('../src/server');
+  const ctx: any = testContext(); const noted: [string, boolean][] = [];
+  ctx.heartbeat = { note: (e: string, f?: boolean) => noted.push([e, !!f]), flush: async () => {}, status: () => ({ sent: 0, failed: 0, error: '' }) };
+  const reg = buildRegistry();
+  const token = await ctx.sessions.create({ email: 'priya_aps8001' + D, role: 'teacher' });
+  await reg.call(ctx, 'getDashboardData', [token]);
+  const off: any = await reg.call(ctx, 'recordDashboardSignOff', [token, 'someone_else' + D]);
+  assert.deepEqual(off, { ok: null });
+  assert.deepEqual(noted, [['priya_aps8001' + D, false], ['priya_aps8001' + D, true]], 'only the session e-mail — never an argument');
+  const bad: any = await reg.call(ctx, 'recordDashboardSignOff', ['no-such-token']);
+  assert.match(String(bad.err), /SESSION_EXPIRED/);
 });

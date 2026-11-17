@@ -126,3 +126,57 @@ test('v0.8.3: BAD_SIGNATURE → Azure logs the length + fingerprint of its secre
   assert.ok(lines.some((l) => l.includes("Azure's secret: 64 characters, fingerprint " + secretFingerprint(v))), lines.join('\n'));
   assert.ok(!lines.join('\n').includes(v), 'never the value');
 });
+test('Phase 3 step 2 (AzureBridge.gs r131): a signed heartbeat batch records online + Last Login (DB) like a visit — APS e-mails only, nothing else written; unsigned refused', { skip: !have && 'Apps Script files not found' }, async () => {
+  const { BridgeHeartbeat } = await import('../src/live/heartbeat');
+  const A = appsScript(); const G: any = A.env.ctx;
+  const others = () => JSON.stringify([A.env.props, A.env.userProps].map((o: any) => Object.keys(o).filter((x) => x !== 'presenceMap' && x !== 'lastLoginMap').sort().map((k) => [k, o[k]]))); // Code.gs may move these two between its stores (apsBigSetSafe_)
+  const propsBefore = others();
+  G.apsBigSetSafe_(G.PRESENCE_PROP_KEY, JSON.stringify({ 'a@x': { lastSeen: '2026-01-01T00:00:00.000Z' }, 'fresh_aps1@avvaiyarpadasalai.org': { lastSeen: new Date(Date.now() - 60000).toISOString(), loginAt: new Date(Date.now() - 120000).toISOString() } }), 'test');
+  const hb = new BridgeHeartbeat(URL, SECRET, A.fetchImpl, Date.now, false, () => {});
+  const t1 = 'priya_aps8001@avvaiyarpadasalai.org', t2 = 'meena_aps5555@avvaiyarpadasalai.org';
+  hb.note(t1); hb.note(t2); hb.note('Priya_APS8001@avvaiyarpadasalai.org'); hb.note('someone@gmail.com'); hb.note('not an email');
+  await hb.flush();
+  assert.deepEqual(hb.status(), { sent: 3, failed: 0, error: '' }, 'priya (once), meena, gmail (Apps Script ignores it)');
+  const pres = G.getPresenceMap_();
+  assert.ok(pres[t1] && pres[t2] && !pres['someone@gmail.com'], 'online now: APS accounts only');
+  assert.ok(Date.now() - Date.parse(pres[t1].lastSeen) < 60000 && pres[t1].loginAt === pres[t1].lastSeen, 'fresh login');
+  assert.ok(pres['fresh_aps1@avvaiyarpadasalai.org'], 'other people online kept'); assert.ok(!pres['a@x'], 'entries older than 24 h dropped (same as recordHeartbeat_)');
+  const ll = JSON.parse(G.apsBigGet_(G.LAST_LOGIN_PROP_KEY));
+  assert.ok(ll[t1] && ll[t1].db && Date.now() - Date.parse(ll[t1].db) < 60000, 'Last Login DB slot');
+  assert.ok(ll['a@x'], 'other last logins kept');
+  // a second heartbeat within the online window keeps the login time, moves lastSeen; throttled on Azure unless forced (sign-off)
+  const login1 = pres[t1].loginAt;
+  hb.note(t1); await hb.flush(); assert.equal(hb.status().sent, 3, 'within 60 s: not sent again');
+  hb.note(t1, true); await hb.flush(); assert.equal(hb.status().sent, 4, 'sign-off: always sent');
+  assert.equal(G.getPresenceMap_()[t1].loginAt, login1, 'same online spell → login time kept');
+  assert.equal(others(), propsBefore, 'only presence + Last Login written — no other property created or changed');
+  // unsigned / wrong secret: refused, nothing written
+  const p = JSON.stringify({ action: 'heartbeat', v: 1, emails: ['x_aps1@avvaiyarpadasalai.org'] }), ts = String(Date.now()), nonce = '21111111-2222-3333-4444-555555555555';
+  const bad = A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: require('crypto').createHmac('sha256', 'wrong-secret-0123456789-0123456789').update(ts + '.' + nonce + '.' + p).digest('hex') }));
+  assert.equal(bad.code, 'BAD_SIGNATURE'); assert.ok(!G.getPresenceMap_()['x_aps1@avvaiyarpadasalai.org']);
+  // at most 200 per call
+  const many = Array.from({ length: 250 }, (_v, i) => 'p' + i + '_aps' + (9000 + i) + '@avvaiyarpadasalai.org');
+  const p2 = JSON.stringify({ action: 'heartbeat', v: 1, emails: many }), ts2 = String(Date.now()), n2 = '31111111-2222-3333-4444-555555555555';
+  const r2 = A.doPost(JSON.stringify({ azure: 1, p: p2, ts: ts2, nonce: n2, sig: require('crypto').createHmac('sha256', SECRET).update(ts2 + '.' + n2 + '.' + p2).digest('hex') }));
+  assert.equal(r2.ok, true, JSON.stringify(r2)); assert.equal(r2.result.recorded, 200);
+});
+
+test('Phase 3 step 2: heartbeat sender — failures kept and retried, old Apps Script (Unknown action) pauses 10 min, log never has e-mails or the secret', async () => {
+  const { BridgeHeartbeat, NoopHeartbeat } = await import('../src/live/heartbeat');
+  let now = 1_800_000_000_000; let mode = 'down'; const bodies: string[] = []; const logs: string[] = [];
+  const f: FetchLike = async (_u, init) => { bodies.push(init.body);
+    if (mode === 'down') return { ok: false, status: 503, text: async () => '' };
+    if (mode === 'old') return { ok: true, status: 200, text: async () => JSON.stringify({ ok: false, code: 'BAD_REQUEST', message: 'Unknown action.' }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, result: { recorded: 1 } }) }; };
+  const hb = new BridgeHeartbeat(URL, SECRET, f, () => now, false, (m) => logs.push(m));
+  hb.note('kavi_aps8002@avvaiyarpadasalai.org'); await hb.flush();
+  assert.equal(hb.status().error, 'HTTP_503'); assert.equal(hb.status().sent, 0);
+  mode = 'ok'; now += 15000; await hb.flush(); assert.equal(hb.status().sent, 1, 'kept and sent with the next batch');
+  const sent = JSON.parse(JSON.parse(bodies[bodies.length - 1]).p); assert.deepEqual(sent, { action: 'heartbeat', v: 1, emails: ['kavi_aps8002@avvaiyarpadasalai.org'] });
+  mode = 'old'; now += 70000; hb.note('devi_aps5557@avvaiyarpadasalai.org'); await hb.flush();
+  assert.match(logs.join('\n'), /deploy AzureBridge\.gs r131/);
+  const calls = bodies.length; now += 60000; await hb.flush(); assert.equal(bodies.length, calls, 'paused');
+  mode = 'ok'; now += 10 * 60000; await hb.flush(); assert.equal(hb.status().error, '', 'resumes after the pause');
+  assert.ok(!/aps8002|aps5557|az-bridge-test-secret/.test(logs.join('\n')), 'no e-mail or secret in the log');
+  const n = new NoopHeartbeat(); n.note(); await n.flush(); assert.equal(n.status().sent, 0);
+});
