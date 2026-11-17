@@ -88,8 +88,20 @@ export function loadFixture() {
   try { return setup(); } finally { console.log = log; console.warn = warn; }
 }
 
+/** v0.8.2: the two runs (Apps Script copy, then Azure) happen a moment apart, so a "now" stamp may tick over a second
+ *  (e.g. previewTeacherAppreciation .evaluatedAt) — equal when both are the same kind of time stamp within 5 seconds. */
+function sameMoment(a: unknown, b: unknown): boolean {
+  if (typeof a === 'string' && typeof b === 'string') {
+    const re = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+    if (!re.test(a) || !re.test(b) || a.length !== b.length) return false;
+    const ta = Date.parse(a.replace(' ', 'T')), tb = Date.parse(b.replace(' ', 'T'));
+    return isFinite(ta) && isFinite(tb) && Math.abs(ta - tb) <= 5000;
+  }
+  return typeof a === 'number' && typeof b === 'number' && a > 1e12 && b > 1e12 && Math.abs(a - b) <= 5000; // epoch ms
+}
 function diffs(a: any, b: any, at = ''): string[] {
   if (JSON.stringify(a) === JSON.stringify(b)) return [];
+  if (sameMoment(a, b)) return [];
   if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) === !Array.isArray(b)) {
     const keys = Array.from(new Set(Object.keys(a).concat(Object.keys(b))));
     return keys.flatMap((k) => diffs(a[k], b[k], at + '.' + k));
