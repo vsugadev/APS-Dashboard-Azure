@@ -45,7 +45,7 @@ export class FixtureLiveSource implements LiveSource {
   status() { return { ok: true, at: Date.now(), error: '' }; }
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; redirect: 'follow' }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; redirect: 'follow'; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 export class AppsScriptLiveSource implements LiveSource {
   private last: LiveSnapshot | null = null;
@@ -84,11 +84,13 @@ export class AppsScriptLiveSource implements LiveSource {
  * One signed bridge request (shared by the snapshot and the r131 heartbeat): HMAC-SHA256(secret, ts.nonce.p).
  * Returns the bridge's `result`; throws Error(<SHORT_CODE>) — never the secret, the body or Google's page.
  */
-export async function bridgeCall(url: string, secret: string, payload: Record<string, unknown>, fetchImpl: FetchLike, now: () => number = Date.now): Promise<any> {
+export async function bridgeCall(url: string, secret: string, payload: Record<string, unknown>, fetchImpl: FetchLike, now: () => number = Date.now, timeoutMs = 0): Promise<any> {
   const p = JSON.stringify(payload);
   const ts = String(now()), nonce = crypto.randomUUID();
   const sig = crypto.createHmac('sha256', secret).update(ts + '.' + nonce + '.' + p).digest('hex');
-  const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ azure: 1, p, ts, nonce, sig }), redirect: 'follow' });
+  let res: Awaited<ReturnType<FetchLike>>;
+  try { res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ azure: 1, p, ts, nonce, sig }), redirect: 'follow', ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}) }); }
+  catch (e) { throw new Error(/abort|timeout/i.test(String((e as Error).name) + String((e as Error).message)) ? 'TIMEOUT' : 'NETWORK'); }
   if (!res.ok) throw new Error('HTTP_' + res.status);
   let j: any;
   try { j = JSON.parse(await res.text()); } catch { throw new Error('NOT_JSON (check APPS_SCRIPT_BRIDGE_URL is the /exec address)'); }

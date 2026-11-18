@@ -171,3 +171,29 @@ last sync info through the page's `google.script.run`. `npm test` 34 pass; brows
 ### Still Apps Script only
 
 Everything that changes data, and every other tab — the page shows "not on Azure yet" for those calls.
+
+## Step 7 — the remaining read screens: read-through (v0.12.0, 2026-11-18)
+
+The 21 read calls that need Google services Azure does not use yet (Classroom, Drive, Zoho / UrlFetch, script locks)
+now work on Azure by running the REAL Code.gs function in Apps Script for the signed-in person — the same signed bridge
+action as the Admin saves (`call`, Apps Script `AzureBridge.gs` r133 `AZURE_BRIDGE_READS_` = Azure `READ_THROUGH` in
+`src/api/endpoints/writes.ts`; the test fails if they differ). Apps Script decides the role; the function's own checks
+apply; nothing is cached or refreshed; 2-minute time-out.
+
+`checkZohoConnection`, `exportExamQuestionPaperAudit`, `exportGrading`, `getAddStudentContext`,
+`getAdminWebAppDeploymentInfo`, `getAssignmentMonitoringAdmin`, `getExamQuestionPaperContext`,
+`getExaminationCourseOptions`, `getGradingData`, `getMaintenanceStatus`, `getMeetPreviewData`, `getMissingGradingAdmin`,
+`getTamilThadam`, `getTeacherAppreciationData`, `getTicketAttachment`, `getZohoFieldMapping`, `getZohoSyncStatus`,
+`previewExaminationAnnouncement`, `previewExaminationClasswork`, `previewZohoStudentSync`, `searchExaminationAnnouncement`.
+
+**Still not on Azure (on purpose):** `getChatMessages` (polled often — chat comes with its own step),
+`fetchExamQuestionPaperDownload` / `previewExamQuestionPaper` (download ticket protocol kept in Apps Script's cache,
+Promise-based). `getRealtimeStatusSnapshot` already runs natively (Phase 3).
+
+**Performance:** each call is one Apps Script execution (about 1–3 s), the same work the Apps Script dashboard does.
+These screens are ported natively one by one later (then they leave the list).
+
+**Tests:** `test/live.test.ts` — real Code.gs + PortalBridge.gs + AzureBridge.gs: five calls (Admin answers, non-Admin
+refusals) identical to calling Code.gs directly; nothing refreshed; no temporary session left; chat refused; lists
+identical. `npm test` 56/56, `npm run e2e` 10/10.
+

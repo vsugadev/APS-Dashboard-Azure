@@ -1,6 +1,6 @@
 {
   "copiedAt": "2026-11-16T17:56:22.041Z",
-  "from": "APS-Classroom-Dashboard (release r126 + AzureBridge.gs r132)",
+  "from": "APS-Classroom-Dashboard (release r126 + AzureBridge.gs r133)",
   "files": {
     "Code.gs": {
       "bytes": 2029279,
@@ -23,8 +23,8 @@
       "md5": "b6a5417adbb0a22730b0c4c8700266f2"
     },
     "AzureBridge.gs": {
-      "bytes": 15098,
-      "md5": "08f8f79e84717d1eecc74bc1213a4051"
+      "bytes": 16141,
+      "md5": "095ae5f493dd012c8e58ebd6071888fa"
     },
     "APS_PropertyQuota_Fix.gs": {
       "bytes": 9439,

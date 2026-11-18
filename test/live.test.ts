@@ -182,10 +182,12 @@ test('Phase 3 step 2: heartbeat sender — failures kept and retried, old Apps S
 });
 
 test('write phase step 1 (AzureBridge.gs r132): the call list is identical on both sides', { skip: !have && 'gas-source/AzureBridge.gs not found' }, async () => {
-  const { WRITE_THROUGH } = await import('../src/api/endpoints/writes');
+  const { WRITE_THROUGH, READ_THROUGH } = await import('../src/api/endpoints/writes');
   const c: any = vm.createContext({});
   vm.runInContext(fs.readFileSync(path.join(GAS, 'AzureBridge.gs'), 'utf8'), c);
   assert.deepEqual(Array.from(c.AZURE_BRIDGE_CALLS_), WRITE_THROUGH);
+  assert.deepEqual(Array.from(c.AZURE_BRIDGE_READS_), READ_THROUGH, 'r133 read list identical');
+  for (const n of READ_THROUGH) assert.ok(!WRITE_THROUGH.includes(n) && /^(get|check|export|preview|search)[A-Z]/.test(n), n + ' is a read');
   for (const n of WRITE_THROUGH) assert.ok(/^(save|set)[A-Z]/.test(n), n + ' is a settings save');
 });
 
@@ -226,4 +228,35 @@ test('write phase step 1: a Save on Azure runs the REAL Code.gs function in Apps
   const calls = A.fetchImpl.calls;
   assert.match(String(((await reg.call(ctx, 'setRosterHiddenStaffVisible', ['bogus', true])) as any).err), /SESSION_EXPIRED/);
   assert.equal(A.fetchImpl.calls, calls, 'nothing sent without a session');
+});
+
+test('Phase 2 completion (r133): the remaining read screens run in Apps Script for the signed-in person and answer EXACTLY like Code.gs; nothing refreshed, no temporary session left; reads not in the list refused', { skip: !have && 'Apps Script files not found' }, async () => {
+  const ADMIN = 'admin_aps9100@avvaiyarpadasalai.org', TEACHER = 'teach_aps9101@avvaiyarpadasalai.org';
+  const A = appsScript({ ADMIN_EMAILS: JSON.stringify([ADMIN]) }); const G: any = A.env.ctx;
+  const { testContext, testConfig } = await import('./helpers');
+  const { buildRegistry } = await import('../src/server');
+  const cfg = testConfig({ dataMode: 'sheets', appsScriptBridgeUrl: URL, appsScriptBridgeSecret: SECRET, writeThroughEnabled: true });
+  const ctx: any = testContext({ cfg }); let inv = 0; ctx.live = { get: async () => ({ script: {}, user: {} }), status: () => ({ ok: true, at: 0, error: '' }), invalidate: () => { inv++; } };
+  const reg = buildRegistry(A.fetchImpl);
+  const J = (x: unknown) => JSON.parse(JSON.stringify(x));
+  const direct = (fn: string, email: string, role: string, args: unknown[] = []) => {
+    const tok = 'direct_' + Math.random().toString(36).slice(2); A.env.cache['aps_sess_' + tok] = JSON.stringify({ email, role });
+    try { return { ok: J(G[fn].apply(null, [tok].concat(args as never[]))) }; } catch (e) { return { err: (e as Error).message }; } finally { delete A.env.cache['aps_sess_' + tok]; }
+  };
+  const strip = (x: any) => JSON.parse(JSON.stringify(x, (k, v) => (/^(generatedAt|asOf|now|serverNow|checkedAt)$/.test(k) ? undefined : v)));
+  let compared = 0;
+  for (const [fn, email, role] of [['getAssignmentMonitoringAdmin', ADMIN, 'admin'], ['getMissingGradingAdmin', ADMIN, 'admin'], ['getZohoSyncStatus', ADMIN, 'admin'],
+    ['getAssignmentMonitoringAdmin', TEACHER, 'authorized'], ['getMaintenanceStatus', TEACHER, 'authorized']] as [string, string, string][]) {
+    const want = direct(fn, email, role);
+    const tok = await ctx.sessions.create({ email, role });
+    const got: any = await reg.call(ctx, fn, [tok]);
+    assert.deepEqual(strip(got), strip(want), role + ' ' + fn); compared++;
+    if (role === 'admin') assert.ok('ok' in got && got.ok, fn + ' answered for Admin: ' + JSON.stringify(got).slice(0, 160));
+    else assert.ok('err' in got, fn + ' refused for a non-admin: ' + JSON.stringify(got).slice(0, 160));
+  }
+  assert.equal(compared, 5); assert.equal(inv, 0, 'reads never refresh caches');
+  assert.deepEqual(Object.keys(A.env.cache).filter((k) => /^aps_sess_az_/.test(k)), [], 'temporary sessions removed');
+  const crypto = require('crypto');
+  const p = JSON.stringify({ action: 'call', v: 1, fn: 'getChatMessages', args: [], email: ADMIN }), ts = String(Date.now()), nonce = crypto.randomUUID();
+  assert.equal(A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: crypto.createHmac('sha256', SECRET).update(ts + '.' + nonce + '.' + p).digest('hex') })).code, 'BAD_REQUEST', 'chat not in the list');
 });

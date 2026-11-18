@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -30,6 +30,8 @@
  *     used), makes a session that lives only for this call, and the function's own checks (Admin only, Access
  *     Control tab, read-only roles, validation, locks, audit with the person's e-mail) decide. Not in the list → refused.
  *     The list is mirrored in Azure (src/api/endpoints/writes.ts); its test fails if they differ.
+ *   - r133 — the same call action also runs the read screens Azure cannot read itself yet (they need Classroom, Drive,
+ *     Zoho, locks …): AZURE_BRIDGE_READS_. Same rules: role decided here, the function's own checks, nothing else.
  * ========================================================================== */
 var AZURE_BRIDGE_LIVE_KEYS_ = [
   'APS_CLASSES_ALWAYS_SHOW_EMAILS', 'APS_CLASSES_PRIMARY_ONLY_PREFIXES', 'APS_CLASSROOM_ROSTER_ACADEMIC_YEAR',
@@ -76,6 +78,14 @@ var AZURE_BRIDGE_CALLS_ = [
   'saveAccessControl', 'saveAssignmentMonitoringConfig', 'saveMissingGradingConfig', 'saveMarkCompleteSettings',
   'saveTeacherAppreciationConfig', 'setTeacherAppreciationEmails', 'saveSpecialClassesSettings', 'saveTicketSettings',
   'setExamQuestionPaperDefaults', 'setExamQuestionPaperAutoEmail', 'setRosterHiddenStaffVisible'
+];
+/** r133 — read screens that need Google services / locks Azure does not use yet (Phase 2 "still not on Azure"). */
+var AZURE_BRIDGE_READS_ = [
+  'checkZohoConnection', 'exportExamQuestionPaperAudit', 'exportGrading', 'getAddStudentContext', 'getAdminWebAppDeploymentInfo',
+  'getAssignmentMonitoringAdmin', 'getExamQuestionPaperContext', 'getExaminationCourseOptions', 'getGradingData',
+  'getMaintenanceStatus', 'getMeetPreviewData', 'getMissingGradingAdmin', 'getTamilThadam', 'getTeacherAppreciationData',
+  'getTicketAttachment', 'getZohoFieldMapping', 'getZohoSyncStatus', 'previewExaminationAnnouncement',
+  'previewExaminationClasswork', 'previewZohoStudentSync', 'searchExaminationAnnouncement'
 ];
 
 /** True only for an allow-listed, non-secret key. */
@@ -182,7 +192,7 @@ function azureBridgeHeartbeats_(req) {
 function azureBridgeCall_(req) {
   var fn = String(req.fn || '');
   var g = globalThis;
-  if (AZURE_BRIDGE_CALLS_.indexOf(fn) === -1 || typeof g[fn] !== 'function') throw portalErr_('BAD_REQUEST', 'This function cannot be called from Azure.');
+  if ((AZURE_BRIDGE_CALLS_.indexOf(fn) === -1 && AZURE_BRIDGE_READS_.indexOf(fn) === -1) || typeof g[fn] !== 'function') throw portalErr_('BAD_REQUEST', 'This function cannot be called from Azure.');
   var email = normalizeEmail_(String(req.email || ''));
   if (!email || !isApsEmailAllowed_(email)) throw portalErr_('BAD_REQUEST', 'Not an APS account.');
   var args = Array.isArray(req.args) ? req.args : [];

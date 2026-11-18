@@ -22,21 +22,42 @@ export const WRITE_THROUGH: string[] = [
   'setExamQuestionPaperDefaults', 'setExamQuestionPaperAutoEmail', 'setRosterHiddenStaffVisible',
 ];
 
+/**
+ * Phase 2 completion (v0.12.0) — READ-THROUGH: the read screens Azure cannot read itself yet (they need Classroom,
+ * Drive, Zoho, script locks …) run in Apps Script the same way (AZURE_BRIDGE_READS_ in AzureBridge.gs r133 — same list,
+ * tested). Nothing is cached or refreshed afterwards. Ported natively one by one later; then they leave this list.
+ * Not here: chat (polled often), the exam download / preview ticket protocol (Apps Script caches + Promise).
+ */
+export const READ_THROUGH: string[] = [
+  'checkZohoConnection', 'exportExamQuestionPaperAudit', 'exportGrading', 'getAddStudentContext', 'getAdminWebAppDeploymentInfo',
+  'getAssignmentMonitoringAdmin', 'getExamQuestionPaperContext', 'getExaminationCourseOptions', 'getGradingData',
+  'getMaintenanceStatus', 'getMeetPreviewData', 'getMissingGradingAdmin', 'getTamilThadam', 'getTeacherAppreciationData',
+  'getTicketAttachment', 'getZohoFieldMapping', 'getZohoSyncStatus', 'previewExaminationAnnouncement',
+  'previewExaminationClasswork', 'previewZohoStudentSync', 'searchExaminationAnnouncement',
+];
+export const THROUGH_TIMEOUT_MS = 120_000;
+
 export function registerWrites(reg: Registry, fetchImpl?: FetchLike): void {
-  for (const name of WRITE_THROUGH) {
+  for (const name of READ_THROUGH) registerThrough(reg, name, false, fetchImpl);
+  for (const name of WRITE_THROUGH) registerThrough(reg, name, true, fetchImpl);
+}
+
+function registerThrough(reg: Registry, name: string, isWrite: boolean, fetchImpl?: FetchLike): void {
+  {
     reg.register(name, async (ctx, args) => {
       const s = await requireSession(ctx, args[0]);
       if (!ctx.cfg.writeThroughEnabled || !bridgeUsable(ctx.cfg)) throw new Error(NOT_ON_AZURE + name);
       const rest = args.slice(1);
       if (JSON.stringify(rest).length > 90_000) throw new Error('This change is too large to save in one go.');
       let r: any;
-      try { r = await bridgeCall(ctx.cfg.appsScriptBridgeUrl, ctx.cfg.appsScriptBridgeSecret, { action: 'call', v: 1, fn: name, args: rest, email: s.email }, fetchImpl || (fetch as unknown as FetchLike)); }
+      try { r = await bridgeCall(ctx.cfg.appsScriptBridgeUrl, ctx.cfg.appsScriptBridgeSecret, { action: 'call', v: 1, fn: name, args: rest, email: s.email }, fetchImpl || (fetch as unknown as FetchLike), Date.now, THROUGH_TIMEOUT_MS); }
       catch (e) {
-        console.warn('[Write] ' + name + ' not saved: ' + String((e as Error).message || e).slice(0, 80));
-        throw new Error('The change could not be saved right now (the APS Dashboard did not answer). Please try again in a minute.');
+        console.warn((isWrite ? '[Write] ' + name + ' not saved: ' : '[Read] ' + name + ' not answered: ') + String((e as Error).message || e).slice(0, 80));
+        throw new Error(isWrite ? 'The change could not be saved right now (the APS Dashboard did not answer). Please try again in a minute.'
+          : 'This screen could not be loaded right now (the APS Dashboard did not answer). Please try again in a minute.');
       }
       if (r && typeof r.error === 'string') throw new Error(r.error);
-      ctx.live.invalidate?.(); ctx.data.invalidate?.();
+      if (isWrite) { ctx.live.invalidate?.(); ctx.data.invalidate?.(); }
       return r ? r.value : null;
     });
   }
