@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : ffd1fec38022d33f80ecfba649fb5be7
+#   Part B md5    : bdb54e167b84d925b49b4e1743544c94
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -997,3 +997,7 @@ header is longer, or Code.gs fails quietly in the mock.
   Key Vault). Bridge r135: Promise answers → {pending: job} + signed action "result" (CacheService pieces, same person,
   single use); uploads up to 24 MB (UPLOAD_FNS; Azure /api/run 25 MB; PortalBridge doPost large only for {"azure":1});
   Azure waits 220 s (front door ~230 s) then says "still running"; LIGHT_FNS refresh only the live snapshot.
+- v0.15.0 (2026-11-19): Phase 3 step 3 — lasting sign-ins: DurableSessionStore (src/auth/sqlSessions.ts) = memory cache
+  + Azure SQL dbo.app_session (SHA-256 token hash only; 6 h from sign-in; DB never blocks sign-in: 3 s write wait,
+  15 s read wait, unknown tokens throttled 30 s; hourly sweep). Used when SQL is configured; AZURE_SESSION_STORE=memory
+  opts out. Redis not needed at this size.

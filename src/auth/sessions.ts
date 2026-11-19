@@ -1,7 +1,7 @@
 /**
  * Server-side sessions — same model as Code.gs: a random token → { email, role, issuedAt } kept for
  * SESSION_TTL_SECONDS (6 h). The browser only ever holds the opaque token. Phase 1: in memory (one App Service
- * instance); Phase 3: Azure Cache for Redis behind the same interface, so sessions survive restarts and scale-out.
+ * instance). v0.15.0: when Azure SQL is configured, src/auth/sqlSessions.ts keeps them in dbo.app_session (lasting sign-ins).
  */
 import { randomUUID } from 'crypto';
 

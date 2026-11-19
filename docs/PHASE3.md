@@ -112,3 +112,43 @@ Azure request ──► AppsScriptLiveSource (src/live/liveSource.ts)
 - **Deploy:** Apps Script `AzureBridge.gs` r131 → Deploy → New version (same /exec). Azure v0.9.0 via GitHub Actions. Either order works (Azure pauses heartbeats until r131 answers).
 - **Tests:** `test/live.test.ts` — real Code.gs + PortalBridge.gs + AzureBridge.gs: signed batch records presence + Last Login (APS only; same spell keeps login time; >24 h dropped; nothing else written; wrong secret refused; ≤ 200); sender: throttle, sign-off forced, retry, pause on old Apps Script, no e-mail / secret in logs. `test/api.test.ts` — `getDashboardData` / `recordDashboardSignOff` use the session e-mail only. `npm test` 47/47, `npm run e2e` 10/10.
 
+
+
+## Step 3 — lasting sign-ins: sessions in Azure SQL (v0.15.0, 2026-11-19)
+
+**Why:** sessions used to live only in the app's memory. Every restart or deploy signed everyone out of the Azure
+dashboard, and a second App Service instance could not see the first instance's sign-ins. The plan said "Redis";
+Azure SQL (already set up, free) does the same job at this size, at no extra cost.
+
+**How** (`src/auth/sqlSessions.ts`, used when `SQL_SERVER` and `SQL_DATABASE` are set):
+
+- Table `dbo.app_session`, created by the app: `token_hash CHAR(64) PK, email, role, issued_at, expires_at`. It holds
+  only the **SHA-256 of the token**, so someone who can read the table cannot sign in as anyone.
+- The model is unchanged and matches Code.gs: random token → { email, role, issuedAt }, valid
+  `SESSION_TTL_SECONDS` (6 h) from sign-in. The browser still holds only the token.
+- Reads are served from memory. A token this instance hasn't seen (after a restart, or created on the other instance)
+  is looked up in the database once. A token the database doesn't know is not looked up again for 30 s.
+- **The database never blocks a sign-in.** A write waits at most 3 s and otherwise finishes in the background. If the
+  database is down, the session still works on this server, and the log shows one line per minute:
+  `[Sessions] a sign-in could not be … in Azure SQL …`. It never contains e-mails or tokens. A failed look-up means
+  "sign in again", never an error page.
+- Sign-out deletes the session from memory and from the database. Expired rows are deleted every hour.
+- Start-up log: `[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign
+  people out.`
+- App setting `AZURE_SESSION_STORE=memory` goes back to memory-only sessions.
+
+**Permissions:** none new. The app already has `db_datawriter` and `db_ddladmin` from the database pilot.
+
+**Tests:** `test/sessions.test.ts`, 5 tests:
+
+- Survives a restart and reaches a second instance; only the hash is stored; looked up once; expires after 6 h.
+- Sign-out works everywhere; unknown tokens are throttled.
+- Slow or failing database: sign-in is not delayed, the session works locally, and the log line has no e-mail or token.
+- Hourly clean-up deletes expired rows.
+- SQL: the table is created once; queries are parameterised only.
+
+`npm test` 67/67, `npm run e2e` 10/10. The e2e example of a function that isn't on Azure is now an imaginary name,
+because since v0.14.0 every real function is on Azure.
+
+**Not executed here:** against the real Azure SQL. The start-up log line above, and staying signed in across the next
+Restart, prove it.

@@ -80,6 +80,8 @@ export class MssqlSheetStore implements SheetStore, OwnedStore {
   private pool: Promise<sqlTypes.ConnectionPool> | null = null;
   constructor(private server: string, private database: string, private sql: typeof sqlTypes = require('mssql')) {}
 
+  /** v0.15.0: shared with the session store (one pool per app). */
+  connectPool(): Promise<sqlTypes.ConnectionPool> { return this.connect(); }
   private connect(): Promise<sqlTypes.ConnectionPool> {
     if (!this.pool) {
       const p = new this.sql.ConnectionPool({

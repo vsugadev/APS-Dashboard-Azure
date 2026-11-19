@@ -13,6 +13,7 @@ import { bridgeUsable, secretFingerprint, AppsScriptLiveSource, EmptyLiveSource,
 import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
 import { registerWrites } from './api/endpoints/writes';
 import { mountReverseBridge } from './api/bridge';
+import { DurableSessionStore, MssqlSessionDb } from './auth/sqlSessions';
 import { DbBackedDataSource } from './db/dbData';
 import { MssqlSheetStore } from './db/sheetStore';
 import { startDatabase } from './db/start';
@@ -47,7 +48,11 @@ export function createContext(cfg: AppConfig): AppContext {
   const live = cfg.dataMode === 'fixture' ? FixtureLiveSource.fromFile(cfg.fixturePath)
     : bridgeUsable(cfg) ? new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new EmptyLiveSource();
   const heartbeat = cfg.dataMode !== 'fixture' && cfg.heartbeatEnabled && bridgeUsable(cfg) ? new BridgeHeartbeat(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new NoopHeartbeat();
-  return { cfg, data, live, heartbeat, sessions: new MemorySessionStore(cfg.sessionTtlSeconds), google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+  // Phase 3 step 1 (v0.15.0): sign-ins kept in Azure SQL (same connection pool) so restarts / deploys / a second instance keep them.
+  const sessions = data instanceof DbBackedDataSource && cfg.sessionStore === 'sql'
+    ? new DurableSessionStore(new MssqlSessionDb(() => (data.storeRef() as unknown as MssqlSheetStore).connectPool()), cfg.sessionTtlSeconds)
+    : new MemorySessionStore(cfg.sessionTtlSeconds);
+  return { cfg, data, live, heartbeat, sessions, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
 }
 
 /** Start-up self-check of the Apps Script live-data bridge (Phase 3): key counts only, never names' values. */
@@ -165,6 +170,7 @@ if (require.main === module) {
     console.log(`[Server] APS Dashboard (Azure) listening on ${cfg.port} — data: ${cfg.dataMode}`);
     void checkGoogleAccess(ctx);
     void checkLiveBridge(ctx);
+    if (ctx.sessions instanceof DurableSessionStore) { ctx.sessions.start(); console.log('[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign people out.'); }
     if (ctx.data instanceof DbBackedDataSource) void startDatabase(ctx, ctx.data.storeRef(), ctx.data, cfg.dbSyncMinutes * 60_000);
   });
 }

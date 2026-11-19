@@ -48,8 +48,8 @@ const { DashboardPage } = require('../dist/src/web/render');
       assert.ok(tok && /^[0-9a-f-]{36}$/.test(tok), 'session token held by the page');
       const me = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getCurrentUser(tk)), tok);
       assert.strictEqual(me.role, 'admin'); assert.strictEqual(me.email, 'admin@avvaiyarpadasalai.org');
-      const err = await page.evaluate(() => new Promise((res) => google.script.run.withSuccessHandler(() => res('no error')).withFailureHandler((e, u) => res(e.message + '|' + u)).withUserObject('ctx').getChatMessages('x')));
-      assert.strictEqual(err, 'NOT_ON_AZURE_YET: getChatMessages|ctx', 'errors + user object reach the failure handler as in Apps Script');
+      const err = await page.evaluate(() => new Promise((res) => google.script.run.withSuccessHandler(() => res('no error')).withFailureHandler((e, u) => res(e.message + '|' + u)).withUserObject('ctx').notOnAzureExample('x')));
+      assert.strictEqual(err, 'NOT_ON_AZURE_YET: notOnAzureExample|ctx', 'errors + user object reach the failure handler as in Apps Script');
       console.log('   calls made by the page: ' + Array.from(new Set(calls)).join(', '));
     });
     await t('Phase 2: the Classes tab shows the class cards from Azure (getDashboardData)', async () => {

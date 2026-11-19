@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-19 (v0.14.0, every dashboard action works on Azure). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-19 (v0.15.0, sign-ins survive restarts and deploys). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -84,6 +84,7 @@ az webapp restart -g rg-aps-dashboard -n aps-dashboard-ap
 | `APPS_SCRIPT_BRIDGE_SECRET` | yes (Phase 3) | Key Vault reference `@Microsoft.KeyVault(SecretUri=https://kv-apsdashboardapu7zau2j.vault.azure.net/secrets/apps-script-bridge-secret/)` |
 | `SPECIAL_CLASSES_SPREADSHEET_ID`, `SPECIAL_CLASSES_SHEET_NAME`, `ZOHO_SYNC_SPREADSHEET_ID` | optional | Only if Apps Script sets them (unset = Code.gs default). `GOOGLE_IMPERSONATE_USER` must be able to open the Special Classes and Zoho sync spreadsheets |
 | `SQL_SERVER`, `SQL_DATABASE`, `DB_SYNC_MINUTES` | optional | Azure SQL database (Special Classes) — `docs/DATABASE.md` |
+| `AZURE_SESSION_STORE` | optional | Empty = sign-ins kept in Azure SQL when the database is set (v0.15.0); `memory` = as before (a restart signs everyone out) |
 | `SC_OWNER` | optional | `azure` = Azure SQL OWNS Special Classes (stage 3) — set together with Apps Script Script Property `SPECIAL_CLASSES_OWNER=azure`; empty = Apps Script owns them (default) |
 | `APS_SCHOOL_LEAVE_ENABLED`, `APS_COUNTRY_FEATURE`, `APS_ENVIRONMENT`, `TCC_CLEANUP_GRACE_MINUTES`, `APS_CLASS_TEACHER_AVAILABILITY_*`, `ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS`, `APS_GRADING_TEAM_EMAILS`, `APS_CLASSES_ALWAYS_SHOW_EMAILS` | optional | Same meaning as in Apps Script; unset = Apps Script default |
 
@@ -170,6 +171,7 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[DB] … FAILED: <CODE> — <fix>` / `[DB] read from Google Sheets instead: …` (v0.11.0) | Database pilot: `LOGIN_FAILED` = run the CREATE USER / ALTER ROLE lines (docs/DATABASE.md step 2); `FIREWALL` = allow Azure services; `NO_IDENTITY` = App Service → Identity On; `WAKING_UP` = free database was paused (retries); `FREE_LIMIT_REACHED` = monthly free allowance used — Sheets serve until next month |
 | `[Read] <function> not answered: <code>` (v0.12.0) | A read-through screen: `TIMEOUT` = Apps Script took over 2 minutes; `BAD_REQUEST` = `AzureBridge.gs` older than r133 (deploy it); other codes as `[Write]` |
 | `[DB] SC_OWNER=azure: Special Classes could not be imported: …` (v0.13.0) | Database not reachable at start, or the programs sheet missing — fix as the message says, then Restart; Special Classes show "not available" until then |
+| `[Sessions] a sign-in could not be … in Azure SQL (…)` (v0.15.0) | Database slow (waking up) or unreachable — sign-ins still work on this server; fix the database (see `[DB]` lines) so they survive the next restart |
 | `[Write] <function> not saved: TIMEOUT` (v0.14.0) | Over 220 s (Azure front door limit ~230 s). The action keeps running in Apps Script and normally completes — check its result there |
 | `[Write] <function> not saved: TOO_LARGE` | `PortalBridge.gs` older than r135 (deploy it) |
 | `[Bridge] reverse request refused: NOT_OWNER` | Apps Script has `SPECIAL_CLASSES_OWNER=azure` but Azure `SC_OWNER` is not `azure` — set both the same |
@@ -215,6 +217,7 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.15.0 | 2026-11-19 | Phase 3 step 3: lasting sign-ins — sessions kept in Azure SQL (`dbo.app_session`, token hashes only) behind a memory cache; restarts / deploys / a second instance no longer sign people out; `AZURE_SESSION_STORE=memory` |
 | 0.14.0 | 2026-11-19 | Every remaining dashboard action through Apps Script (73 functions; bridge r135: Promise results, uploads up to 24 MB, 220 s limit with "still running" message); role permissions refused on purpose |
 | 0.13.0 | 2026-11-18 | Teacher class-card actions saved through Apps Script; Special Classes saves forwarded; database stage 3 (`SC_OWNER=azure`: Azure SQL owns Special Classes, reverse bridge `/api/bridge` for Apps Script, `AzureBridge.gs` r134) |
 | 0.12.0 | 2026-11-18 | Phase 2 completed: the 21 remaining read screens run through Apps Script (bridge `call`, `AzureBridge.gs` r133 `AZURE_BRIDGE_READS_` = `READ_THROUGH`); bridge calls time out after 2 minutes; network / time-out errors give short codes |

@@ -145,3 +145,10 @@ Audit rows made while Azure owned the programs stay in `dbo.owned_sheet`. Read t
 
 **Not executed here:** a real Azure SQL Database or a real Apps Script ↔ Azure call. The two log lines above prove them on
 the first switch-on.
+
+
+## Sessions table (v0.15.0)
+
+`dbo.app_session` holds the Azure dashboard's sign-ins, as SHA-256 token hashes only. See `docs/PHASE3.md` step 3. To
+sign everyone out of the Azure dashboard at once, run `DELETE FROM dbo.app_session;` in the Query editor and then
+Restart.
