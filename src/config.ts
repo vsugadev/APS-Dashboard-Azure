@@ -55,15 +55,42 @@ const DEFAULT_ALLOWED_DOMAINS = ['avvaiyarpadasalai.org', 'amchats.org', 'namaps
 
 export function parseList(raw: string | undefined, name: string, fallback: string[] = []): string[] {
   if (raw === undefined || raw === null || String(raw).trim() === '') return fallback.slice();
+  const text = String(raw).replace(/^\uFEFF/, '').trim();
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) throw new Error('not a JSON array');
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('not a list');
     return parsed.map((x) => String(x));
-  } catch (e) {
-    // Same behaviour as getConfigList_: warn (without printing the value) and use the fallback.
-    console.error(`[Config] "${name}" is not valid JSON array text (${(e as Error).message}) — using fallback.`);
-    return fallback.slice();
+  } catch { /* v0.15.1: maybe a list copied from a .gs file — see below */ }
+  const js = jsStyleList(text);
+  if (js) {
+    console.warn(`[Config] "${name}" is written with single quotes (as in a .gs file) — read ${js.length} entries. Tip: store it as JSON with double quotes, e.g. ["a@x.org","b@x.org"].`);
+    return js;
   }
+  // Same behaviour as getConfigList_: warn and use the fallback — never print the value (not even part of it).
+  console.error(`[Config] "${name}" is not a list Azure can read — it must look like ["a@x.org","b@x.org"] (double quotes). Using the fallback (${fallback.length} entries), so these people do not get this role on Azure.`);
+  return fallback.slice();
+}
+
+/** v0.15.1: a list pasted from a .gs file — ['a@x.org', 'b@x.org',] with single or double quotes, line breaks, a trailing
+ *  comma and // comments. Plain quoted strings only; anything else (code, concatenation, variables) → null. */
+export function jsStyleList(text: string): string[] | null {
+  const body = text.replace(/^\s*\/\/.*$/gm, '').trim().replace(/;\s*$/, '');
+  if (!/^\[[\s\S]*\]$/.test(body)) return null;
+  const out: string[] = [];
+  const re = /\s*(?:'([^'\\\n]*)'|"([^"\\\n]*)")\s*(?:,|(?=\]$))/y;
+  const inner = body.slice(1, -1).replace(/\/\/[^\n]*/g, '');
+  const src = inner.trim() + ']';
+  let i = 0;
+  re.lastIndex = 0;
+  while (i < src.length - 1) {
+    re.lastIndex = i;
+    const m = re.exec(src);
+    if (!m) return null;
+    out.push(m[1] !== undefined ? m[1] : m[2]);
+    i = re.lastIndex;
+    while (i < src.length - 1 && /\s/.test(src[i])) i++;
+  }
+  return out;
 }
 
 /** A Key Vault reference App Service could not resolve stays as the literal "@Microsoft.KeyVault(...)" text —

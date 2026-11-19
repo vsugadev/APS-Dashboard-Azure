@@ -104,6 +104,12 @@ test('config: names match Script Properties; DEV_LOGIN refused in Azure; missing
   assert.deepEqual(parseList('["a@x.org"]', 'X'), ['a@x.org']);
   assert.deepEqual(parseList('not json', 'X', ['f']), ['f']);
   assert.deepEqual(parseList(undefined, 'X'), []);
+  // v0.15.1: a list copied from a .gs file (single quotes, line breaks, trailing comma, // comments) is read
+  assert.deepEqual(parseList("[\n      'vsugadev@x.org',\n  'principal@x.org', // office\n  \"b@x.org\",\n]", 'X'), ['vsugadev@x.org', 'principal@x.org', 'b@x.org']);
+  assert.deepEqual(parseList("['a@x.org'];", 'X'), ['a@x.org']);
+  assert.deepEqual(parseList("[]", 'X'), []);
+  // anything that is not plain quoted text is still refused
+  for (const bad of ["['a@x.org' + 'b']", '[ADMIN, "a@x.org"]', "['a@x.org' 'b@x.org']", "'a@x.org'", "['a\\'b']"]) assert.deepEqual(parseList(bad, 'X', ['f']), ['f'], bad);
   const azure = loadConfig({ WEBSITE_SITE_NAME: 'aps-dashboard', DEV_LOGIN: '1', GOOGLE_OAUTH_CLIENT_SECRET: 'shh-secret' } as NodeJS.ProcessEnv);
   const p = configProblems(azure);
   assert.ok(p.some((x) => /DEV_LOGIN must never/.test(x)));

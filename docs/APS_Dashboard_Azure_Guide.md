@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-19 (v0.15.0, sign-ins survive restarts and deploys). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-19 (v0.15.1, role lists copied from a .gs file are read). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -171,6 +171,8 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[DB] … FAILED: <CODE> — <fix>` / `[DB] read from Google Sheets instead: …` (v0.11.0) | Database pilot: `LOGIN_FAILED` = run the CREATE USER / ALTER ROLE lines (docs/DATABASE.md step 2); `FIREWALL` = allow Azure services; `NO_IDENTITY` = App Service → Identity On; `WAKING_UP` = free database was paused (retries); `FREE_LIMIT_REACHED` = monthly free allowance used — Sheets serve until next month |
 | `[Read] <function> not answered: <code>` (v0.12.0) | A read-through screen: `TIMEOUT` = Apps Script took over 2 minutes; `BAD_REQUEST` = `AzureBridge.gs` older than r133 (deploy it); other codes as `[Write]` |
 | `[DB] SC_OWNER=azure: Special Classes could not be imported: …` (v0.13.0) | Database not reachable at start, or the programs sheet missing — fix as the message says, then Restart; Special Classes show "not available" until then |
+| `[Config] "ADMIN_EMAILS" is written with single quotes …` (v0.15.1) | The value was pasted from a .gs file. It is read, but store it as JSON (`["a@x.org","b@x.org"]`, double quotes) when you next change it |
+| `[Config] "ADMIN_EMAILS" is not a list Azure can read …` | The value is not a plain list — those people do NOT get that role on Azure. Key Vault → Secrets → that secret → New Version → `["a@x.org","b@x.org"]`; Restart |
 | `[Sessions] a sign-in could not be … in Azure SQL (…)` (v0.15.0) | Database slow (waking up) or unreachable — sign-ins still work on this server; fix the database (see `[DB]` lines) so they survive the next restart |
 | `[Write] <function> not saved: TIMEOUT` (v0.14.0) | Over 220 s (Azure front door limit ~230 s). The action keeps running in Apps Script and normally completes — check its result there |
 | `[Write] <function> not saved: TOO_LARGE` | `PortalBridge.gs` older than r135 (deploy it) |
@@ -217,6 +219,7 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.15.1 | 2026-11-19 | Role lists (SUPERADMIN / ADMIN / HEADMASTER / BOD / On-Call Coordinator …) pasted from a .gs file (single quotes, line breaks, trailing comma, `//` comments) are read; the warning never prints any part of a value |
 | 0.15.0 | 2026-11-19 | Phase 3 step 3: lasting sign-ins — sessions kept in Azure SQL (`dbo.app_session`, token hashes only) behind a memory cache; restarts / deploys / a second instance no longer sign people out; `AZURE_SESSION_STORE=memory` |
 | 0.14.0 | 2026-11-19 | Every remaining dashboard action through Apps Script (73 functions; bridge r135: Promise results, uploads up to 24 MB, 220 s limit with "still running" message); role permissions refused on purpose |
 | 0.13.0 | 2026-11-18 | Teacher class-card actions saved through Apps Script; Special Classes saves forwarded; database stage 3 (`SC_OWNER=azure`: Azure SQL owns Special Classes, reverse bridge `/api/bridge` for Apps Script, `AzureBridge.gs` r134) |
