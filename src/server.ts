@@ -137,7 +137,7 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
 
   mountReverseBridge(app, ctx); // v0.13.0: Apps Script → Azure (Special Classes owned by Azure SQL)
 
-  app.post('/api/run/:fn', express.json({ limit: '1mb' }), async (req, res) => {
+  app.post('/api/run/:fn', express.json({ limit: '25mb' }) /* v0.14.0: uploads go through */, async (req, res) => {
     const out = await reg.call(ctx, req.params.fn, req.body && req.body.args);
     res.setHeader('Cache-Control', 'no-store');
     res.json(out);

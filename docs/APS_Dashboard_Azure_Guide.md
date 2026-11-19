@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-18 (v0.13.0, teacher class-card actions; Special Classes can be owned by Azure SQL). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-19 (v0.14.0, every dashboard action works on Azure). Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -26,6 +26,7 @@ reaches Azure through a signed, read-only bridge (Phase 3). Nothing on Azure cha
 | Grading, Add Student context, Meet preview, Tamil Thadam, Teacher Appreciation data, Assignment Monitoring / Grading Help admin, Maintenance status, Exam context / course options / announcement search & previews, Zoho checks / mapping / status / preview, ticket attachments, exports (v0.12.0) | ✅ view | Read-through: the real Code.gs function runs in Apps Script for you (about 1–3 s per screen) — `docs/PHASE2.md` step 7 |
 | Teacher class-card actions: Mark Live, Teacher NOT in Class, Needs Tech Support, availability, class status (v0.13.0) | ✅ save | Write-through: the real Code.gs function runs in Apps Script for the teacher — `docs/PHASE4.md` step 2 |
 | Special Classes + Add / Edit / Activate (v0.13.0) | ✅ save | Forwarded to Apps Script; with `SC_OWNER=azure` saved in Azure SQL and Apps Script uses Azure — `docs/DATABASE.md` stage 3 |
+| Everything else: requests (leave, timing / grade change, reference letters), tickets, attendance edits, chat, exam question papers (save, preview, download, send, batch), coverage, temp teacher, add / remove / assign student, Meet links, user roles, Zoho sync, backups and other Admin jobs (v0.14.0) | ✅ | Through Apps Script — `docs/PHASE4.md` step 3. **Role permissions** stay in Key Vault (Azure refuses that one Save with the steps) |
 | Chat, exam question paper download / preview | ⏳ | Later steps |
 | **Live data** (Phase 3): online now, last login, onboarded, manual class status, on-call banner, Hide/Show, realtime poll (live / Teacher NOT in Class / Needs Tech Support flags), sync status | ✅ view | From Apps Script's Script / User Properties through the bridge (refreshed every 20 s). Needs the bridge settings below |
 | **Heartbeat** (v0.9.0): people using Azure show 🟢 online and get Last Login (DB) | ✅ | Sent to Apps Script through the signed bridge (`AzureBridge.gs` r131, action heartbeat), batched every 15 s. Setting `AZURE_HEARTBEAT=off` stops it |
@@ -169,6 +170,8 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[DB] … FAILED: <CODE> — <fix>` / `[DB] read from Google Sheets instead: …` (v0.11.0) | Database pilot: `LOGIN_FAILED` = run the CREATE USER / ALTER ROLE lines (docs/DATABASE.md step 2); `FIREWALL` = allow Azure services; `NO_IDENTITY` = App Service → Identity On; `WAKING_UP` = free database was paused (retries); `FREE_LIMIT_REACHED` = monthly free allowance used — Sheets serve until next month |
 | `[Read] <function> not answered: <code>` (v0.12.0) | A read-through screen: `TIMEOUT` = Apps Script took over 2 minutes; `BAD_REQUEST` = `AzureBridge.gs` older than r133 (deploy it); other codes as `[Write]` |
 | `[DB] SC_OWNER=azure: Special Classes could not be imported: …` (v0.13.0) | Database not reachable at start, or the programs sheet missing — fix as the message says, then Restart; Special Classes show "not available" until then |
+| `[Write] <function> not saved: TIMEOUT` (v0.14.0) | Over 220 s (Azure front door limit ~230 s). The action keeps running in Apps Script and normally completes — check its result there |
+| `[Write] <function> not saved: TOO_LARGE` | `PortalBridge.gs` older than r135 (deploy it) |
 | `[Bridge] reverse request refused: NOT_OWNER` | Apps Script has `SPECIAL_CLASSES_OWNER=azure` but Azure `SC_OWNER` is not `azure` — set both the same |
 | `[Bridge] reverse request refused: BAD_SIGNATURE` | Apps Script `AZURE_BRIDGE_SECRET` ≠ Key Vault `apps-script-bridge-secret` (compare fingerprints, §3) |
 | `[Write] <function> not saved: <code>` (v0.10.0) | The page said "could not be saved right now". `BAD_REQUEST` = Apps Script `AzureBridge.gs` older than r132 (deploy it); `BAD_SIGNATURE` / `NOT_JSON` = bridge settings (§3); `HTTP_5xx` = Apps Script busy — try again |
@@ -212,6 +215,7 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.14.0 | 2026-11-19 | Every remaining dashboard action through Apps Script (73 functions; bridge r135: Promise results, uploads up to 24 MB, 220 s limit with "still running" message); role permissions refused on purpose |
 | 0.13.0 | 2026-11-18 | Teacher class-card actions saved through Apps Script; Special Classes saves forwarded; database stage 3 (`SC_OWNER=azure`: Azure SQL owns Special Classes, reverse bridge `/api/bridge` for Apps Script, `AzureBridge.gs` r134) |
 | 0.12.0 | 2026-11-18 | Phase 2 completed: the 21 remaining read screens run through Apps Script (bridge `call`, `AzureBridge.gs` r133 `AZURE_BRIDGE_READS_` = `READ_THROUGH`); bridge calls time out after 2 minutes; network / time-out errors give short codes |
 | 0.11.0 | 2026-11-17 | Database pilot: Azure SQL Database (free offer, managed identity) as a read copy of Special Classes (`src/db/`: sheet store, 5-minute sync with row-count check, DB-backed reads with automatic fallback to Sheets); `mssql` 11.0.1; settings `SQL_SERVER`, `SQL_DATABASE`, `DB_SYNC_MINUTES` |

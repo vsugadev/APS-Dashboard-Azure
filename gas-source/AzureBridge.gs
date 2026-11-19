@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -72,6 +72,7 @@ var AZURE_BRIDGE_NEVER_RE_ = /SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|SE
 var AZURE_BRIDGE_NONCE_PREFIX_ = 'aps_az_nonce_';
 var AZURE_BRIDGE_MAX_SKEW_MS_ = 5 * 60 * 1000;
 var AZURE_BRIDGE_MAX_P_ = 100000;       // r131: heartbeat batch; r132: a settings save (e.g. Assignment Monitoring config) — was 2000
+var AZURE_BRIDGE_MAX_CALL_P_ = 25000000; // r135: a call may carry uploads (ticket attachments 3 × 5 MB, question paper PDF 15 MB, as base64)
 var AZURE_BRIDGE_MAX_HEARTBEATS_ = 200;
 /** r132 — the ONLY Code.gs functions Azure may run (Admin settings saves; synchronous; JSON in / out). */
 var AZURE_BRIDGE_CALLS_ = [
@@ -81,7 +82,23 @@ var AZURE_BRIDGE_CALLS_ = [
   // r134: teacher class-card actions (Mark Live, Teacher NOT in Class, Needs Tech Support, availability, class status)
   'setLiveStatus', 'setTeacherNotInClassStage', 'setNeedsTechSupportStage', 'setTeacherAvailabilityStatus', 'setClassStatusManual',
   // r134: Special Classes programs — Apps Script writes its Sheet while Apps Script owns them (SPECIAL_CLASSES_OWNER not 'azure')
-  'saveSpecialClass', 'setSpecialClassActive'
+  'saveSpecialClass', 'setSpecialClassActive',
+  // r135: every remaining dashboard action (requests, tickets, attendance, chat, exam papers, coverage, Classroom roster, Zoho, admin jobs)
+  'acceptStudentLoginNotice', 'addSpecialClassEnrollments', 'addStudentToClassroom', 'addTicketParticipant', 'amAdminAction', 'applyCoverage',
+  'assignStudentToClassroom', 'assignTicket', 'attachExamQuestionPaperLink', 'autoMapCourseMeetLinks', 'bulkOverrideAttendance',
+  'cancelAddStudentRequest', 'cancelMyClassChangeRequest', 'cancelZohoSyncJob', 'createTempTeacherAssignment', 'createTicket',
+  'deleteDashboardUserRole', 'downloadExamQuestionPaper', 'downloadExamQuestionPaperTeacherCopy', 'editAttendanceRecordStatus',
+  'fetchExamQuestionPaperDownload', 'forceSyncAttendanceNow', 'forceSyncClassroomData', 'generateAnnouncementId', 'postChatMessage',
+  'previewExamQuestionPaper', 'rebuildExamQuestionPaperSummary', 'recordGoogleReviewEvent', 'recordMeetJoinClick', 'recordViewerCountry',
+  'refreshClassMeetLiveStatus', 'removeStudentFromClassroom', 'removeTicketParticipant', 'replyTicket', 'retryCoverage',
+  'retryLeaveNotification', 'retryRemovalEmail', 'retryTeacherAppreciationFailed', 'runAuditArchiveNow', 'runSystemBackupNow',
+  'runTeacherAppreciationNow', 'runTempDataCleanup', 'saveClassCoverage', 'saveCourseMeetLinkMapping', 'saveDashboardUserRole',
+  'saveExamQuestionPaper', 'saveZohoFieldMapping', 'saveZohoSyncSchedule', 'sendExamQuestionPaperToAllEligible',
+  'sendExamQuestionPaperToStudent', 'sendMissingGradingNow', 'sendWeeklyClassTeacherAvailabilityTestEmail', 'setExamQuestionPaperStatus',
+  'setMyDefaultCountry', 'setUserCountryByAdmin', 'startZohoSyncJob', 'stepZohoSyncJob', 'submitAdminInitiatedReferenceLetter',
+  'submitClassTeacherAvailability', 'submitGradeChangeRequest', 'submitLeaveRequest', 'submitParentFeedback',
+  'submitReferenceLetterRequest', 'submitTimingChangeRequest', 'submitUserIdea', 'syncGrading', 'testZohoFieldMapping',
+  'updateSpecialClassEnrollment', 'updateTicket'
 ];
 /** r133 — read screens that need Google services / locks Azure does not use yet (Phase 2 "still not on Azure"). */
 var AZURE_BRIDGE_READS_ = [
@@ -89,8 +106,17 @@ var AZURE_BRIDGE_READS_ = [
   'getAssignmentMonitoringAdmin', 'getExamQuestionPaperContext', 'getExaminationCourseOptions', 'getGradingData',
   'getMaintenanceStatus', 'getMeetPreviewData', 'getMissingGradingAdmin', 'getTamilThadam', 'getTeacherAppreciationData',
   'getTicketAttachment', 'getZohoFieldMapping', 'getZohoSyncStatus', 'previewExaminationAnnouncement',
-  'previewExaminationClasswork', 'previewZohoStudentSync', 'searchExaminationAnnouncement'
+  'previewExaminationClasswork', 'previewZohoStudentSync', 'searchExaminationAnnouncement',
+  // r135
+  'getChatMessages', 'getMyExamQuestionPapers', 'getWeeklyPanelData', 'resolveTicketStudent'
 ];
+/** r135 — a function that answers with a Promise (PDF stamping: preview / download / send question paper): the call
+ *  answers { pending: job } at once; Apps Script finishes the Promise in the same execution and keeps the result for
+ *  10 minutes (CacheService, in 90 000-character pieces); Azure collects it with the signed action "result". */
+var AZURE_BRIDGE_JOB_PREFIX_ = 'aps_az_job_';
+var AZURE_BRIDGE_JOB_PIECE_ = 90000;
+var AZURE_BRIDGE_JOB_MAX_PIECES_ = 300;   // ≈ 27 MB of answer text (a 15 MB PDF as base64 ≈ 20 MB)
+var AZURE_BRIDGE_SESSION_SECONDS_ = 420;  // r135: long actions (backups, syncs, batch sends) still have their session
 
 /** True only for an allow-listed, non-secret key. */
 function azureBridgeAllowed_(key) {
@@ -108,6 +134,7 @@ function azureBridgeDoPost_(body) {
     if (req.action === 'liveSnapshot') out = { ok: true, result: azureBridgeLiveSnapshot_() };
     else if (req.action === 'heartbeat') out = { ok: true, result: azureBridgeHeartbeats_(req) }; // r131
     else if (req.action === 'call') out = { ok: true, result: azureBridgeCall_(req) }; // r132
+    else if (req.action === 'result') out = { ok: true, result: azureBridgeJobResult_(req) }; // r135
     else throw portalErr_('BAD_REQUEST', 'Unknown action.');
   } catch (err) {
     out = { ok: false, code: err && err.portalCode || 'ERROR', message: err && err.portalCode ? String(err.message) : 'The APS Dashboard could not complete this request.' };
@@ -121,7 +148,7 @@ function azureBridgeVerify_(body) {
   var secret = String(PropertiesService.getScriptProperties().getProperty('AZURE_BRIDGE_SECRET') || '');
   if (secret.length < 32) throw portalErr_('NOT_CONFIGURED', 'The Azure bridge is not configured on the Dashboard (AZURE_BRIDGE_SECRET).');
   var p = String(body.p || ''), ts = String(body.ts || ''), nonce = String(body.nonce || ''), sig = String(body.sig || '');
-  if (p.length > AZURE_BRIDGE_MAX_P_ || !/^\d{12,14}$/.test(ts) || !/^[0-9a-f-]{36}$/i.test(nonce) || !/^[0-9a-f]{64}$/.test(sig)) throw portalErr_('BAD_REQUEST', 'Malformed request.');
+  if (p.length > AZURE_BRIDGE_MAX_CALL_P_ || !/^\d{12,14}$/.test(ts) || !/^[0-9a-f-]{36}$/i.test(nonce) || !/^[0-9a-f]{64}$/.test(sig)) throw portalErr_('BAD_REQUEST', 'Malformed request.');
   var expect = portalHex_(Utilities.computeHmacSha256Signature(ts + '.' + nonce + '.' + p, secret));
   var diff = expect.length ^ sig.length;
   for (var i = 0; i < expect.length && i < sig.length; i++) diff |= expect.charCodeAt(i) ^ sig.charCodeAt(i);
@@ -132,6 +159,7 @@ function azureBridgeVerify_(body) {
   cache.put(AZURE_BRIDGE_NONCE_PREFIX_ + nonce, '1', 600);
   var req = JSON.parse(p);
   if (!req || typeof req.action !== 'string') throw portalErr_('BAD_REQUEST', 'Malformed request.');
+  if (req.action !== 'call' && p.length > AZURE_BRIDGE_MAX_P_) throw portalErr_('BAD_REQUEST', 'Malformed request.'); // r135: only a call may be large
   return req;
 }
 
@@ -204,18 +232,52 @@ function azureBridgeCall_(req) {
   var viewer = getViewerRoleForEmail_(email, readAllCoursesFromCache_()); // the role is decided HERE, never by Azure
   if (!viewer || !viewer.role || viewer.role === 'none') return { error: 'You are not authorized to use the APS Dashboard.' };
   var cache = CacheService.getScriptCache(), tok = 'az_' + Utilities.getUuid().replace(/-/g, '');
-  cache.put(SESSION_CACHE_PREFIX_ + tok, JSON.stringify({ email: viewer.email, role: viewer.role, issuedAt: Date.now(), via: 'azure' }), 120);
+  cache.put(SESSION_CACHE_PREFIX_ + tok, JSON.stringify({ email: viewer.email, role: viewer.role, issuedAt: Date.now(), via: 'azure' }), AZURE_BRIDGE_SESSION_SECONDS_);
+  var later = false;
   try {
     var v = g[fn].apply(null, [tok].concat(args));
-    if (v && typeof v.then === 'function') return { error: 'This action is not available from Azure yet.' };
+    if (v && typeof v.then === 'function') { // r135: finished later in this same execution; Azure collects it with "result"
+      later = true;
+      var job = Utilities.getUuid().replace(/-/g, '');
+      azureBridgeJobPut_(job, { email: viewer.email, state: 'PENDING' });
+      v.then(function (x) { azureBridgeJobPut_(job, { email: viewer.email, state: 'DONE', value: x === undefined ? null : x }); },
+             function (e) { azureBridgeJobPut_(job, { email: viewer.email, state: 'DONE', error: azureBridgeSafeMsg_(e) }); })
+       .then(function () { try { cache.remove(SESSION_CACHE_PREFIX_ + tok); } catch (eR) { /* expires */ } });
+      return { pending: job };
+    }
     return { value: v === undefined ? null : JSON.parse(JSON.stringify(v)) };
   } catch (e) {
-    var m = String(e && e.message || e).split('\n')[0].replace(/(Bearer\s+|token[=:]\s*|secret[=:]\s*)[^\s,)]+/gi, '$1[hidden]').slice(0, 300);
+    var m = azureBridgeSafeMsg_(e);
     console.warn('[AzureBridge] call ' + fn + ' refused: ' + m.slice(0, 120));
     return { error: m };
   } finally {
-    try { cache.remove(SESSION_CACHE_PREFIX_ + tok); } catch (eR) { /* expires in 2 minutes */ }
+    if (!later) { try { cache.remove(SESSION_CACHE_PREFIX_ + tok); } catch (eR) { /* expires in 7 minutes */ } }
   }
+}
+function azureBridgeSafeMsg_(e) { return String(e && e.message || e).split('\n')[0].replace(/(Bearer\s+|token[=:]\s*|secret[=:]\s*)[^\s,)]+/gi, '$1[hidden]').slice(0, 300); }
+/** r135: keeps a job's state / answer for 10 minutes, split into pieces (CacheService holds ≤ 100 KB per key). */
+function azureBridgeJobPut_(job, rec) {
+  var cache = CacheService.getScriptCache(), text = JSON.stringify(rec), n = Math.ceil(text.length / AZURE_BRIDGE_JOB_PIECE_) || 1;
+  if (n > AZURE_BRIDGE_JOB_MAX_PIECES_) { text = JSON.stringify({ email: rec.email, state: 'DONE', error: 'This answer is too large to send to the Azure dashboard — please use the APS Dashboard for this action.' }); n = 1; }
+  var put = {};
+  for (var i = 0; i < n; i++) put[AZURE_BRIDGE_JOB_PREFIX_ + job + '_' + i] = text.slice(i * AZURE_BRIDGE_JOB_PIECE_, (i + 1) * AZURE_BRIDGE_JOB_PIECE_);
+  put[AZURE_BRIDGE_JOB_PREFIX_ + job] = String(n);
+  cache.putAll(put, 600);
+}
+/** r135 action "result": { job, email } → { pending: true } | { value } | { error }. Only the same person's job. */
+function azureBridgeJobResult_(req) {
+  var job = String(req.job || ''), email = normalizeEmail_(String(req.email || ''));
+  if (!/^[0-9a-f]{32}$/.test(job) || !email) throw portalErr_('BAD_REQUEST', 'Malformed request.');
+  var cache = CacheService.getScriptCache(), n = Number(cache.get(AZURE_BRIDGE_JOB_PREFIX_ + job) || 0);
+  if (!n) return { error: 'This action is no longer available — please try again.' };
+  var keys = []; for (var i = 0; i < n; i++) keys.push(AZURE_BRIDGE_JOB_PREFIX_ + job + '_' + i);
+  var got = cache.getAll(keys), text = '';
+  for (var k = 0; k < keys.length; k++) { if (typeof got[keys[k]] !== 'string') return { error: 'This action is no longer available — please try again.' }; text += got[keys[k]]; }
+  var rec = JSON.parse(text);
+  if (normalizeEmail_(rec.email) !== email) throw portalErr_('BAD_REQUEST', 'Not your request.');
+  if (rec.state !== 'DONE') return { pending: true };
+  cache.removeAll(keys.concat([AZURE_BRIDGE_JOB_PREFIX_ + job]));
+  return typeof rec.error === 'string' ? { error: rec.error } : { value: rec.value === undefined ? null : JSON.parse(JSON.stringify(rec.value)) };
 }
 
 /* ==========================================================================

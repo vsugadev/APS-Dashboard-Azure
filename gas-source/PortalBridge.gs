@@ -33,7 +33,8 @@ function doPost(e) {
   var started = Date.now(), action = '', out;
   try {
     var raw = e && e.postData && e.postData.contents ? String(e.postData.contents) : '';
-    if (raw.length > 200000) throw portalErr_('TOO_LARGE', 'Request too large.');
+    var azureBody = raw.slice(0, 16).indexOf('{"azure":1') === 0; // r135: Azure calls may carry uploads (signature checked in AzureBridge.gs)
+    if (raw.length > (azureBody ? 26000000 : 200000)) throw portalErr_('TOO_LARGE', 'Request too large.');
     var body = JSON.parse(raw || '{}');
     if (body && body.azure === 1) return azureBridgeDoPost_(body); // r122: Azure dashboard live-data bridge (AzureBridge.gs) — own secret, read only, not logged per call
     if (!body || body.portal !== 1) throw portalErr_('BAD_REQUEST', 'Unknown request.');

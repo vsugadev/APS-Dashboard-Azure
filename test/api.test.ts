@@ -87,7 +87,7 @@ test('errors never reach the browser with tokens, keys or stack traces', async (
   assert.equal(safeErrorMessage('-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY----- x'), '[hidden] x');
   const { READS2 } = require('../src/api/endpoints/reads');
   const { ATTENDANCE_READS, LIVE_READS } = require('../src/api/endpoints/classes');
-  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'recordDashboardSignOff', 'getStartupBundle']
+  assert.deepEqual(buildRegistry().names(), ['endSession', 'getAccessControl', 'getClassTeacherAvailabilityView', 'getCurrentUser', 'getDashboardData', 'getDirectoryIndex', 'getMyCountryPreference', 'recordDashboardSignOff', 'getStartupBundle', 'saveDashboardRolePermissions']
     .concat(ATTENDANCE_READS, LIVE_READS, Object.values(READS2).flat() as string[], require('../src/api/endpoints/writes').WRITE_THROUGH, require('../src/api/endpoints/writes').READ_THROUGH).sort());
 });
 

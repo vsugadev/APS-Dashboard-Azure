@@ -187,8 +187,13 @@ test('write phase step 1 (AzureBridge.gs r132): the call list is identical on bo
   vm.runInContext(fs.readFileSync(path.join(GAS, 'AzureBridge.gs'), 'utf8'), c);
   assert.deepEqual(Array.from(c.AZURE_BRIDGE_CALLS_), WRITE_THROUGH);
   assert.deepEqual(Array.from(c.AZURE_BRIDGE_READS_), READ_THROUGH, 'r133 read list identical');
-  for (const n of READ_THROUGH) assert.ok(!WRITE_THROUGH.includes(n) && /^(get|check|export|preview|search)[A-Z]/.test(n), n + ' is a read');
-  for (const n of WRITE_THROUGH) assert.ok(/^(save|set)[A-Z]/.test(n), n + ' is a settings save');
+  for (const n of READ_THROUGH) assert.ok(!WRITE_THROUGH.includes(n) && /^(get|check|export|preview|search|resolve)[A-Z]/.test(n), n + ' is a read');
+  assert.ok(!WRITE_THROUGH.includes('saveDashboardRolePermissions'), 'role permissions stay Azure\'s own (Key Vault)');
+  // v0.14.0: every function the page calls is now answered on Azure (natively or through Apps Script) — none "not on Azure yet"
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'Dashboard.html'), 'utf8'), code = fs.readFileSync(path.join(GAS, 'Code.gs'), 'utf8');
+  const used = Array.from(code.matchAll(/^function ([a-zA-Z]\w*[^_\W])\s*\(/gm)).map((m) => m[1]).filter((n) => new RegExp('\\.' + n + '\\(').test(html));
+  const have = new Set((await import('../src/server')).buildRegistry().names());
+  assert.deepEqual(used.filter((n) => !have.has(n)), [], 'page functions still missing on Azure');
 });
 
 test('write phase step 1: a Save on Azure runs the REAL Code.gs function in Apps Script for the signed-in person — Apps Script decides the role; refusals, unlisted functions and non-APS accounts stopped; temporary session removed; Azure caches refreshed', { skip: !have && 'Apps Script files not found' }, async () => {
@@ -214,7 +219,7 @@ test('write phase step 1: a Save on Azure runs the REAL Code.gs function in Apps
   // straight to the bridge: an unlisted function, a non-APS account → refused
   const crypto = require('crypto');
   const raw = (pl: unknown) => { const p = JSON.stringify(pl), ts = String(Date.now()), nonce = crypto.randomUUID(); return A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: crypto.createHmac('sha256', SECRET).update(ts + '.' + nonce + '.' + p).digest('hex') })); };
-  assert.equal(raw({ action: 'call', v: 1, fn: 'saveDashboardUserRole', args: ['x@avvaiyarpadasalai.org', 'admin', true], email: ADMIN }).code, 'BAD_REQUEST');
+  assert.equal(raw({ action: 'call', v: 1, fn: 'saveDashboardRolePermissions', args: ['teacher', {}], email: ADMIN }).code, 'BAD_REQUEST');
   assert.equal(raw({ action: 'call', v: 1, fn: 'endSession', args: [], email: ADMIN }).code, 'BAD_REQUEST');
   assert.equal(raw({ action: 'call', v: 1, fn: 'setRosterHiddenStaffVisible', args: [true], email: 'someone@gmail.com' }).code, 'BAD_REQUEST');
   assert.equal(A.env.props.rosterHiddenStaffVisible_v1, 'false');
@@ -257,6 +262,58 @@ test('Phase 2 completion (r133): the remaining read screens run in Apps Script f
   assert.equal(compared, 5); assert.equal(inv, 0, 'reads never refresh caches');
   assert.deepEqual(Object.keys(A.env.cache).filter((k) => /^aps_sess_az_/.test(k)), [], 'temporary sessions removed');
   const crypto = require('crypto');
-  const p = JSON.stringify({ action: 'call', v: 1, fn: 'getChatMessages', args: [], email: ADMIN }), ts = String(Date.now()), nonce = crypto.randomUUID();
-  assert.equal(A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: crypto.createHmac('sha256', SECRET).update(ts + '.' + nonce + '.' + p).digest('hex') })).code, 'BAD_REQUEST', 'chat not in the list');
+  const p = JSON.stringify({ action: 'call', v: 1, fn: 'getAdminDiagnostics', args: [], email: ADMIN }), ts = String(Date.now()), nonce = crypto.randomUUID();
+  assert.equal(A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: crypto.createHmac('sha256', SECRET).update(ts + '.' + nonce + '.' + p).digest('hex') })).code, 'BAD_REQUEST', 'a read not in the list');
+});
+test('v0.14.0 (AzureBridge.gs r135): a Promise-answering function is collected with "result" (same person only, single use); uploads up to 24 MB; role permissions refused with the way to change them; timeouts explained', { skip: !have && 'Apps Script files not found' }, async () => {
+  const ADMIN = 'admin_aps9100@avvaiyarpadasalai.org', OTHER = 'teach_aps9101@avvaiyarpadasalai.org';
+  const A = appsScript({ ADMIN_EMAILS: JSON.stringify([ADMIN]) }); const G: any = A.env.ctx;
+  G.Utilities.getUuid = () => require('crypto').randomUUID(); // Apps Script UUIDs are hex
+  const { testContext, testConfig } = await import('./helpers');
+  const { Registry } = await import('../src/api/registry');
+  const { registerWrites, ROLE_PERMISSIONS_MSG } = await import('../src/api/endpoints/writes');
+  const cfg = testConfig({ dataMode: 'sheets', appsScriptBridgeUrl: URL, appsScriptBridgeSecret: SECRET, writeThroughEnabled: true });
+  const ctx: any = testContext({ cfg }); ctx.live = { get: async () => ({ script: {}, user: {} }), status: () => ({ ok: true, at: 0, error: '' }), invalidate: () => {} };
+  const reg = new Registry(); registerWrites(reg, A.fetchImpl, async () => { await new Promise((r) => setImmediate(r)); });
+  const admin = await ctx.sessions.create({ email: ADMIN, role: 'admin' });
+  // a stand-in for the PDF functions: answers with a Promise, needs its session when it finishes, ~1.2 MB answer (pieces)
+  let seenEmail = '';
+  G.previewExamQuestionPaper = (tok: string, req: any) => Promise.resolve().then(() => { seenEmail = G.requireValidSession_(tok).email; return { ticket: req.ticket, state: 'READY', base64: 'A'.repeat(1_200_000) }; });
+  const r: any = await reg.call(ctx, 'previewExamQuestionPaper', [admin, { ticket: 't'.repeat(20) }]);
+  assert.ok(r.ok && r.ok.state === 'READY' && r.ok.base64.length === 1_200_000, JSON.stringify(r).slice(0, 200));
+  assert.equal(seenEmail, ADMIN, 'the function still had its session when the Promise finished');
+  assert.deepEqual(Object.keys(A.env.cache).filter((k) => /^aps_az_job_|^aps_sess_az_/.test(k)), [], 'job pieces and the temporary session removed');
+  // a rejected Promise → its message
+  G.previewExamQuestionPaper = () => Promise.reject(new Error('This PDF could not be processed.'));
+  assert.match(String(((await reg.call(ctx, 'previewExamQuestionPaper', [admin, {}])) as any).err), /could not be processed/);
+  // "result" straight to the bridge: someone else's job → refused
+  const crypto = require('crypto');
+  const raw = (pl: unknown) => { const p = JSON.stringify(pl), ts = String(Date.now()), nonce = crypto.randomUUID(); return A.doPost(JSON.stringify({ azure: 1, p, ts, nonce, sig: crypto.createHmac('sha256', SECRET).update(ts + '.' + nonce + '.' + p).digest('hex') })); };
+  let resolveLater: (v: unknown) => void = () => {};
+  G.previewExamQuestionPaper = () => new Promise((res) => { resolveLater = res; });
+  const started = raw({ action: 'call', v: 1, fn: 'previewExamQuestionPaper', args: [{}], email: ADMIN });
+  const job = started.result.pending; assert.match(job, /^[0-9a-f]{32}$/);
+  assert.deepEqual(raw({ action: 'result', v: 1, job, email: ADMIN }).result, { pending: true });
+  assert.equal(raw({ action: 'result', v: 1, job, email: OTHER }).code, 'BAD_REQUEST', 'not your request');
+  resolveLater({ ok: 1 }); await new Promise((res) => setImmediate(res));
+  assert.deepEqual(raw({ action: 'result', v: 1, job, email: ADMIN }).result, { value: { ok: 1 } });
+  assert.match(String(raw({ action: 'result', v: 1, job, email: ADMIN }).result.error), /no longer available/, 'single use');
+  assert.equal(raw({ action: 'result', v: 1, job: 'x', email: ADMIN }).code, 'BAD_REQUEST');
+  // uploads: a ticket with ~3 MB of attachment text goes through; a non-upload action with > 1 MB is refused on Azure
+  let gotLen = 0; G.createTicket = (_t: string, input: any) => { gotLen = String(input.files[0].data).length; return { id: 'T-1' }; };
+  assert.deepEqual(await reg.call(ctx, 'createTicket', [admin, { files: [{ name: 'a.png', data: 'B'.repeat(3_000_000) }] }]), { ok: { id: 'T-1' } });
+  assert.equal(gotLen, 3_000_000);
+  assert.match(String(((await reg.call(ctx, 'submitLeaveRequest', [admin, { note: 'x'.repeat(1_100_000) }])) as any).err), /too large/);
+  // a large body is refused by Apps Script for every action except call
+  assert.equal(raw({ action: 'heartbeat', v: 1, emails: [], pad: 'x'.repeat(200_000) }).code, 'BAD_REQUEST');
+  // role permissions: Azure's own — refused with the way to change them
+  assert.equal(((await reg.call(ctx, 'saveDashboardRolePermissions', [admin, 'teacher', {}])) as any).err, ROLE_PERMISSIONS_MSG);
+  // a slow action: Azure stops waiting and says it is still running in the APS Dashboard
+  let t = 0; const reg2 = new Registry();
+  registerWrites(reg2, (async () => { throw Object.assign(new Error('x'), { name: 'TimeoutError' }); }) as any, async () => {}, () => (t += 1000));
+  assert.match(String(((await reg2.call(ctx, 'runSystemBackupNow', [admin])) as any).err), /still running in the APS Dashboard/);
+});
+test('v0.14.0: light actions are all in the call list; uploads list too', async () => {
+  const { WRITE_THROUGH, LIGHT_FNS, UPLOAD_FNS } = await import('../src/api/endpoints/writes');
+  for (const n of LIGHT_FNS.concat(UPLOAD_FNS)) assert.ok(WRITE_THROUGH.includes(n), n);
 });

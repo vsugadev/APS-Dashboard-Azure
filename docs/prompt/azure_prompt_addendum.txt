@@ -249,3 +249,8 @@ header is longer, or Code.gs fails quietly in the mock.
   signed text "gas."+ts+"."+nonce+"."+p, actions scGrid / call (only the 2 SC saves; Azure resolves the role).
   Apps Script AzureBridge.gs r134: SPECIAL_CLASSES_OWNER=azure + AZURE_DASHBOARD_URL; Code.gs hooks behind typeof guards;
   loop guard via:'azure'; ONE_TIME_scCopyAzureToSheet = roll back. Never let both owners write: switch both together.
+- v0.14.0 (2026-11-19): ALL remaining page functions answered on Azure (test: none missing vs Dashboard.html). 69 added
+  to WRITE_THROUGH, 4 to READ_THROUGH; saveDashboardRolePermissions refused on purpose (Azure's role permissions =
+  Key Vault). Bridge r135: Promise answers → {pending: job} + signed action "result" (CacheService pieces, same person,
+  single use); uploads up to 24 MB (UPLOAD_FNS; Azure /api/run 25 MB; PortalBridge doPost large only for {"azure":1});
+  Azure waits 220 s (front door ~230 s) then says "still running"; LIGHT_FNS refresh only the live snapshot.

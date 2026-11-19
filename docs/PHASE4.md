@@ -55,3 +55,58 @@ they are forwarded like the others. With `SC_OWNER=azure` they run on Azure agai
 
 **Deploy:** Apps Script `AzureBridge.gs` + `Code.gs` r134 → Deploy → New version. Azure v0.13.0 is deployed through
 GitHub Actions.
+
+
+## Step 3 — every remaining dashboard action (v0.14.0, Apps Script r135, 2026-11-19)
+
+**Result:** every function the dashboard page calls is now answered on Azure. There are no more "not on Azure yet"
+messages, and a test checks this against `Dashboard.html` and `Code.gs`. 73 functions were added: 69 to `WRITE_THROUGH`
+and 4 to `READ_THROUGH` (`getChatMessages`, `getMyExamQuestionPapers`, `getWeeklyPanelData`, `resolveTicketStudent`).
+Each one runs the real Code.gs function in Apps Script for the signed-in person, with the same rules as before: Apps
+Script decides the role, the function's own checks apply, and its audit carries the person's e-mail.
+
+**One function is kept on Azure on purpose:** `saveDashboardRolePermissions`. Azure enforces role permissions from Key
+Vault (`ROLE_PERMISSIONS_JSON`), so a save in Apps Script would not change what Azure enforces. Azure refuses this save
+and tells the Admin how to change role permissions.
+
+**New in the bridge:**
+
+- **Promise answers** (question paper preview, download, Teacher Copy and send; PDF stamping):
+  - Apps Script answers `{ pending: job }` straight away and finishes the work in the same execution. Its time-driven
+    trigger already depends on Apps Script doing this.
+  - It keeps the result for 10 minutes in CacheService, in 90 000-character pieces (up to about 27 MB).
+  - Azure collects the result every 1.5 s with the signed action `result`. Only the same person can collect a result,
+    and only once.
+  - The temporary session stays valid until the Promise finishes.
+- **Uploads:**
+  - Ticket attachments and question paper PDFs travel as base64.
+  - Size limits:
+    - Azure `/api/run`: 25 MB.
+    - Upload actions (`UPLOAD_FNS`): 24 MB.
+    - Other actions: 1 MB.
+    - A call to Apps Script: 25 MB. Every other bridge action stays at 100 000 characters.
+  - `PortalBridge.gs` `doPost` accepts large bodies only when they start with `{"azure":1`. The Parent Portal limit
+    stays at 200 000.
+- **Long actions:** backups, syncs, batch sends and Zoho steps. Azure's front door ends a browser request after about
+  230 s, so Azure stops waiting at 220 s and tells the person the action is still running in the APS Dashboard. Apps
+  Script continues for up to 6 minutes and completes the action. Temporary sessions now last 7 minutes.
+- **Cache refresh:** after an action, Azure refreshes its live snapshot. It also refreshes its Sheets cache, except
+  after light, frequent actions (`LIGHT_FNS`: country, Meet join click, review prompt, login notice, chat post, PDF
+  downloads and similar).
+
+**Deploy:** Apps Script `AzureBridge.gs` + `PortalBridge.gs` r135 → Deploy → New version. Then Azure v0.14.0 through
+GitHub Actions.
+
+**Tests** (`test/live.test.ts`, real Code.gs + PortalBridge.gs + AzureBridge.gs):
+
+- A Promise result is collected through pieces (1.2 MB) and the function still has its session when it finishes.
+- A rejected Promise gives its message.
+- `result`: someone else's job is refused, a result can be collected only once, and a malformed job id is refused.
+- A 3 MB ticket attachment arrives intact; a 1.1 MB non-upload action is refused; large non-call bodies are refused.
+- Role permissions are refused with the message; the time-out message is shown.
+- Every function the page calls is registered.
+
+`npm test` 62/62.
+
+**Not executed:** real PDF stamping inside a doPost on Google's servers (only the Promise mechanism is tested), and real
+uploads close to the size limits.
