@@ -78,3 +78,39 @@ test('database errors are explained with the fix, never with addresses or secret
   assert.match(describeDbError(new Error('getaddrinfo ENOTFOUND x')), /^SERVER_NOT_FOUND/);
   assert.ok(!/someone@x\.org|abc123/.test(describeDbError(new Error('weird someone@x.org password=abc123'))));
 });
+
+test('stage 3 owned store: insert only when new, update only on the expected version (CONFLICT otherwise); dates kept', async () => {
+  const store = new MemorySheetStore();
+  assert.equal(await store.putOwned(BOOK, LIVE, [['h'], [new Date('2026-12-01T05:00:00Z')]], 'America/New_York', 0, 'import'), 1);
+  await assert.rejects(store.putOwned(BOOK, LIVE, [['h']], 'America/New_York', 0, 'x'), /CONFLICT/);
+  assert.equal(await store.putOwned(BOOK, LIVE, [['h'], ['v2']], 'America/New_York', 1, 'admin'), 2);
+  await assert.rejects(store.putOwned(BOOK, LIVE, [['h']], 'America/New_York', 1, 'late'), /CONFLICT/);
+  const g = await store.getOwned(BOOK, [LIVE, 'NOPE']);
+  assert.equal(g[LIVE]!.version, 2); assert.equal(g[LIVE]!.updatedBy, 'admin'); assert.equal(g.NOPE, null);
+});
+
+test('stage 3 SQL: owned writes are parameterised, version-checked, and a lost race is a CONFLICT', async () => {
+  const queries: string[] = []; let affected = 1;
+  const req = () => { const r: any = { input: () => r, query: async (q: string) => { queries.push(q); return { rowsAffected: [affected], recordset: [] }; } }; return r; };
+  const s = new MssqlSheetStore('srv.database.windows.net', 'db');
+  (s as any).connect = async () => ({ request: req }); (s as any).sql = { NVarChar: () => 0, Int: 0, MAX: 0 };
+  assert.equal(await s.putOwned(BOOK, LIVE, [['h']], 'America/New_York', 0, 'import'), 1);
+  assert.match(queries[0], /INSERT INTO dbo\.owned_sheet .* WHERE NOT EXISTS/);
+  assert.equal(await s.putOwned(BOOK, LIVE, [['h']], 'America/New_York', 3, 'a'), 4);
+  assert.match(queries[1], /UPDATE dbo\.owned_sheet SET .* WHERE book = @book AND sheet = @sheet AND version = @v/);
+  affected = 0; await assert.rejects(s.putOwned(BOOK, LIVE, [['h']], 'America/New_York', 3, 'a'), /CONFLICT/);
+  assert.ok(queries.every((q) => !q.includes(LIVE)), 'values never inside SQL text');
+});
+
+test('stage 3 reads: owned sheets from the owned store only (never Google); not imported yet → refused, not stale data', async () => {
+  const I = inner(), store = new MemorySheetStore();
+  const db = new DbBackedDataSource(I.src, store); db.book = BOOK; db.owned = new Set([LIVE, 'APS_SPECIAL_CLASSES_AUDIT']); db.names = new Set([ENR]);
+  await assert.rejects(db.readSheets(BOOK as WorkbookKey, [LIVE]), /SC_OWNER_NOT_READY/);
+  await store.putOwned(BOOK, LIVE, [['Title'], ['Owned row']], 'Asia/Kolkata', 0, 'import'); db.ownedReady = true;
+  const c0 = I.calls();
+  const a = await db.readSheets(BOOK as WorkbookKey, [LIVE, 'APS_SPECIAL_CLASSES_AUDIT']);
+  assert.deepEqual(a.sheets[LIVE]!.values, [['Title'], ['Owned row']]); assert.equal(a.sheets.APS_SPECIAL_CLASSES_AUDIT, null);
+  assert.equal(a.timeZone, 'Asia/Kolkata'); assert.ok(a.titles!.includes(LIVE) && !a.titles!.includes('APS_SPECIAL_CLASSES_AUDIT'));
+  assert.ok(I.calls() - c0 <= 1, 'Google read at most for the sheet list, never for owned data');
+  store.failNext = true; await assert.rejects(db.readSheets(BOOK as WorkbookKey, [LIVE]));
+});

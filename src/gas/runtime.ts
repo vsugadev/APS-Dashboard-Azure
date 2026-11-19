@@ -24,7 +24,10 @@ export function valuesKey(r: ValuesRequest): string { return JSON.stringify([r.r
 export const READ_ONLY_MSG = 'READ_ONLY: the Azure dashboard does not change Google Sheets yet.';
 
 export class SnapSheet {
-  constructor(private name: string, private rows: unknown[][], private readOnly: boolean) {}
+  /** v0.13.0: `onDirty` — set for a sheet of a WRITABLE workbook (Special Classes owned by Azure SQL): any change marks it. */
+  constructor(private name: string, private rows: unknown[][], private readOnly: boolean, private onDirty: ((name: string) => void) | null = null) {}
+  /** Current grid (writable workbooks: what Azure stores after the call). */
+  grid(): unknown[][] { return this.rows.map((r) => (r || []).slice()); }
   getName(): string { return this.name; }
   getLastRow(): number { let n = 0; this.rows.forEach((r, i) => { if (r && r.some((v) => v !== '' && v !== null && v !== undefined)) n = i + 1; }); return n; }
   getLastColumn(): number { let n = 0; for (const r of this.rows) (r || []).forEach((v, j) => { if (v !== '' && v !== null && v !== undefined && j + 1 > n) n = j + 1; }); return n; }
@@ -40,12 +43,13 @@ export class SnapSheet {
   write(r: number, c: number, values: unknown[][]): void {
     if (this.readOnly) throw new Error(READ_ONLY_MSG);
     values.forEach((vr, i) => { const row = (this.rows[r - 1 + i] = this.rows[r - 1 + i] || []); vr.forEach((v, j) => { row[c - 1 + j] = v; }); });
+    if (this.onDirty) this.onDirty(this.name);
   }
   guard(): this { if (this.readOnly) throw new Error(READ_ONLY_MSG); return this; }
   // formatting / structure calls: allowed only on an in-memory (new) sheet, where they do nothing
   setFrozenRows(): this { return this.guard(); }
   insertColumnsAfter(): this { return this.guard(); }
-  appendRow(v: unknown[]): this { this.guard(); this.rows.push(v.slice()); return this; }
+  appendRow(v: unknown[]): this { this.guard(); this.rows.push(v.slice()); if (this.onDirty) this.onDirty(this.name); return this; }
   autoResizeColumns(): this { return this.guard(); }
 }
 
@@ -71,9 +75,13 @@ export class SnapWorkbook {
   /** `titles` = every sheet that exists in Google. A sheet that exists but was not read into this snapshot throws, so a
    *  reader can never silently see an "empty" sheet; a sheet that does not exist is null (Code.gs "create it" path). */
   constructor(private id: string, grids: Record<string, SheetGrid | null>, private tz = 'America/New_York', private titles: string[] | null = null,
-    private book: WorkbookKey = 'main', private need: ((n: NeedRequest) => void) | null = null) {
-    for (const [name, g] of Object.entries(grids)) if (g) this.sheets[name] = new SnapSheet(name, g.values.map((r) => r.slice()), true);
+    private book: WorkbookKey = 'main', private need: ((n: NeedRequest) => void) | null = null, private writable = false) {
+    for (const [name, g] of Object.entries(grids)) if (g) this.sheets[name] = new SnapSheet(name, g.values.map((r) => r.slice()), !writable, writable ? this.mark : null);
   }
+  /** v0.13.0 — writable workbooks only: the sheets changed (or created) during the call, with their new grids. */
+  private dirty = new Set<string>();
+  private mark = (n: string) => { this.dirty.add(n); };
+  dirtySheets(): Record<string, unknown[][]> { const o: Record<string, unknown[][]> = {}; for (const n of this.dirty) if (this.sheets[n]) o[n] = this.sheets[n].grid(); return o; }
   private missing(n: string): never {
     const req: NeedRequest = { kind: 'sheet', book: this.book, sheet: n };
     if (this.need) { this.need(req); throw new NeedData(req); }
@@ -84,7 +92,7 @@ export class SnapWorkbook {
     if (this.titles && this.titles.indexOf(n) > -1) return this.missing(n); // exists in Google, not read yet → load and run again
     return null;
   }
-  insertSheet(n: string): SnapSheet { return (this.sheets[n] = new SnapSheet(n, [], false)); } // in memory only — never sent to Google
+  insertSheet(n: string): SnapSheet { if (this.writable) this.dirty.add(n); return (this.sheets[n] = new SnapSheet(n, [], false, this.writable ? this.mark : null)); } // read-only books: in memory only — never sent to Google
   /** Every sheet of the spreadsheet (as Apps Script): read ones as they are; the others by name only — reading their data
    *  asks for them to be loaded. */
   getSheets(): unknown[] {
@@ -100,6 +108,7 @@ export class SnapWorkbook {
  *  write) — not repeated in the App Service log on every request. Never prints a stored value. */
 function quiet(m: unknown): boolean { return /^\[Config\] Script Property "[^"]*" is not (set|valid)/.test(String(m)) || /audit not written: READ_ONLY/.test(String(m)) || /NEED_DATA/.test(String(m)) || /^\[Class Meet Live\] Live Meet status is not on Azure yet/.test(String(m)); } // NEED_DATA: Azure loads it and runs again
 
+const noLock = { tryLock: () => true, waitLock: () => undefined, releaseLock: () => undefined, hasLock: () => true };
 const noCache = { get: () => null, put: () => undefined, remove: () => undefined, getAll: () => ({}), putAll: () => undefined, removeAll: () => undefined };
 
 export interface RuntimeDeps {
@@ -212,6 +221,9 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     // Chat is not on Azure yet: a constant version (Code.gs's own fallback value) so the realtime poll never asks the page
     // to reload a chat it cannot load here.
     chatVersion_: () => '',
+    // v0.13.0: Code.gs takes the script lock around a Special Classes save. On Azure the save endpoint already runs one
+    // save at a time (src/db/scOwner.ts) and the database refuses a stale write (version check), so the lock is a formality.
+    LockService: { getScriptLock: () => noLock, getDocumentLock: () => noLock, getUserLock: () => noLock },
     // r125 (Apps Script): staff see the Download Key of a student who was EMAILED the paper. It is an HMAC with the Apps Script
     // secret EXAM_QP_DOWNLOAD_KEY_SECRET, which never leaves Apps Script (NEVER list) — Azure shows no key for those students
     // (keys of Dashboard downloads come from the download log and still show). Never a guessed or wrong key.

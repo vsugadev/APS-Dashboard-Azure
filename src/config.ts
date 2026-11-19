@@ -44,6 +44,7 @@ export interface AppConfig {
   writeThroughEnabled: boolean;
   sqlServer: string;                  // SQL_SERVER — Azure SQL server host (e.g. aps-dashboard-sql.database.windows.net); empty = no database (pilot)
   sqlDatabase: string;                // SQL_DATABASE — database name (free offer, serverless)
+  scOwner: 'azure' | 'apps-script';   // SC_OWNER — v0.13.0 database stage 3: 'azure' = Azure SQL OWNS Special Classes (programs + audit); default apps-script
   dbSyncMinutes: number;              // DB_SYNC_MINUTES — how often Special Classes are copied into the database (default 5, 1–60)       // AZURE_WRITE_THROUGH (default on; "off" = Saves answer "not on Azure yet") — write phase          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
@@ -123,6 +124,7 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     sqlServer: String(env.SQL_SERVER || '').trim().replace(/^tcp:/i, '').replace(/,1433$/, ''),
     sqlDatabase: String(env.SQL_DATABASE || '').trim(),
     dbSyncMinutes: Math.min(60, Math.max(1, Math.floor(Number(env.DB_SYNC_MINUTES) || 5))), // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
+    scOwner: String(env.SC_OWNER || '').trim().toLowerCase() === 'azure' ? 'azure' : 'apps-script',
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
   };
@@ -150,6 +152,7 @@ export function configWarnings(cfg: AppConfig): string[] {
     if (!cfg.targetSpreadsheetId) w.push('TARGET_SPREADSHEET_ID is not set.');
     if (!cfg.serviceAccountJson) w.push('GOOGLE_SERVICE_ACCOUNT_JSON is not set — Google Sheet data is unavailable until the service account exists (Phase 0).');
     if (!cfg.impersonateUser) w.push('GOOGLE_IMPERSONATE_USER is not set.');
+    if (cfg.scOwner === 'azure' && !(cfg.sqlServer && cfg.sqlDatabase)) w.push('SC_OWNER=azure needs SQL_SERVER + SQL_DATABASE — Special Classes saves are refused until the database is set.');
     if (!cfg.appsScriptBridgeUrl || !cfg.appsScriptBridgeSecret) w.push('APPS_SCRIPT_BRIDGE_URL / APPS_SCRIPT_BRIDGE_SECRET not set — live data (online now, last login, class status, on-call banner) stays empty (Phase 3).');
     else if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl)) w.push('APPS_SCRIPT_BRIDGE_URL must be the Apps Script web app address (https://script.google.com/macros/s/…/exec).');
     else if (cfg.appsScriptBridgeSecret.length < 32) w.push('APPS_SCRIPT_BRIDGE_SECRET is shorter than 32 characters — the bridge is not used.');

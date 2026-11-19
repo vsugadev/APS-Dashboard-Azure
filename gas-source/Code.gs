@@ -21942,6 +21942,7 @@ function scParseOptions_(txt) {
 }
 /** Every record (active and inactive), one sheet read, cached 10 minutes. Throws only when the spreadsheet cannot be read. */
 function scRecords_() {
+  if (typeof scAzureOwner_ === 'function' && scAzureOwner_()) return scAzureOwnedRecords_(); // r134: Azure SQL owns them (AzureBridge.gs)
   var cache = CacheService.getScriptCache();
   try { var hit = cache.get(SC_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) { /* re-read */ }
   var t = scSheet_(false), out = [], seen = {};
@@ -21959,7 +21960,7 @@ function scRecords_() {
   try { cache.put(SC_CACHE_KEY_, JSON.stringify(out), SC_CACHE_SECONDS_); } catch (e2) { /* too big — fine */ }
   return out;
 }
-function scInvalidate_() { try { CacheService.getScriptCache().remove(SC_CACHE_KEY_); } catch (e) { /* ignore */ } }
+function scInvalidate_() { try { CacheService.getScriptCache().remove(SC_CACHE_KEY_); if (typeof SC_AZURE_CACHE_KEY_ === 'string') CacheService.getScriptCache().remove(SC_AZURE_CACHE_KEY_); } catch (e) { /* ignore */ } }
 
 /** Registration state from the dates (never stored): COMPLETED > UPCOMING > CLOSED > OPEN; NONE when nothing to register for. */
 function scState_(p, today) {
@@ -22116,6 +22117,7 @@ function scAudit_(ss, action, id, title, s, details) {
 function saveSpecialClass(sessionToken, data) {
   var s = scRequireAdmin_(sessionToken);
   requireDashboardMutationPermission_({ email: s.email, role: s.role }, 'manage Special Classes');
+  if (typeof scAzureOwner_ === 'function' && scAzureOwner_()) return scAzureOwnedSave_('saveSpecialClass', sessionToken, [data]); // r134
   data = data || {};
   var v = scValidate_(data);
   if (v.errors.length) throw new Error(v.errors.join(' '));
@@ -22345,6 +22347,7 @@ function updateSpecialClassEnrollment(sessionToken, enrollmentId, req) {
 function setSpecialClassActive(sessionToken, id, active) {
   var s = scRequireAdmin_(sessionToken);
   requireDashboardMutationPermission_({ email: s.email, role: s.role }, 'manage Special Classes');
+  if (typeof scAzureOwner_ === 'function' && scAzureOwner_()) return scAzureOwnedSave_('setSpecialClassActive', sessionToken, [id, active]); // r134
   id = String(id || '').trim();
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new Error('Another Special Class is being saved — please try again in a moment.');

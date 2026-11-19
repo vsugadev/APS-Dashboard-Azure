@@ -15,11 +15,16 @@ import type { Registry } from '../registry';
 import { NOT_ON_AZURE } from '../registry';
 import { requireSession } from '../../app/context';
 import { bridgeCall, bridgeUsable, type FetchLike } from '../../live/liveSource';
+import { SC_OWNED_FNS, scOwnedByAzure, runOwnedSave } from '../../db/scOwner';
 
 export const WRITE_THROUGH: string[] = [
   'saveAccessControl', 'saveAssignmentMonitoringConfig', 'saveMissingGradingConfig', 'saveMarkCompleteSettings',
   'saveTeacherAppreciationConfig', 'setTeacherAppreciationEmails', 'saveSpecialClassesSettings', 'saveTicketSettings',
   'setExamQuestionPaperDefaults', 'setExamQuestionPaperAutoEmail', 'setRosterHiddenStaffVisible',
+  // v0.13.0: teacher class-card actions (Mark Live, Teacher NOT in Class, Needs Tech Support, availability, class status)
+  'setLiveStatus', 'setTeacherNotInClassStage', 'setNeedsTechSupportStage', 'setTeacherAvailabilityStatus', 'setClassStatusManual',
+  // v0.13.0: Special Classes programs — forwarded while Apps Script owns them; saved in Azure SQL when SC_OWNER=azure (src/db/scOwner.ts)
+  'saveSpecialClass', 'setSpecialClassActive',
 ];
 
 /**
@@ -46,6 +51,7 @@ function registerThrough(reg: Registry, name: string, isWrite: boolean, fetchImp
   {
     reg.register(name, async (ctx, args) => {
       const s = await requireSession(ctx, args[0]);
+      if (isWrite && SC_OWNED_FNS.indexOf(name) > -1 && scOwnedByAzure(ctx)) return runOwnedSave(ctx, s, String(args[0]), name, args.slice(1)); // stage 3
       if (!ctx.cfg.writeThroughEnabled || !bridgeUsable(ctx.cfg)) throw new Error(NOT_ON_AZURE + name);
       const rest = args.slice(1);
       if (JSON.stringify(rest).length > 90_000) throw new Error('This change is too large to save in one go.');

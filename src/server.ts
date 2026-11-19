@@ -12,6 +12,7 @@ import { FixtureDataSource, SheetsDataSource } from './data/sources';
 import { bridgeUsable, secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
 import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
 import { registerWrites } from './api/endpoints/writes';
+import { mountReverseBridge } from './api/bridge';
 import { DbBackedDataSource } from './db/dbData';
 import { MssqlSheetStore } from './db/sheetStore';
 import { startDatabase } from './db/start';
@@ -133,6 +134,8 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
       sendPage(res, result);
     });
   }
+
+  mountReverseBridge(app, ctx); // v0.13.0: Apps Script → Azure (Special Classes owned by Azure SQL)
 
   app.post('/api/run/:fn', express.json({ limit: '1mb' }), async (req, res) => {
     const out = await reg.call(ctx, req.params.fn, req.body && req.body.args);

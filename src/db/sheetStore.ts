@@ -20,6 +20,16 @@ export interface SheetStore {
   get(book: string, names: string[]): Promise<Record<string, StoredSheet | null>>;
 }
 
+/** v0.13.0 — database stage 3: sheets OWNED by the database (Special Classes programs + audit). Optimistic versions. */
+export interface OwnedSheet { values: unknown[][]; timeZone: string; version: number; updatedAt: number; updatedBy: string }
+export interface OwnedStore {
+  ensureOwnedSchema(): Promise<void>;
+  getOwned(book: string, names: string[]): Promise<Record<string, OwnedSheet | null>>;
+  /** Writes one owned sheet. expectedVersion 0 = must not exist yet (import / first audit row). Throws Error('CONFLICT')
+   *  when someone else changed it meanwhile. Returns the new version. */
+  putOwned(book: string, sheet: string, values: unknown[][], timeZone: string, expectedVersion: number, by: string): Promise<number>;
+}
+
 export const TITLES_ROW = '__titles__'; // the spreadsheet's sheet list (so a "does this sheet exist" check is right too)
 
 /** Grid ⇄ JSON; Date cells survive as {"$d": ISO}. */
@@ -31,7 +41,7 @@ export function decodeGrid(s: string): unknown[][] {
 }
 
 /** Tests / local development. Stores the JSON text, exactly like the database. */
-export class MemorySheetStore implements SheetStore {
+export class MemorySheetStore implements SheetStore, OwnedStore {
   readonly kind = 'memory';
   private rows = new Map<string, { grid: string; tz: string; at: number; n: number }>();
   failNext = false;
@@ -42,6 +52,20 @@ export class MemorySheetStore implements SheetStore {
     this.rows.set(book + '\u0000' + sheet, { grid: encodeGrid(snap.values), tz: snap.timeZone, at: this.now(), n: snap.values.length });
     return snap.values.length;
   }
+  private owned = new Map<string, { grid: string; tz: string; v: number; at: number; by: string }>();
+  async ensureOwnedSchema(): Promise<void> { /* nothing */ }
+  async getOwned(book: string, names: string[]): Promise<Record<string, OwnedSheet | null>> {
+    if (this.failNext) { this.failNext = false; throw new Error('memory store failure'); }
+    const out: Record<string, OwnedSheet | null> = {};
+    for (const n of names) { const r = this.owned.get(book + '\u0000' + n); out[n] = r ? { values: decodeGrid(r.grid), timeZone: r.tz, version: r.v, updatedAt: r.at, updatedBy: r.by } : null; }
+    return out;
+  }
+  async putOwned(book: string, sheet: string, values: unknown[][], timeZone: string, expectedVersion: number, by: string): Promise<number> {
+    const k = book + '\u0000' + sheet, cur = this.owned.get(k);
+    if ((cur ? cur.v : 0) !== expectedVersion) throw new Error('CONFLICT');
+    this.owned.set(k, { grid: encodeGrid(values), tz: timeZone, v: expectedVersion + 1, at: this.now(), by });
+    return expectedVersion + 1;
+  }
   async get(book: string, names: string[]): Promise<Record<string, StoredSheet | null>> {
     if (this.failNext) { this.failNext = false; throw new Error('memory store failure'); }
     const out: Record<string, StoredSheet | null> = {};
@@ -51,7 +75,7 @@ export class MemorySheetStore implements SheetStore {
 }
 
 /** Azure SQL Database through `mssql` (tedious), signed in with the app's managed identity. Parameterised queries only. */
-export class MssqlSheetStore implements SheetStore {
+export class MssqlSheetStore implements SheetStore, OwnedStore {
   readonly kind = 'azure-sql';
   private pool: Promise<sqlTypes.ConnectionPool> | null = null;
   constructor(private server: string, private database: string, private sql: typeof sqlTypes = require('mssql')) {}
@@ -76,6 +100,38 @@ export class MssqlSheetStore implements SheetStore {
       "IF OBJECT_ID(N'dbo.sheet_snapshot', N'U') IS NULL CREATE TABLE dbo.sheet_snapshot (" +
       'book NVARCHAR(200) NOT NULL, sheet NVARCHAR(200) NOT NULL, time_zone NVARCHAR(64) NOT NULL, grid NVARCHAR(MAX) NOT NULL, ' +
       'row_count INT NOT NULL, synced_at DATETIME2(3) NOT NULL, CONSTRAINT PK_sheet_snapshot PRIMARY KEY (book, sheet));');
+  }
+
+  async ensureOwnedSchema(): Promise<void> {
+    const pool = await this.connect();
+    await pool.request().query(
+      "IF OBJECT_ID(N'dbo.owned_sheet', N'U') IS NULL CREATE TABLE dbo.owned_sheet (" +
+      'book NVARCHAR(200) NOT NULL, sheet NVARCHAR(200) NOT NULL, time_zone NVARCHAR(64) NOT NULL, grid NVARCHAR(MAX) NOT NULL, ' +
+      'row_count INT NOT NULL, version INT NOT NULL, updated_at DATETIME2(3) NOT NULL, updated_by NVARCHAR(254) NOT NULL, ' +
+      'CONSTRAINT PK_owned_sheet PRIMARY KEY (book, sheet));');
+  }
+  async getOwned(book: string, names: string[]): Promise<Record<string, OwnedSheet | null>> {
+    const pool = await this.connect();
+    const r = await pool.request().input('book', this.sql.NVarChar(200), book)
+      .query('SELECT sheet, time_zone, grid, version, updated_at, updated_by FROM dbo.owned_sheet WHERE book = @book;');
+    const by: Record<string, any> = {};
+    for (const row of (r.recordset || []) as any[]) by[String(row.sheet)] = row;
+    const out: Record<string, OwnedSheet | null> = {};
+    for (const n of names) { const row = by[n]; out[n] = row ? { values: decodeGrid(String(row.grid)), timeZone: String(row.time_zone), version: Number(row.version), updatedAt: new Date(row.updated_at).getTime(), updatedBy: String(row.updated_by) } : null; }
+    return out;
+  }
+  async putOwned(book: string, sheet: string, values: unknown[][], timeZone: string, expectedVersion: number, by: string): Promise<number> {
+    const pool = await this.connect();
+    const S = this.sql;
+    const req = pool.request().input('book', S.NVarChar(200), book).input('sheet', S.NVarChar(200), sheet).input('tz', S.NVarChar(64), timeZone)
+      .input('grid', S.NVarChar(S.MAX), encodeGrid(values)).input('n', S.Int, values.length).input('v', S.Int, expectedVersion).input('by', S.NVarChar(254), String(by).slice(0, 254));
+    const r = expectedVersion === 0
+      ? await req.query('INSERT INTO dbo.owned_sheet (book, sheet, time_zone, grid, row_count, version, updated_at, updated_by) ' +
+          'SELECT @book, @sheet, @tz, @grid, @n, 1, SYSUTCDATETIME(), @by WHERE NOT EXISTS (SELECT 1 FROM dbo.owned_sheet WITH (UPDLOCK, HOLDLOCK) WHERE book = @book AND sheet = @sheet);')
+      : await req.query('UPDATE dbo.owned_sheet SET time_zone = @tz, grid = @grid, row_count = @n, version = version + 1, updated_at = SYSUTCDATETIME(), updated_by = @by ' +
+          'WHERE book = @book AND sheet = @sheet AND version = @v;');
+    if (!r.rowsAffected || r.rowsAffected[0] !== 1) throw new Error('CONFLICT');
+    return expectedVersion + 1;
   }
 
   async put(book: string, sheet: string, snap: { values: unknown[][]; timeZone: string }): Promise<number> {

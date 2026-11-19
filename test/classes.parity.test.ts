@@ -432,3 +432,95 @@ test('Database pilot (v0.11.0): Special Classes served from the Azure SQL read c
   assert.equal(scReads, readsAfterCopy, 'no Google Sheets read for Special Classes after the copy');
   assert.ok(db.served >= 3, 'served from the database: ' + db.served);
 });
+test('Database stage 3 (v0.13.0): SC_OWNER=azure — saveSpecialClass / setSpecialClassActive run on Azure against Azure SQL and give the SAME answer as Code.gs; Google never written; versions + conflicts; reverse bridge', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); seedAttendance(F);
+  const put = (name: string, rows: unknown[][]) => { const sh = F.env.wb.getSheetByName(name) || F.env.wb.insertSheet(name); sh.maxCols = Math.max(sh.maxCols || 26, rows[0].length); sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows); };
+  put('APS_SPECIAL_CLASSES_LIVE', [['Title', 'Special Class ID', 'Audience', 'Mode', 'Registration Link', 'Status'],
+    ['Tamil grammar camp', 'SC-2026-010', 'Students Only', 'Zoom Meeting', 'https://ok.example/x', 'Active']]);
+  const { startDatabase, SC_AUDIT_SHEET } = await import('../src/db/start');
+  assert.equal(SC_AUDIT_SHEET, G.SC_AUDIT_SHEET_, 'same audit sheet name as Code.gs');
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT',
+    scOwner: 'azure', appsScriptBridgeSecret: 'k'.repeat(64) });
+  const P = Object.getPrototypeOf(F.env.wb.getSheetByName('Courses')); P.getMaxRows = P.getMaxRows || function (this: any) { return Math.max(1000, this.data.length); };
+  const { MemorySheetStore } = await import('../src/db/sheetStore');
+  const { DbBackedDataSource } = await import('../src/db/dbData');
+  const googleSheets = sheetsFromMock(F); const googleBefore = JSON.stringify(googleSheets);
+  const innerData = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: googleSheets });
+  const store = new MemorySheetStore(); const db = new DbBackedDataSource(innerData, store);
+  const ctx = testContext({ cfg }); ctx.data = db; ctx.live = liveFromMock(F);
+  const logs: string[] = [];
+  const sync = await startDatabase(ctx, store, db, 3_600_000, (m) => logs.push(m)); sync && sync.stop();
+  assert.ok(db.ownedReady, logs.join('\n')); assert.match(logs.join('\n'), /imported into Azure SQL and now OWNED there/);
+  assert.deepEqual(Array.from(db.names), ['APS_SPECIAL_CLASSES_ENROLLMENTS'], 'the read copy keeps only the enrollments');
+  const reg = (await import('../src/server')).buildRegistry();
+  G.getGoogleProfileName_ = () => null; G.apsDashboardUrl_ = () => 'https://www.avvaiyarpadasalai.org';
+  const admin = 'admin@aps.org';
+  const strip = (o: any) => JSON.parse(JSON.stringify(o, (k, v) => (/^(updatedAt|createdAt|updatedDate|createdDate)$/.test(k) ? undefined : v)));
+  const both = async (name: string, args: unknown[], email = admin, role = 'admin') => {
+    let gas: any; try { gas = J(G[name](F.tok(email, role), ...J(args))); } catch (e) { gas = { err: (e as Error).message }; }
+    const az: any = await reg.call(ctx, name, [await ctx.sessions.create({ email, role }), ...J(args)]);
+    return { gas, az: 'ok' in az ? az.ok : { err: az.err } };
+  };
+  const data = { title: 'Kolam workshop', description: 'Saturday art', audience: 'ALL', mode: 'ZOOM', status: 'ACTIVE', link: 'https://ok.example/k', order: '3' };
+  let r = await both('saveSpecialClass', [data]);
+  assert.ok(!r.gas.err && !r.az.err, JSON.stringify(r).slice(0, 300));
+  assert.equal(r.az.savedId, r.gas.savedId); assert.equal(r.az.action, 'CREATE_SPECIAL_CLASS');
+  assert.deepEqual(diffs(strip(r.az), strip(r.gas)), [], 'create: same answer');
+  r = await both('saveSpecialClass', [{ ...data, id: r.gas.savedId, title: 'Kolam workshop (Dec)', status: 'INACTIVE' }]);
+  assert.deepEqual(diffs(strip(r.az), strip(r.gas)), [], 'edit: same answer');
+  r = await both('setSpecialClassActive', ['SC-2026-010', false]);
+  assert.deepEqual(diffs(strip(r.az), strip(r.gas)), [], 'deactivate: same answer');
+  r = await both('saveSpecialClass', [{ ...data, title: '' }]);
+  assert.equal(r.az.err, r.gas.err, 'validation message identical'); assert.match(String(r.az.err), /Title is required/);
+  r = await both('saveSpecialClass', [data], 'bod@amchats.org', 'bod');
+  assert.ok(r.az.err && r.gas.err, 'read-only role refused on both'); assert.equal(r.az.err, r.gas.err);
+  const owned = await db.readOwned();
+  assert.equal(owned['APS_SPECIAL_CLASSES_LIVE']!.version, 4, 'import + 3 saves');
+  const audit = owned['APS_SPECIAL_CLASSES_AUDIT']!.values;
+  assert.deepEqual(audit[0], J(G.SC_AUDIT_HEADER_)); assert.deepEqual(audit.slice(1).map((x) => x[1]), ['CREATE_SPECIAL_CLASS', 'UPDATE_SPECIAL_CLASS', 'DEACTIVATE_SPECIAL_CLASS', 'DEACTIVATE_SPECIAL_CLASS']);
+  assert.ok(audit.slice(1).every((x) => x[4] === admin && x[5] === 'admin'), 'audited as the signed-in Admin');
+  assert.equal(JSON.stringify(googleSheets), googleBefore, 'Google Sheets never written by Azure');
+  const shown: any = await reg.call(ctx, 'getSpecialClassesAdmin', [await ctx.sessions.create({ email: admin, role: 'admin' })]);
+  assert.ok(JSON.stringify(shown.ok).includes('Kolam workshop (Dec)'), 'reads come from the owned store');
+  // conflict: someone else stored a newer version between the read and the write
+  const { runOwnedSave, SC_CONFLICT_MSG } = await import('../src/db/scOwner');
+  const realRead = db.readOwned.bind(db);
+  (db as any).readOwned = async () => { const x = await realRead(); await store.putOwned(db.book, 'APS_SPECIAL_CLASSES_LIVE', x['APS_SPECIAL_CLASSES_LIVE']!.values, 'America/New_York', x['APS_SPECIAL_CLASSES_LIVE']!.version, 'other'); return x; };
+  await assert.rejects(runOwnedSave(ctx, { email: admin, role: 'admin' }, await ctx.sessions.create({ email: admin, role: 'admin' }), 'setSpecialClassActive', ['SC-2026-010', true]), (e: Error) => e.message === SC_CONFLICT_MSG);
+  (db as any).readOwned = realRead;
+
+  // reverse bridge (Apps Script → Azure)
+  const { handleReverse, NonceBook, signReverse } = await import('../src/api/bridge');
+  const { decodeGrid } = await import('../src/db/sheetStore');
+  const crypto = await import('crypto');
+  const nonces = new NonceBook(); const sec = 'k'.repeat(64);
+  const mk = (p: any, secret = sec, ts = String(Date.now())) => { const ps = JSON.stringify(p), nonce = crypto.randomUUID(); return { gas: 1, p: ps, ts, nonce, sig: signReverse(secret, ts, nonce, ps) }; };
+  let a = await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }));
+  assert.equal(a.status, 200); const grid = decodeGrid((a.body.result as any).grid);
+  assert.ok(JSON.stringify(grid).includes('Kolam workshop (Dec)')); assert.equal((a.body.result as any).version, 5);
+  const { isApsEmailAllowed } = await import('../src/lib/email');
+  const apsAdmin = 'scadmin@avvaiyarpadasalai.org';
+  ctx.cfg = { ...cfg, adminEmails: cfg.adminEmails.concat([apsAdmin]) }; // Azure resolves the role from ITS lists
+  assert.ok(isApsEmailAllowed(apsAdmin, cfg.allowedDomains));
+  const body = mk({ action: 'call', v: 1, fn: 'setSpecialClassActive', args: ['SC-2026-010', true], email: apsAdmin });
+  a = await handleReverse(ctx, nonces, body);
+  assert.equal(a.body.ok, true, JSON.stringify(a.body)); assert.ok((a.body.result as any).value, 'Code.gs answer returned');
+  assert.equal((await handleReverse(ctx, nonces, body)).body.code, 'REPLAY');
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }, 'x'.repeat(64)))).body.code, 'BAD_SIGNATURE');
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }, sec, String(Date.now() - 6 * 60_000)))).body.code, 'EXPIRED');
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'call', v: 1, fn: 'saveAccessControl', args: [], email: admin }))).body.code, 'BAD_REQUEST', 'only the two owned saves');
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'call', v: 1, fn: 'saveSpecialClass', args: [data], email: 'x@evil.example' }))).body.code, 'BAD_REQUEST', 'non-APS e-mail refused');
+  // an Azure→Apps Script signature can never be replayed to Azure (different signed text)
+  const ps = JSON.stringify({ action: 'scGrid', v: 1 }), ts = String(Date.now()), nonce = crypto.randomUUID();
+  const fwd = crypto.createHmac('sha256', sec).update(ts + '.' + nonce + '.' + ps).digest('hex');
+  assert.equal((await handleReverse(ctx, nonces, { gas: 1, p: ps, ts, nonce, sig: fwd })).body.code, 'BAD_SIGNATURE');
+  // a teacher (role from Azure's own rules, not the request) is refused with the Code.gs message
+  const t = await handleReverse(ctx, nonces, mk({ action: 'call', v: 1, fn: 'saveSpecialClass', args: [data], email: 'sa0_aps6650@avvaiyarpadasalai.org' }));
+  assert.ok((t.body.result as any).error, 'not an Admin → refused: ' + JSON.stringify(t.body));
+  ctx.cfg = { ...cfg, scOwner: 'apps-script' };
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }))).body.code, 'NOT_OWNER');
+});

@@ -16,6 +16,10 @@ export const EXTRA_BOOK_ID_FNS = ['scSpreadsheetId_', 'zhSheetId_'];
 
 export interface GasRunOptions {
   preload: Record<WorkbookKey, string[]>;
+  /** v0.13.0: extra spreadsheet IDs opened WRITABLE (Special Classes owned by Azure SQL) — changes stay in memory and are
+   *  handed to `capture` after the final run; nothing is ever written to Google. */
+  writable?: string[];
+  capture?: (extra: Record<string, SnapWorkbook>) => void;
   deps: Omit<RuntimeDeps, 'main' | 'attendance' | 'values' | 'bookIds' | 'need' | 'extra' | 'extraIds'>;
 }
 
@@ -45,7 +49,7 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
     const extra: Record<string, SnapWorkbook> = {};
     for (const id of opened) {
       const key = ('id:' + id) as WorkbookKey;
-      try { const x = await ctx.data.readSheets(key, Array.from(loaded[key] || [])); extra[id] = new SnapWorkbook(id, x.sheets, x.timeZone, x.titles, key, need); }
+      try { const x = await ctx.data.readSheets(key, Array.from(loaded[key] || [])); extra[id] = new SnapWorkbook(id, x.sheets, x.timeZone, x.titles, key, need, !!opts.writable && opts.writable.includes(id)); }
       catch (e) { // not shared with GOOGLE_IMPERSONATE_USER (or gone): Code.gs's own "cannot open" path answers
         console.warn('[Gas] extra spreadsheet not readable: ' + String((e as Error).message).slice(0, 120));
         opened.delete(id); extraIds.splice(extraIds.indexOf(id), 1); blocked.add(id);
@@ -55,7 +59,7 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
     if (!idsDone) { idsDone = true; for (const f of EXTRA_BOOK_ID_FNS) { const v = typeof S[f] === 'function' ? String(S[f]() || '').trim() : ''; if (v && !bookIds[v] && extraIds.indexOf(v) < 0 && !blocked.has(v)) extraIds.push(v); } }
     let result: T | undefined, error: unknown = null;
     try { result = await fn(S); } catch (e) { error = e; }
-    if (!pending.length) { if (error) throw error; return result as T; }
+    if (!pending.length) { if (error) throw error; if (opts.capture) opts.capture(extra); return result as T; }
     const n = pending[0];
     if (n.kind === 'book') {
       const id = n.book.slice(3);

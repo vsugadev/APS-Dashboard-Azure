@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -77,7 +77,11 @@ var AZURE_BRIDGE_MAX_HEARTBEATS_ = 200;
 var AZURE_BRIDGE_CALLS_ = [
   'saveAccessControl', 'saveAssignmentMonitoringConfig', 'saveMissingGradingConfig', 'saveMarkCompleteSettings',
   'saveTeacherAppreciationConfig', 'setTeacherAppreciationEmails', 'saveSpecialClassesSettings', 'saveTicketSettings',
-  'setExamQuestionPaperDefaults', 'setExamQuestionPaperAutoEmail', 'setRosterHiddenStaffVisible'
+  'setExamQuestionPaperDefaults', 'setExamQuestionPaperAutoEmail', 'setRosterHiddenStaffVisible',
+  // r134: teacher class-card actions (Mark Live, Teacher NOT in Class, Needs Tech Support, availability, class status)
+  'setLiveStatus', 'setTeacherNotInClassStage', 'setNeedsTechSupportStage', 'setTeacherAvailabilityStatus', 'setClassStatusManual',
+  // r134: Special Classes programs — Apps Script writes its Sheet while Apps Script owns them (SPECIAL_CLASSES_OWNER not 'azure')
+  'saveSpecialClass', 'setSpecialClassActive'
 ];
 /** r133 — read screens that need Google services / locks Azure does not use yet (Phase 2 "still not on Azure"). */
 var AZURE_BRIDGE_READS_ = [
@@ -212,4 +216,104 @@ function azureBridgeCall_(req) {
   } finally {
     try { cache.remove(SESSION_CACHE_PREFIX_ + tok); } catch (eR) { /* expires in 2 minutes */ }
   }
+}
+
+/* ==========================================================================
+ *  r134 — REVERSE BRIDGE: Special Classes OWNED by Azure SQL (Azure database stage 3)
+ * --------------------------------------------------------------------------
+ *  Switch: Script Property SPECIAL_CLASSES_OWNER = azure (set it at the SAME time as the Azure app setting SC_OWNER=azure;
+ *  see docs/DATABASE.md "Stage 3"). Unset / anything else → nothing here runs and Special Classes work exactly as before.
+ *  When on, this dashboard's Special Classes screens read the programs from Azure (scRecords_ → scAzureOwnedRecords_)
+ *  and + Add / Edit / Activate / Deactivate are saved by Azure (saveSpecialClass / setSpecialClassActive →
+ *  scAzureOwnedSave_). One owner, so both dashboards always show the same records. The Google Sheet is no longer
+ *  written for programs; it stays as the last copy before the switch (ONE_TIME_scCopyAzureToSheet puts Azure's back).
+ *   - POST <AZURE_DASHBOARD_URL>/api/bridge  { gas:1, p, ts, nonce, sig } with
+ *     sig = hex(HMAC-SHA256(AZURE_BRIDGE_SECRET, 'gas.' + ts + '.' + nonce + '.' + p)) — the same secret, a different
+ *     signed text, so a request can never be replayed in the other direction.
+ *   - Azure decides the person's role ITSELF from the e-mail (same rules as its sign-in); only the e-mail is sent.
+ *   - Script Property AZURE_DASHBOARD_URL = https://<the Azure app>.azurewebsites.net (no trailing slash).
+ *   - Loop guard: a save that ARRIVED from Azure (session via 'azure') is never sent back — the owners disagree, so it
+ *     is refused with a clear message instead of writing the Sheet.
+ * ========================================================================== */
+var SC_AZURE_OWNER_PROP_ = 'SPECIAL_CLASSES_OWNER';
+var SC_AZURE_CACHE_KEY_ = 'aps_special_classes_azure_v1';
+var SC_AZURE_CACHE_SECONDS_ = 60;
+
+function scAzureOwner_() {
+  try { return String(PropertiesService.getScriptProperties().getProperty(SC_AZURE_OWNER_PROP_) || '').trim().toLowerCase() === 'azure'; }
+  catch (e) { return false; }
+}
+/** true when this session was made by azureBridgeCall_ (the request came FROM Azure). */
+function scSessionViaAzure_(sessionToken) {
+  try { var raw = CacheService.getScriptCache().get(SESSION_CACHE_PREFIX_ + String(sessionToken || '')); return !!raw && JSON.parse(raw).via === 'azure'; }
+  catch (e) { return false; }
+}
+/** One signed call to Azure. Returns `result`; throws a short, safe message (never the secret or Azure's page). */
+function azureReverseCall_(payload) {
+  var props = PropertiesService.getScriptProperties();
+  var secret = String(props.getProperty('AZURE_BRIDGE_SECRET') || ''), base = String(props.getProperty('AZURE_DASHBOARD_URL') || '').trim().replace(/\/+$/, '');
+  if (secret.length < 32 || !/^https:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(base)) { console.error('[AzureBridge] reverse: AZURE_BRIDGE_SECRET / AZURE_DASHBOARD_URL not set'); throw new Error(SC_UNAVAILABLE_MSG_); }
+  var p = JSON.stringify(payload), ts = String(Date.now()), nonce = Utilities.getUuid();
+  var sig = portalHex_(Utilities.computeHmacSha256Signature('gas.' + ts + '.' + nonce + '.' + p, secret));
+  var res, j;
+  try {
+    res = UrlFetchApp.fetch(base + '/api/bridge', { method: 'post', contentType: 'application/json', muteHttpExceptions: true, followRedirects: false,
+      payload: JSON.stringify({ gas: 1, p: p, ts: ts, nonce: nonce, sig: sig }) });
+    j = JSON.parse(res.getContentText());
+  } catch (e) { console.error('[AzureBridge] reverse ' + payload.action + ' failed: ' + zhSafeErr_(e)); throw new Error(SC_UNAVAILABLE_MSG_); }
+  if (!j || j.ok !== true) { console.error('[AzureBridge] reverse ' + payload.action + ' refused: ' + String(j && j.code || ('HTTP ' + res.getResponseCode())).slice(0, 40)); throw new Error(SC_UNAVAILABLE_MSG_); }
+  return j.result;
+}
+/** Grid JSON from Azure: dates come as {"$d": iso}. */
+function scAzureDecode_(txt) {
+  return JSON.parse(txt, function (k, v) { return v && typeof v === 'object' && !Array.isArray(v) && typeof v.$d === 'string' && Object.keys(v).length === 1 ? new Date(v.$d) : v; });
+}
+/** scRecords_ when Azure owns the programs: the same parsing (scParseRow_) over Azure's grid; cached 60 s. */
+function scAzureOwnedRecords_() {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(SC_AZURE_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) { /* re-read */ }
+  var r = azureReverseCall_({ action: 'scGrid', v: 1 });
+  var values = scAzureDecode_(String(r.grid || '[]')), tz = String(r.timeZone || APS_TZ), out = [], seen = {};
+  var header = (values[0] || []).map(function (h) { return String(h || '').trim(); }), map = {};
+  header.forEach(function (h, i) {
+    var n = scNorm_(h); if (!n) return;
+    SC_FIELDS_.forEach(function (f) { if (map[f[0]] === undefined && (scNorm_(f[1]) === n || f[2].indexOf(n) > -1)) map[f[0]] = i; });
+  });
+  values.slice(1).forEach(function (row, i) {
+    try {
+      var padded = row.slice(); while (padded.length < header.length) padded.push('');
+      var rec = scParseRow_(padded, map, tz, i + 2);
+      if (!rec) return;
+      if (seen[rec.id]) { console.warn('[SpecialClasses] row ' + (i + 2) + ' skipped: duplicate ID ' + rec.id); return; }
+      seen[rec.id] = true; out.push(rec);
+    } catch (eRow) { console.warn('[SpecialClasses] row ' + (i + 2) + ' skipped: ' + (eRow && eRow.message)); }
+  });
+  try { cache.put(SC_AZURE_CACHE_KEY_, JSON.stringify(out), SC_AZURE_CACHE_SECONDS_); } catch (e2) { /* too big — fine */ }
+  return out;
+}
+/** saveSpecialClass / setSpecialClassActive when Azure owns the programs: Azure runs the same Code.gs function. */
+function scAzureOwnedSave_(fn, sessionToken, args) {
+  if (scSessionViaAzure_(sessionToken)) throw new Error('Special Classes owner settings disagree (Apps Script SPECIAL_CLASSES_OWNER=azure, but Azure SC_OWNER is not azure). Ask an Admin to set both the same — nothing was saved.');
+  var s = requireValidSession_(sessionToken);
+  var r = azureReverseCall_({ action: 'call', v: 1, fn: fn, args: args, email: s.email });
+  try { CacheService.getScriptCache().removeAll([SC_AZURE_CACHE_KEY_, SC_CACHE_KEY_]); } catch (e) { /* expires in 60 s */ }
+  if (r && typeof r.error === 'string') throw new Error(r.error);
+  return r ? r.value : null;
+}
+/** Owner only (editor): roll-back helper — writes Azure's current programs into the Google Sheet (before switching
+ *  SPECIAL_CLASSES_OWNER back), so no change made while Azure owned them is lost. Audit rows stay in Azure SQL. */
+function ONE_TIME_scCopyAzureToSheet() {
+  apsRequireOwnerOrTrigger_(null);
+  var r = azureReverseCall_({ action: 'scGrid', v: 1 });
+  var values = scAzureDecode_(String(r.grid || '[]'));
+  if (!values.length) { console.log('Azure has no programs sheet — nothing copied.'); return { ok: false, rows: 0 }; }
+  var width = values.reduce(function (m, row) { return Math.max(m, row.length); }, 0);
+  values = values.map(function (row) { var x = row.slice(); while (x.length < width) x.push(''); return x; });
+  var ss = openSpreadsheetByIdWithRetry_(scSpreadsheetId_(), '[SpecialClasses]'), name = scSheetName_(), sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  sh.clearContents();
+  if (sh.getMaxColumns() < width) sh.insertColumnsAfter(sh.getMaxColumns(), width - sh.getMaxColumns());
+  sh.getRange(1, 1, values.length, width).setValues(values);
+  scInvalidate_();
+  console.log('Copied ' + (values.length - 1) + ' Special Classes (Azure version ' + r.version + ') into ' + name + '. Now remove SPECIAL_CLASSES_OWNER here and SC_OWNER in Azure.');
+  return { ok: true, rows: values.length - 1, version: r.version };
 }

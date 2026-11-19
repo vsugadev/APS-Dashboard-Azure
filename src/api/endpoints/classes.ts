@@ -71,12 +71,13 @@ export function gasSettings(cfg: AppConfig): Record<string, string> {
 
 /** Runs copied Code.gs code for one request (src/gas/run.ts): read-only snapshot, sheets loaded on demand.
  *  `session` = the session Azure already checked (for copied endpoints that call requireValidSession_ / apsRequireTabForToken_). */
-export async function gasRun<T>(ctx: AppContext, session: { email: string; role: string } | null, fn: (S: any) => T | Promise<T>): Promise<T> {
+export async function gasRun<T>(ctx: AppContext, session: { email: string; role: string } | null, fn: (S: any) => T | Promise<T>,
+  extra: { writable?: string[]; capture?: (books: Record<string, any>) => void } = {}): Promise<T> {
   const [ov, courses] = await Promise.all([ctx.data.readAccessOverrides(), ctx.data.readCourses()]);
   const hidden = hiddenStaffSet(ctx.cfg);
   const json = JSON.stringify(courses);
   return runGas(ctx, {
-    preload: { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS },
+    preload: { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS }, writable: extra.writable, capture: extra.capture,
     deps: {
       settings: gasSettings(ctx.cfg), session, courses: () => JSON.parse(json), liveProps: await ctx.live.get(),
       tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),

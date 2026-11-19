@@ -49,7 +49,99 @@ student; Sheets not read after the copy). `npm test` 55/55, `npm run e2e` 10/10.
 **Not executed here:** the SQL statements against a real Azure SQL Database (no database in this test environment) —
 the start-up log line proves them on the first deploy.
 
-## Next (stage 3)
+## Stage 3 — the database OWNS Special Classes (v0.13.0, Apps Script r134)
 
-Make the database the owner of the programs list: typed tables (`special_classes`, `special_class_audit`), Admin
-Save / Activate write the database (with audit), the Apps Script Special Classes admin screen hands over to Azure.
+**What changes when switched on.** The programs sheet (`APS_SPECIAL_CLASSES_LIVE`) and the audit sheet
+(`APS_SPECIAL_CLASSES_AUDIT`) live in Azure SQL table `dbo.owned_sheet` and nowhere else. Both dashboards read and save
+them there, so they always show the same records. Enrollments stay a read copy, as in the pilot.
+
+| | Before (default) | `SC_OWNER=azure` + `SPECIAL_CLASSES_OWNER=azure` |
+|---|---|---|
+| Azure reads programs | Read copy (≤ 15 min old) | `dbo.owned_sheet` (always current) |
+| Azure + Add / Edit / Activate | Forwarded to Apps Script (write-through) | Run **on Azure** against the database |
+| Apps Script reads programs | Google Sheet | Azure, through the reverse bridge (60 s cache) |
+| Apps Script + Add / Edit / Activate | Writes the Sheet | Saved by Azure through the reverse bridge |
+| Google Sheet | The owner | Untouched; the last copy before the switch |
+
+**How a save runs on Azure.** The copied Code.gs functions `saveSpecialClass` / `setSpecialClassActive` run on Azure
+themselves: same validation, Admin and read-only checks, `SC-YYYY-NNN` numbering, and audit rows with the person's
+e-mail. They run against a writable in-memory copy of the two sheets (`src/gas/runtime.ts`: `SnapWorkbook` writable plus
+`dirtySheets()`). `src/db/scOwner.ts` then stores each changed sheet with an **optimistic version check**:
+`UPDATE … WHERE version = @v`, or `INSERT … WHERE NOT EXISTS` for a new sheet. Saves run one at a time in each process.
+If another instance saved first, the version check fails and the Admin sees "Someone else changed Special Classes at the
+same moment — please reload and save again." Nothing is ever written to Google.
+
+**Table** (created on start when the owner is `azure`):
+`dbo.owned_sheet(book, sheet, time_zone, grid NVARCHAR(MAX), row_count, version, updated_at, updated_by)`, with primary
+key `(book, sheet)`. Cells are stored as grid JSON, the same format as the read copy: dates are stored as `{"$d": iso}`.
+
+**Import.** On the first start with `SC_OWNER=azure`, Azure copies the programs and audit sheets from Google into
+`dbo.owned_sheet` once. The log shows `[DB] Special Classes imported into Azure SQL and now OWNED there …`. On later
+starts it shows `[DB] Special Classes are OWNED by Azure SQL … v<N>`. Saves and owned reads are refused until the import
+has worked. A database problem is never answered with Google data for an owned sheet, because that data would be stale.
+Instead Special Classes show "not available".
+
+**Reverse bridge** (`src/api/bridge.ts`, `POST /api/bridge`). Apps Script → Azure, using the same secret as the forward
+bridge. The signed text is `"gas." + ts + "." + nonce + "." + p`, so a request in one direction can never be replayed
+in the other.
+
+- Each request is accepted only within 5 minutes of `ts`, and each nonce works only once.
+- Actions:
+  - `scGrid`: returns the programs sheet.
+  - `call`: runs `saveSpecialClass` or `setSpecialClassActive` only, for the given e-mail. **Azure works out the role
+    itself** with the same rules as its sign-in.
+- Refusal codes:
+  - `NOT_OWNER`: Azure is not the owner.
+  - `BAD_SIGNATURE`, `EXPIRED` or `REPLAY`: the request failed the security checks.
+  - `NOT_READY`: the import has not finished yet.
+
+**Apps Script side** (`AzureBridge.gs` r134, Code.gs hooks behind `typeof … === 'function'` guards):
+
+- `scRecords_` → `scAzureOwnedRecords_`, parsed with the same `scParseRow_`.
+- `saveSpecialClass` / `setSpecialClassActive` → `scAzureOwnedSave_`. The local Admin and read-only checks still run
+  first.
+- Loop guard: a save that arrived **from** Azure (session `via: 'azure'`) is refused with "owner settings disagree" and is
+  never sent back to Azure.
+- The Special Classes **settings** (Script Properties) are unchanged and still saved by Apps Script. The settings audit row
+  still goes to the Sheet.
+
+### Switch on (do both together, and make no Special Classes edits in between)
+
+1. Azure App settings: `SC_OWNER` = `azure` → Apply → Restart. Log: `imported into Azure SQL and now OWNED there`.
+2. Apps Script → Project Settings → Script Properties:
+   - `AZURE_DASHBOARD_URL` = `https://aps-dashboard-ap.azurewebsites.net` (no trailing slash).
+   - `SPECIAL_CLASSES_OWNER` = `azure`.
+   - Then Deploy → Manage deployments → edit → **New version** (needed once, for r134).
+3. Check: open Special Classes in both dashboards and confirm they show the same list. Edit one program in the Apps
+   Script dashboard. Azure's log then shows `[SC owner] saveSpecialClass by … stored in Azure SQL`, and the change
+   appears in Azure.
+
+### Switch back (roll back)
+
+1. Apps Script editor: run `ONE_TIME_scCopyAzureToSheet`. It copies Azure's programs into the Sheet.
+2. Delete Script Property `SPECIAL_CLASSES_OWNER`.
+3. Set Azure `SC_OWNER` to empty (or delete it) → Restart.
+
+Audit rows made while Azure owned the programs stay in `dbo.owned_sheet`. Read them in the portal Query editor with
+`SELECT grid FROM dbo.owned_sheet WHERE sheet = 'APS_SPECIAL_CLASSES_AUDIT'`.
+
+### Tests (stage 3)
+
+- `test/classes.parity.test.ts` "Database stage 3" runs real Code.gs in the Apps Script mock next to Azure:
+  - Create, edit and deactivate give the same answers as Code.gs, and validation and read-only refusals are identical.
+  - Audit rows are stored with the Admin's e-mail.
+  - Google is never written.
+  - Versions count up, and a lost race gives the conflict message.
+  - Reverse bridge: `scGrid` and `call` work; replay, wrong secret, expired request, a forward-direction signature,
+    other functions and non-APS e-mails are all refused; a non-Admin is refused by Azure's own role; `NOT_OWNER` when
+    switched off.
+- `test/db.test.ts` checks the owned store's version rules (memory and SQL text), and that owned reads never come from
+  Google and are refused before the import.
+- Apps Script `test/azurereverse.js` (8 checks) uses a fake Azure that verifies the signature:
+  - Owner unset: unchanged behaviour.
+  - Owner `azure`: reads and saves go to Azure, with the e-mail only and the Sheet untouched; Azure's messages pass
+    through; students and BOD are refused locally.
+  - Loop guard; Azure down or misconfigured shows the usual message; the secret is never logged; roll-back helper.
+
+**Not executed here:** a real Azure SQL Database or a real Apps Script ↔ Azure call. The two log lines above prove them on
+the first switch-on.

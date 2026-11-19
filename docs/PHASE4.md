@@ -38,3 +38,20 @@ unlisted functions and non-APS accounts refused at the bridge; no temporary sess
 session → nothing sent; lists identical. `npm test` 49/49, `npm run e2e` 10/10.
 
 **Deploy:** Apps Script `AzureBridge.gs` r132 → Deploy → New version; Azure v0.10.0 via GitHub Actions.
+
+
+## Step 2 — teacher class-card actions + Special Classes owner (v0.13.0, Apps Script r134, 2026-11-18)
+
+**Teacher class-card actions (write-through):** `setLiveStatus`, `setTeacherNotInClassStage`, `setNeedsTechSupportStage`,
+`setTeacherAvailabilityStatus` and `setClassStatusManual` were added to `WRITE_THROUGH` and `AZURE_BRIDGE_CALLS_` (the
+two lists are tested to be identical). A teacher's **Mark Live**, **Teacher NOT in Class**, **Needs Tech Support**,
+availability or class status pressed on Azure runs the real Code.gs function in Apps Script. Apps Script works out the
+teacher's role itself, so a teacher can change only their own classes, exactly as before. Azure's live snapshot is then
+refreshed, so the card changes at once.
+
+**Special Classes:** `saveSpecialClass` and `setSpecialClassActive` are also on both lists. While Apps Script owns them,
+they are forwarded like the others. With `SC_OWNER=azure` they run on Azure against Azure SQL; see
+`docs/DATABASE.md` "Stage 3".
+
+**Deploy:** Apps Script `AzureBridge.gs` + `Code.gs` r134 → Deploy → New version. Azure v0.13.0 is deployed through
+GitHub Actions.

@@ -241,3 +241,11 @@ header is longer, or Code.gs fails quietly in the mock.
   (`liveEmptyPasses`, provided to the copied code) — never write a second one.
 - Live Apps Script dashboard remains production for every user; Azure is not yet announced to users.
 - Still to come: live Meet status (Meet / Reports APIs), the blocked Phase 2 reads, and every write.
+- v0.13.0 (2026-11-18): teacher class-card actions write-through (setLiveStatus, setTeacherNotInClassStage,
+  setNeedsTechSupportStage, setTeacherAvailabilityStatus, setClassStatusManual). Database stage 3: SC_OWNER=azure
+  makes Azure SQL (dbo.owned_sheet, optimistic version) the ONLY owner of the Special Classes programs + audit sheets.
+  saveSpecialClass / setSpecialClassActive run ON AZURE (copied Code.gs, writable SnapWorkbook + dirtySheets, capture in
+  gasRun, src/db/scOwner.ts). Reverse bridge POST /api/bridge (src/api/bridge.ts): Apps Script → Azure, same secret,
+  signed text "gas."+ts+"."+nonce+"."+p, actions scGrid / call (only the 2 SC saves; Azure resolves the role).
+  Apps Script AzureBridge.gs r134: SPECIAL_CLASSES_OWNER=azure + AZURE_DASHBOARD_URL; Code.gs hooks behind typeof guards;
+  loop guard via:'azure'; ONE_TIME_scCopyAzureToSheet = roll back. Never let both owners write: switch both together.
