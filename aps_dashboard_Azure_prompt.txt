@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 9dd3477de055e2ead10dda6e160c4815
+#   Part B md5    : 79ca972fc6fbd22fd806c6976be62b10
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1014,3 +1014,5 @@ header is longer, or Code.gs fails quietly in the mock.
   timetable (src/jobs/scheduler.ts; AZURE_JOBS + Apps Script APS_JOBS_ON_AZURE; bridge action job; dbo.job_lease/job_run;
   Apps Script gate azureJobGate_ in apsRequireTriggerCall_, 5 handler guards, take-over safety net). docs/JOBS.md,
   docs/FINAL_SETUP.md.
+- v0.17.1 (2026-11-20): /healthz + start-up line show the version; reverse-bridge refusals log a reason (never returned).
+  Incident: an old 0.8.2 build was deployed over v0.17.0 at ~05:00 UTC (stale files left); deploy only via GitHub Actions.

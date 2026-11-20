@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-19 (v0.17.0, live class status, settings copy, jobs on Azure's timetable). Complete switch-on list: `docs/FINAL_SETUP.md`. Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-20 (v0.17.1, live class status, settings copy, jobs on Azure's timetable). Complete switch-on list: `docs/FINAL_SETUP.md`. Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -226,6 +226,7 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.17.1 | 2026-11-20 | `/healthz` and the start-up line show the running version (`[Server] APS Dashboard (Azure) v0.17.1 listening …`); a refused reverse-bridge request logs why (`[Bridge] reverse request refused: BAD_REQUEST — chatList: e-mail domain not in APS_ALLOWED_DOMAINS (…)`). **Deploy only through GitHub Actions from the APS-Dashboard-Azure folder** — an old build deployed on 2026-11-20 ~05:00 UTC replaced v0.17.0 |
 | 0.17.0 | 2026-11-19 | Phase 3: live Google Meet class status (from Apps Script), settings copy in Azure SQL; Phase 4 step 1: five repeating jobs on Azure's timetable (`AZURE_JOBS`); `AzureBridge.gs` r137 |
 | 0.16.0 | 2026-11-19 | Phase 3 step 4: chat owned by Azure SQL (`CHAT_OWNER=azure`, `dbo.chat_message`), shared with Apps Script through the reverse bridge (`AzureBridge.gs` r136); Azure's realtime poll now carries the chat version |
 | 0.15.1 | 2026-11-19 | Role lists (SUPERADMIN / ADMIN / HEADMASTER / BOD / On-Call Coordinator …) pasted from a .gs file (single quotes, line breaks, trailing comma, `//` comments) are read; the warning never prints any part of a value |

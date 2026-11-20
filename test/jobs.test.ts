@@ -73,3 +73,14 @@ test('Apps Script r137 (real code): Azure runs a listed job exactly as its trigg
   assert.equal(G.AZURE_JOB_RUN_, null, 'the run marker is cleared');
 });
 function J(x: unknown) { return JSON.parse(JSON.stringify(x)); }
+
+test('v0.17.1: a refused reverse-bridge request logs WHY (never sent back to the caller)', async () => {
+  const { handleReverse, NonceBook, signReverse } = await import('../src/api/bridge');
+  const { testContext, testConfig } = await import('./helpers');
+  const ctx: any = testContext({ cfg: testConfig({ appsScriptBridgeSecret: 'k'.repeat(64), chatOwner: 'azure', scOwner: 'azure' }) }); ctx.chat = { ready: true, list: async () => [] };
+  const mk = (p: any) => { const ps = JSON.stringify(p), ts = String(Date.now()), nonce = crypto.randomUUID(); return { gas: 1, p: ps, ts, nonce, sig: signReverse('k'.repeat(64), ts, nonce, ps) }; };
+  const a = await handleReverse(ctx, new NonceBook(), mk({ action: 'chatList', v: 1, email: 'parent@gmail.com' }));
+  assert.equal(a.body.code, 'BAD_REQUEST'); assert.match(String(a.why), /chatList: e-mail domain not in APS_ALLOWED_DOMAINS \(gmail\.com\)/);
+  assert.ok(!JSON.stringify(a.body).includes('gmail'), 'the reason is not sent back');
+  assert.match(String((await handleReverse(ctx, new NonceBook(), mk({ action: 'nope', v: 1 }))).why), /unknown action \(nope\)/);
+});

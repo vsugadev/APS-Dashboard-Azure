@@ -21,7 +21,7 @@ git commit -m "v0.17.0: live class status, settings copy, jobs on Azure's timeta
 git push
 ```
 
-Wait for the green tick in GitHub Actions. The app restarts by itself.
+Wait for the green tick in GitHub Actions. The app restarts by itself. Check `https://aps-dashboard-ap.azurewebsites.net/healthz`: it must show the version you just pushed. **Deploy only this way.** Never deploy from another folder, a zip, or by re-running an older GitHub Actions run, because that replaces the current version with an old one.
 
 ---
 

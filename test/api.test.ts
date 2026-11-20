@@ -48,7 +48,7 @@ test('Google callback: valid code + fresh state → page carries the session tok
     assert.ok((await (await fetch(s.base + '/?ticket=<script>')).text()).includes('var k = null'), 'bad ticket ignored');
     const cancel = await (await fetch(s.base + '/?error=access_denied')).text();
     assert.match(cancel, /"code":"cancelled"/);
-    const r = await fetch(s.base + '/healthz'); assert.deepEqual(await r.json(), { ok: true, phase: 1 });
+    const r = await fetch(s.base + '/healthz'); assert.deepEqual(await r.json(), { ok: true, phase: 1, version: require('../../package.json').version });
     assert.equal(r.headers.get('x-powered-by'), null); assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   } finally { await s.close(); }
 });

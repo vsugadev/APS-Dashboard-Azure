@@ -47,22 +47,23 @@ export class NonceBook {
   }
 }
 
-type Answer = { status: number; body: Record<string, unknown> };
-const fail = (code: string, status = 400, error?: string): Answer => ({ status, body: error ? { ok: false, code, error } : { ok: false, code } });
+type Answer = { status: number; body: Record<string, unknown>; why?: string };
+/** `why` goes to the App Service log only (v0.17.1) — never to the caller. */
+const fail = (code: string, status = 400, error?: string, why?: string): Answer => ({ status, body: error ? { ok: false, code, error } : { ok: false, code }, why });
 
 export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: any, now: () => number = Date.now): Promise<Answer> {
   const secret = ctx.cfg.appsScriptBridgeSecret;
   if (!secret || secret.length < 32) return fail('NOT_CONFIGURED', 503);
-  if (!body || body.gas !== 1 || typeof body.p !== 'string' || typeof body.ts !== 'string' || typeof body.nonce !== 'string' || typeof body.sig !== 'string') return fail('BAD_REQUEST');
-  if (body.p.length > REVERSE_MAX_P || !/^[0-9a-f]{64}$/.test(body.sig) || !/^[A-Za-z0-9-]{8,64}$/.test(body.nonce)) return fail('BAD_REQUEST');
+  if (!body || body.gas !== 1 || typeof body.p !== 'string' || typeof body.ts !== 'string' || typeof body.nonce !== 'string' || typeof body.sig !== 'string') return fail('BAD_REQUEST', 400, undefined, 'not a reverse-bridge body');
+  if (body.p.length > REVERSE_MAX_P || !/^[0-9a-f]{64}$/.test(body.sig) || !/^[A-Za-z0-9-]{8,64}$/.test(body.nonce)) return fail('BAD_REQUEST', 400, undefined, 'size / signature / nonce format');
   const want = Buffer.from(signReverse(secret, body.ts, body.nonce, body.p), 'hex'), got = Buffer.from(body.sig, 'hex');
   if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return fail('BAD_SIGNATURE', 401);
   const ts = Number(body.ts);
   if (!Number.isFinite(ts) || Math.abs(now() - ts) > REVERSE_WINDOW_MS) return fail('EXPIRED', 401);
   if (!nonces.use(body.nonce)) return fail('REPLAY', 401);
   let p: any;
-  try { p = JSON.parse(body.p); } catch { return fail('BAD_REQUEST'); }
-  if (!p || p.v !== 1) return fail('BAD_REQUEST');
+  try { p = JSON.parse(body.p); } catch { return fail('BAD_REQUEST', 400, undefined, 'p is not JSON'); }
+  if (!p || p.v !== 1) return fail('BAD_REQUEST', 400, undefined, 'version');
   const chatOwned = ctx.cfg.chatOwner === 'azure' && !!ctx.chat;
   const isChat = p.action === 'chatList' || (p.action === 'call' && p.fn === 'postChatMessage');
   // Apps Script thinks Azure owns this module; Azure does not — refuse, never guess
@@ -71,12 +72,12 @@ export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: an
 
   if (p.action === 'chatList' || (p.action === 'call' && p.fn === 'postChatMessage')) {
     const email = normalizeEmail(p.email);
-    if (!isApsEmailAllowed(email, ctx.cfg.allowedDomains)) return fail('BAD_REQUEST');
+    if (!isApsEmailAllowed(email, ctx.cfg.allowedDomains)) return fail('BAD_REQUEST', 400, undefined, p.action + ': e-mail domain not in APS_ALLOWED_DOMAINS (' + (String(email).split('@')[1] || 'none') + ')');
     const role = await resolveRole(ctx, email);
     if (role === null) return fail('NOT_READY', 503);
     try {
       if (p.action === 'chatList') return { status: 200, body: { ok: true, result: { value: role === 'none' ? [] : await ownedChatList(ctx, { email, role }) } } };
-      if (!Array.isArray(p.args)) return fail('BAD_REQUEST');
+      if (!Array.isArray(p.args)) return fail('BAD_REQUEST', 400, undefined, 'postChatMessage: args missing');
       return { status: 200, body: { ok: true, result: { value: await ownedChatPost(ctx, { email, role }, p.args[0]) } } };
     } catch (e) { return { status: 200, body: { ok: true, result: { error: String((e as Error).message || 'Not posted.').slice(0, 300) } } }; }
   }
@@ -87,9 +88,9 @@ export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: an
   }
   if (p.action === 'call') {
     const fn = String(p.fn || ''), args = Array.isArray(p.args) ? p.args : null;
-    if (SC_OWNED_FNS.indexOf(fn) < 0 || !args) return fail('BAD_REQUEST');
+    if (SC_OWNED_FNS.indexOf(fn) < 0 || !args) return fail('BAD_REQUEST', 400, undefined, 'call: function not allowed or args missing (' + fn.slice(0, 40) + ')');
     const email = normalizeEmail(p.email);
-    if (!isApsEmailAllowed(email, ctx.cfg.allowedDomains)) return fail('BAD_REQUEST');
+    if (!isApsEmailAllowed(email, ctx.cfg.allowedDomains)) return fail('BAD_REQUEST', 400, undefined, 'call: e-mail domain not in APS_ALLOWED_DOMAINS (' + (String(email).split('@')[1] || 'none') + ')');
     const role = await resolveRole(ctx, email);
     if (role === null) return fail('NOT_READY', 503);
     if (!role || role === 'none') return { status: 200, body: { ok: true, result: { error: 'You do not have access to manage Special Classes.' } } };
@@ -101,7 +102,7 @@ export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: an
       return { status: 200, body: { ok: true, result: { error: String((e as Error).message || 'Not saved.').slice(0, 500) } } }; // the Code.gs message, shown to the Admin
     } finally { await ctx.sessions.remove(token); }
   }
-  return fail('BAD_REQUEST');
+  return fail('BAD_REQUEST', 400, undefined, 'unknown action (' + String(p.action).slice(0, 30) + ')');
 }
 
 /** The role for an e-mail — decided by AZURE (same rules as its sign-in), never taken from the request. null = data unavailable. */
@@ -117,7 +118,7 @@ export function mountReverseBridge(app: Express, ctx: AppContext, nonces = new N
     let a: Answer;
     try { a = await handleReverse(ctx, nonces, req.body); }
     catch (e) { console.error('[Bridge] reverse call failed: ' + String((e as Error).message).slice(0, 120)); a = fail('ERROR', 500); }
-    if (!a.body.ok) console.warn('[Bridge] reverse request refused: ' + a.body.code);
+    if (!a.body.ok) console.warn('[Bridge] reverse request refused: ' + a.body.code + (a.why ? ' — ' + a.why : ''));
     res.setHeader('Cache-Control', 'no-store');
     res.status(a.status).json(a.body);
   });

@@ -271,3 +271,5 @@ header is longer, or Code.gs fails quietly in the mock.
   timetable (src/jobs/scheduler.ts; AZURE_JOBS + Apps Script APS_JOBS_ON_AZURE; bridge action job; dbo.job_lease/job_run;
   Apps Script gate azureJobGate_ in apsRequireTriggerCall_, 5 handler guards, take-over safety net). docs/JOBS.md,
   docs/FINAL_SETUP.md.
+- v0.17.1 (2026-11-20): /healthz + start-up line show the version; reverse-bridge refusals log a reason (never returned).
+  Incident: an old 0.8.2 build was deployed over v0.17.0 at ~05:00 UTC (stale files left); deploy only via GitHub Actions.

@@ -13,6 +13,8 @@ import { bridgeUsable, bridgeCall, secretFingerprint, AppsScriptLiveSource, Empt
 import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
 import { registerWrites } from './api/endpoints/writes';
 import { mountReverseBridge } from './api/bridge';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const APP_VERSION: string = (() => { try { return String(require(path.join(__dirname, '..', '..', 'package.json')).version || ''); } catch { return ''; } })();
 import { DurableSessionStore, MssqlSessionDb } from './auth/sqlSessions';
 import { ChatOwner, readChatSheet } from './db/chatOwner';
 import { BridgeClassLive } from './live/classLive';
@@ -107,7 +109,8 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
     next();
   });
 
-  app.get('/healthz', (_req, res) => { res.json({ ok: true, phase: 1 }); });
+  // v0.17.1: the running version, so a wrong deployment is seen at once (https://<app>/healthz)
+  app.get('/healthz', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ ok: true, phase: 1, version: APP_VERSION }); });
   app.use(express.static(path.join(__dirname, '..', '..', 'public'), { index: false, maxAge: '10m' }));
 
   const TICKET_RE = /^APS-\d{8}-\d{4,6}$/;
@@ -180,7 +183,7 @@ if (require.main === module) {
   const ctx = createContext(cfg);
   const app = createApp(ctx, page);
   app.listen(cfg.port, () => {
-    console.log(`[Server] APS Dashboard (Azure) listening on ${cfg.port} — data: ${cfg.dataMode}`);
+    console.log(`[Server] APS Dashboard (Azure) v${APP_VERSION} listening on ${cfg.port} — data: ${cfg.dataMode}`);
     void checkGoogleAccess(ctx);
     void checkLiveBridge(ctx);
     if (ctx.sessions instanceof DurableSessionStore) { ctx.sessions.start(); console.log('[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign people out.'); }
