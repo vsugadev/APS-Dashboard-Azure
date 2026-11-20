@@ -524,3 +524,65 @@ test('Database stage 3 (v0.13.0): SC_OWNER=azure — saveSpecialClass / setSpeci
   ctx.cfg = { ...cfg, scOwner: 'apps-script' };
   assert.equal((await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }))).body.code, 'NOT_OWNER');
 });
+
+test('Phase 3 step 4 (v0.16.0): CHAT_OWNER=azure — posts stored in Azure SQL carry the SAME name / class name / role as Code.gs; the list has the same shape; the sheet is copied once; reverse bridge chatList / postChatMessage', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); seedAttendance(F);
+  const C = await import('../src/db/chatOwner');
+  assert.equal(C.CHAT_SHEET_NAME, G.CHAT_SHEET_NAME); assert.equal(C.CHAT_MAX_MESSAGE_LENGTH, G.CHAT_MAX_MESSAGE_LENGTH);
+  assert.equal(C.CHAT_HISTORY_LIMIT, G.CHAT_HISTORY_LIMIT); assert.equal(C.CHAT_RETENTION_DAYS, G.CHAT_RETENTION_DAYS);
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT',
+    chatOwner: 'azure', appsScriptBridgeSecret: 'k'.repeat(64) });
+  const P = Object.getPrototypeOf(F.env.wb.getSheetByName('Courses')); P.getMaxRows = P.getMaxRows || function (this: any) { return Math.max(1000, this.data.length); };
+  P.deleteRows = P.deleteRows || function (this: any, start: number, n: number) { this.data.splice(start - 1, n); return this; }; // Code.gs prunes old chat rows
+  // an old message (11 days) and a recent one already in the sheet → only the recent one is copied
+  G.getOrCreateChatSheet_().appendRow([new Date(Date.now() - 11 * 86400000).toISOString(), 'old@aps.org', 'admin', 'Admin · old', 'too old', '']);
+  G.getOrCreateChatSheet_().appendRow([new Date(Date.now() - 3600000).toISOString(), 'admin@aps.org', 'admin', 'Admin · admin', 'வணக்கம் from the sheet', '']);
+  const { MemoryChatStore } = await import('../src/db/chatStore');
+  const store = new MemoryChatStore();
+  const ctx = testContext({ cfg }); ctx.data = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) }); ctx.live = liveFromMock(F);
+  let told = 0; const logs: string[] = [];
+  ctx.chat = new C.ChatOwner(store, async () => { told++; }, Date.now, (m) => logs.push(m));
+  assert.equal(await ctx.chat.start(() => C.readChatSheet(ctx), 3_600_000), true); ctx.chat.stop();
+  assert.match(logs.join('\n'), /OWNED by Azure SQL .* 1 message\(s\) of the last 10 days copied/);
+  const reg = (await import('../src/server')).buildRegistry();
+  G.getGoogleProfileName_ = () => null;
+  const v0 = ctx.chat.version();
+  // the same post through Code.gs (sheet) and through Azure (owned) → identical fields except the time
+  for (const [email, role] of [['admin@aps.org', 'admin'], ['sa0_aps6650@avvaiyarpadasalai.org', 'student']] as [string, string][]) {
+    const text = '  Class at 6:30 today — ' + role + '  ';
+    const gas = J(G.postChatMessage(F.tok(email, role), text));
+    const az: any = await reg.call(ctx, 'postChatMessage', [await ctx.sessions.create({ email, role }), text]);
+    assert.ok(az.ok, JSON.stringify(az));
+    const strip = (m: any) => ({ email: m.email, role: m.role, name: m.name, message: m.message, className: m.className });
+    assert.deepEqual(strip(az.ok[az.ok.length - 1]), strip(gas[gas.length - 1]), role + ': same name / class / trimmed message');
+    assert.deepEqual(Object.keys(az.ok[0]).sort(), Object.keys(gas[0]).sort(), 'same fields');
+  }
+  assert.notEqual(ctx.chat.version(), v0, 'version changed → open pages reload the chat'); assert.equal(told, 2, 'Apps Script told after each post');
+  const shown: any = await reg.call(ctx, 'getChatMessages', [await ctx.sessions.create({ email: 'admin@aps.org', role: 'admin' })]);
+  assert.deepEqual(shown.ok.map((m: any) => m.message), ['வணக்கம் from the sheet', 'Class at 6:30 today — admin', 'Class at 6:30 today — student']);
+  // same refusals as Code.gs
+  const tk = await ctx.sessions.create({ email: 'admin@aps.org', role: 'admin' });
+  assert.equal(((await reg.call(ctx, 'postChatMessage', [tk, '   '])) as any).err, 'Message is empty.');
+  const long: any = await reg.call(ctx, 'postChatMessage', [tk, 'x'.repeat(2500)]); assert.equal(long.ok[long.ok.length - 1].message.length, 2000);
+  // the realtime snapshot carries Azure's chat version (Code.gs reads chatVersion_)
+  const snap: any = await reg.call(ctx, 'getRealtimeStatusSnapshot', [tk]);
+  assert.ok(snap.ok, JSON.stringify(snap).slice(0, 200)); assert.equal(snap.ok.chatVersion, ctx.chat.version());
+  // reverse bridge
+  const { handleReverse, NonceBook, signReverse } = await import('../src/api/bridge');
+  const crypto = await import('crypto'); const nonces = new NonceBook(); const sec = 'k'.repeat(64);
+  const mk = (p: any) => { const ps = JSON.stringify(p), ts = String(Date.now()), nonce = crypto.randomUUID(); return { gas: 1, p: ps, ts, nonce, sig: signReverse(sec, ts, nonce, ps) }; };
+  const apsAdmin = 'chatadmin@avvaiyarpadasalai.org'; ctx.cfg = { ...cfg, adminEmails: cfg.adminEmails.concat([apsAdmin]) };
+  const r1 = await handleReverse(ctx, nonces, mk({ action: 'chatList', v: 1, email: apsAdmin }));
+  assert.equal((r1.body.result as any).value.length, 4);
+  const r2 = await handleReverse(ctx, nonces, mk({ action: 'call', v: 1, fn: 'postChatMessage', args: ['from Apps Script'], email: apsAdmin }));
+  const posted = (r2.body.result as any).value; assert.equal(posted[posted.length - 1].message, 'from Apps Script'); assert.equal(posted[posted.length - 1].name, 'Admin · chatadmin');
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'chatList', v: 1, email: 'x@evil.example' }))).body.code, 'BAD_REQUEST');
+  ctx.cfg = { ...cfg, chatOwner: 'apps-script' };
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'chatList', v: 1, email: apsAdmin }))).body.code, 'NOT_OWNER');
+  ctx.cfg = { ...cfg }; // still owner for Special Classes? no — SC unaffected:
+  assert.equal((await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }))).body.code, 'NOT_OWNER', 'Special Classes ownership is separate');
+});

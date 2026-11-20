@@ -131,6 +131,8 @@ export interface RuntimeDeps {
   isRosterHiddenStaffEmail_: (email: unknown) => boolean;
   apsTabAllowed_: (role: string, key: string) => boolean;
   isOnCallCoordinatorEmail_: (email: unknown) => boolean;
+  /** v0.16.0: the chat version when Azure SQL owns the chat (else '' — Code.gs's fallback). */
+  chatVersion?: string;
 }
 
 /** Every property key the copied code asked for in this process ('S:' Script, 'U:' User) — tests use it to prove each
@@ -220,7 +222,7 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     classMeetApplyLive_: () => null,
     // Chat is not on Azure yet: a constant version (Code.gs's own fallback value) so the realtime poll never asks the page
     // to reload a chat it cannot load here.
-    chatVersion_: () => '',
+    chatVersion_: () => d.chatVersion || '', // v0.16.0: the real version when Azure SQL owns the chat (src/db/chatOwner.ts)
     // v0.13.0: Code.gs takes the script lock around a Special Classes save. On Azure the save endpoint already runs one
     // save at a time (src/db/scOwner.ts) and the database refuses a stale write (version check), so the lock is a formality.
     LockService: { getScriptLock: () => noLock, getDocumentLock: () => noLock, getUserLock: () => noLock },

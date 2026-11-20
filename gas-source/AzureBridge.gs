@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -135,6 +135,7 @@ function azureBridgeDoPost_(body) {
     else if (req.action === 'heartbeat') out = { ok: true, result: azureBridgeHeartbeats_(req) }; // r131
     else if (req.action === 'call') out = { ok: true, result: azureBridgeCall_(req) }; // r132
     else if (req.action === 'result') out = { ok: true, result: azureBridgeJobResult_(req) }; // r135
+    else if (req.action === 'chatChanged') { chatChanged_(); out = { ok: true, result: { changed: true } }; } // r136: a message was posted on Azure
     else throw portalErr_('BAD_REQUEST', 'Unknown action.');
   } catch (err) {
     out = { ok: false, code: err && err.portalCode || 'ERROR', message: err && err.portalCode ? String(err.message) : 'The APS Dashboard could not complete this request.' };
@@ -378,4 +379,59 @@ function ONE_TIME_scCopyAzureToSheet() {
   scInvalidate_();
   console.log('Copied ' + (values.length - 1) + ' Special Classes (Azure version ' + r.version + ') into ' + name + '. Now remove SPECIAL_CLASSES_OWNER here and SC_OWNER in Azure.');
   return { ok: true, rows: values.length - 1, version: r.version };
+}
+
+/* ==========================================================================
+ *  r136 — CHAT OWNED BY AZURE SQL (Azure Phase 3 step 4)
+ * --------------------------------------------------------------------------
+ *  Switch: Script Property CHAT_OWNER = azure (together with the Azure app setting CHAT_OWNER=azure). Unset → nothing
+ *  here runs; the chat works exactly as before (Dashboard_Chat_Window sheet).
+ *  When on: getChatMessages / postChatMessage read and post through the reverse bridge (azureReverseCall_, r134) — the
+ *  messages live in Azure SQL, so both dashboards show one conversation. The list is cached under the usual
+ *  CHAT_CACHE_KEY_ (10 minutes) and chatChanged_() still mints the version the page reloads on: called after a post here,
+ *  and by Azure (signed forward action "chatChanged") after a post made on Azure.
+ *  Loop guard: a post that came FROM Azure (session via 'azure') is refused — the owners disagree.
+ * ========================================================================== */
+var CHAT_AZURE_OWNER_PROP_ = 'CHAT_OWNER';
+function chatAzureOwner_() {
+  try { return String(PropertiesService.getScriptProperties().getProperty(CHAT_AZURE_OWNER_PROP_) || '').trim().toLowerCase() === 'azure'; }
+  catch (e) { return false; }
+}
+var CHAT_AZURE_UNAVAILABLE_MSG_ = 'The chat is not available right now. Please try again in a minute.';
+function chatAzureCall_(payload) {
+  try { return azureReverseCall_(payload); }
+  catch (e) { throw new Error(CHAT_AZURE_UNAVAILABLE_MSG_); } // azureReverseCall_ already logged the short reason
+}
+/** getChatMessages when Azure owns the chat (the session was checked by the caller). */
+function chatAzureList_(session) {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(CHAT_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) { /* ask Azure */ }
+  var v0 = chatVersion_();
+  var r = chatAzureCall_({ action: 'chatList', v: 1, email: session.email });
+  if (r && typeof r.error === 'string') throw new Error(r.error);
+  var out = (r && Array.isArray(r.value)) ? r.value : [];
+  try { var json = JSON.stringify(out); if (Utilities.newBlob(json).getBytes().length < 95000 && chatVersion_() === v0) cache.put(CHAT_CACHE_KEY_, json, 600); } catch (eP) { /* next call asks again */ }
+  return out;
+}
+/** postChatMessage when Azure owns the chat: Azure checks the person, works out name / class and stores it. */
+function chatAzurePost_(sessionToken, session, message) {
+  if (scSessionViaAzure_(sessionToken)) throw new Error('Chat owner settings disagree (Apps Script CHAT_OWNER=azure, but Azure CHAT_OWNER is not azure). Ask an Admin to set both the same — nothing was posted.');
+  var r = chatAzureCall_({ action: 'call', v: 1, fn: 'postChatMessage', args: [message], email: session.email });
+  chatChanged_();
+  if (r && typeof r.error === 'string') throw new Error(r.error);
+  return (r && Array.isArray(r.value)) ? r.value : [];
+}
+/** Owner only (editor): roll-back helper — writes Azure's chat (last 10 days, newest 200) into the Dashboard_Chat_Window
+ *  sheet before CHAT_OWNER is switched back, so recent messages are not lost. */
+function ONE_TIME_chatCopyAzureToSheet() {
+  apsRequireOwnerOrTrigger_(null);
+  var me = normalizeEmail_(Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail());
+  var r = chatAzureCall_({ action: 'chatList', v: 1, email: me });
+  var list = (r && Array.isArray(r.value)) ? r.value : [];
+  var sheet = getOrCreateChatSheet_(), last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, Math.max(6, sheet.getLastColumn())).clearContent();
+  if (list.length) sheet.getRange(2, 1, list.length, 6).setValues(list.map(function (m) { return [m.timestamp, m.email, m.role, m.name, m.message, m.className || '']; }));
+  chatChanged_();
+  console.log('Copied ' + list.length + ' chat message(s) from Azure into ' + CHAT_SHEET_NAME + '. Now remove CHAT_OWNER here and in Azure.');
+  return { ok: true, messages: list.length };
 }

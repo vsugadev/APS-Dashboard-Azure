@@ -24,6 +24,8 @@ export interface AppContext {
   /** Phase 3 step 2: heartbeats of Azure's own signed-in users → Apps Script (presence + Last Login DB). Optional (tests). */
   heartbeat?: HeartbeatSink;
   sessions: SessionStore;
+  /** v0.16.0: chat owned by Azure SQL (CHAT_OWNER=azure) — absent otherwise. */
+  chat?: import('../db/chatOwner').ChatOwner;
   google: GoogleAuth;
   nonces: StateNonces;
 }

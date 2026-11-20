@@ -33,6 +33,7 @@ const FEATURES = {
   live: ['getRealtimeStatusSnapshot', 'applyRosterHiddenStaffFilter_', 'applyLivePresence_', 'applyLastLogin_', 'applyStudentOnboardedFlag_', 'applyClassStatus_', 'getOnCallTeachers_', 'getRosterHiddenStaffVisible_', 'classesAlwaysShowEmail_', 'getPresenceMap_', 'getLastLoginMap_', 'normalizeLastLoginEntry_', 'summarizeLastLogin_', 'apsBigJson_', 'apsBigSetSafe_', 'getClassStatusOverrideMap_', 'computeAutomaticClassStatus_', 'formatLastLoginTimestamp_', 'classesAlwaysShowEmails_', 'apsBigSet_', 'apcEncodeRaw_', 'apcValIn_', 'apcT_', 'apsClassLiveBoxesForViewer_', 'apsViewerScope_', 'apsRecentActivity_', 'apsScopeById_', 'getLiveMap_', 'getTeacherNotInClassMap_', 'getNeedsTechSupportMap_', 'apsScopeByEmail_', 'apsClassLiveBox_', 'apsAllViewRole_', 'apsCoursesMemoGen_', 'getViewerContext_', 'getRealtimeAvailabilityMap_', 'getExternalActivityRealtimeMap_', 'classAccessFor_', 'classRolesLabel_'],
   // v0.13.0 — database stage 3: Special Classes programs owned by Azure SQL; the Code.gs save functions run on Azure
   // against a WRITABLE snapshot of the programs + audit sheets, which Azure then stores (src/db/scOwner.ts).
+  chat: ['chatDisplayName_', 'findClassNamesForViewer_'], // v0.16.0: chat owned by Azure SQL (src/db/chatOwner.ts)
   scOwner: ['saveSpecialClass', 'setSpecialClassActive', 'scValidate_', 'scAudit_', 'scSafeCell_', 'scInvalidate_'],
   country: ['applyUserCountry_', 'getUserCountryMap_', 'ucLegacyMap_', 'ucMap_', 'ucRows_', 'ucSheet_', 'ucPref_', 'apsCountryOn_'],
 };

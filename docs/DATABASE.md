@@ -152,3 +152,8 @@ the first switch-on.
 `dbo.app_session` holds the Azure dashboard's sign-ins, as SHA-256 token hashes only. See `docs/PHASE3.md` step 3. To
 sign everyone out of the Azure dashboard at once, run `DELETE FROM dbo.app_session;` in the Query editor and then
 Restart.
+
+## Chat table (v0.16.0)
+
+`dbo.chat_message`: id, created_at, email, role, name, message, class_name. It is used only when `CHAT_OWNER=azure`; see
+`docs/PHASE3.md` step 4. To read it: `SELECT TOP 50 created_at, name, message FROM dbo.chat_message ORDER BY id DESC;`

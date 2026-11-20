@@ -84,6 +84,7 @@ export async function gasRun<T>(ctx: AppContext, session: { email: string; role:
       isRosterHiddenStaffEmail_: (e: unknown) => { const n = G.normalizeEmail_(e); return !!n && !!hidden[n]; },
       apsTabAllowed_: (r: string, key: string) => apsTabAllowed(r, key, ov),
       isOnCallCoordinatorEmail_: (e: unknown) => isOnCallCoordinator(ctx.cfg, e),
+      chatVersion: ctx.chat && ctx.chat.ready ? ctx.chat.version() : '',
     },
   }, fn);
 }

@@ -260,3 +260,8 @@ header is longer, or Code.gs fails quietly in the mock.
   opts out. Redis not needed at this size.
 - v0.15.1 (2026-11-19): config parseList also reads .gs-style lists (single quotes, line breaks, trailing comma, // comments;
   plain quoted strings only — jsStyleList); warnings never print any part of the value.
+- v0.16.0 (2026-11-19): Phase 3 step 4 — chat owned by Azure SQL (CHAT_OWNER=azure; dbo.chat_message; src/db/chatOwner.ts,
+  chatStore.ts). Same answers as Code.gs (name/class from copied chatDisplayName_/findClassNamesForViewer_); version
+  "v<maxId>.<minId>" → runtime chatVersion_ (Azure realtime poll now reloads chat); forward action chatChanged tells
+  Apps Script; reverse bridge chatList + call postChatMessage; per-module NOT_OWNER. Apps Script r136: CHAT_OWNER prop,
+  guarded hooks in getChatMessages/postChatMessage, ONE_TIME_chatCopyAzureToSheet.

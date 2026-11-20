@@ -16,6 +16,7 @@ import { NOT_ON_AZURE } from '../registry';
 import { requireSession } from '../../app/context';
 import { bridgeCall, bridgeUsable, type FetchLike } from '../../live/liveSource';
 import { SC_OWNED_FNS, scOwnedByAzure, runOwnedSave } from '../../db/scOwner';
+import { ownedChatList, ownedChatPost } from '../../db/chatOwner';
 
 export const WRITE_THROUGH: string[] = [
   // v0.10.0 Admin settings; v0.13.0 teacher class-card actions + Special Classes; v0.14.0 every remaining dashboard action
@@ -74,6 +75,8 @@ function registerThrough(reg: Registry, name: string, isWrite: boolean, fetchImp
   reg.register(name, async (ctx, args) => {
     const s = await requireSession(ctx, args[0]);
     if (isWrite && SC_OWNED_FNS.indexOf(name) > -1 && scOwnedByAzure(ctx)) return runOwnedSave(ctx, s, String(args[0]), name, args.slice(1)); // stage 3
+    if (ctx.cfg.chatOwner === 'azure' && name === 'getChatMessages') return ownedChatList(ctx, s); // v0.16.0: chat owned by Azure SQL
+    if (ctx.cfg.chatOwner === 'azure' && name === 'postChatMessage') return ownedChatPost(ctx, s, args[1]);
     if (!ctx.cfg.writeThroughEnabled || !bridgeUsable(ctx.cfg)) throw new Error(NOT_ON_AZURE + name);
     const rest = args.slice(1);
     if (JSON.stringify(rest).length > (UPLOAD_FNS.indexOf(name) > -1 ? MAX_UPLOAD_TEXT : MAX_ARGS_TEXT)) throw new Error('This is too large to send in one go (files must be smaller than the limit shown on the screen).');

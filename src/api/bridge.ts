@@ -11,7 +11,8 @@
  *
  * Actions (p = JSON):
  *   { action: "scGrid", v: 1 }                               → the owned programs sheet (dates as {"$d": iso})
- *   { action: "call", v: 1, fn, args, email }                → saveSpecialClass / setSpecialClassActive ONLY, for that
+ *   { action: "chatList", v: 1, email }                      → v0.16.0 (CHAT_OWNER=azure): the chat, as getChatMessages
+ *   { action: "call", v: 1, fn, args, email }                → saveSpecialClass / setSpecialClassActive, postChatMessage ONLY, for that
  *                                                             e-mail. AZURE decides the role itself (same rules as
  *                                                             sign-in) — the role is never taken from the request.
  * Answers { ok: true, result } or { ok: false, code } (+ `error`: the Code.gs message for a refused save). Never the
@@ -24,6 +25,7 @@ import { normalizeEmail, isApsEmailAllowed } from '../lib/email';
 import { roleFromLists, getViewerRoleForEmail } from '../auth/roles';
 import { encodeGrid } from '../db/sheetStore';
 import { SC_OWNED_FNS, scOwnedByAzure, runOwnedSave, ownedProgramsGrid } from '../db/scOwner';
+import { ownedChatList, ownedChatPost } from '../db/chatOwner';
 
 export const REVERSE_WINDOW_MS = 5 * 60_000;
 export const REVERSE_MAX_P = 100_000;
@@ -61,7 +63,23 @@ export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: an
   let p: any;
   try { p = JSON.parse(body.p); } catch { return fail('BAD_REQUEST'); }
   if (!p || p.v !== 1) return fail('BAD_REQUEST');
-  if (!scOwnedByAzure(ctx)) return fail('NOT_OWNER', 409); // Apps Script thinks Azure owns them; Azure does not — refuse, never guess
+  const chatOwned = ctx.cfg.chatOwner === 'azure' && !!ctx.chat;
+  const isChat = p.action === 'chatList' || (p.action === 'call' && p.fn === 'postChatMessage');
+  // Apps Script thinks Azure owns this module; Azure does not — refuse, never guess
+  if (isChat ? ctx.cfg.chatOwner !== 'azure' : !scOwnedByAzure(ctx)) return fail('NOT_OWNER', 409);
+  if (isChat && !chatOwned) return fail('NOT_READY', 503);
+
+  if (p.action === 'chatList' || (p.action === 'call' && p.fn === 'postChatMessage')) {
+    const email = normalizeEmail(p.email);
+    if (!isApsEmailAllowed(email, ctx.cfg.allowedDomains)) return fail('BAD_REQUEST');
+    const role = await resolveRole(ctx, email);
+    if (role === null) return fail('NOT_READY', 503);
+    try {
+      if (p.action === 'chatList') return { status: 200, body: { ok: true, result: { value: role === 'none' ? [] : await ownedChatList(ctx, { email, role }) } } };
+      if (!Array.isArray(p.args)) return fail('BAD_REQUEST');
+      return { status: 200, body: { ok: true, result: { value: await ownedChatPost(ctx, { email, role }, p.args[0]) } } };
+    } catch (e) { return { status: 200, body: { ok: true, result: { error: String((e as Error).message || 'Not posted.').slice(0, 300) } } }; }
+  }
 
   if (p.action === 'scGrid') {
     try { const g = await ownedProgramsGrid(ctx); return { status: 200, body: { ok: true, result: { grid: encodeGrid(g.values), timeZone: g.timeZone, version: g.version } } }; }
@@ -72,11 +90,8 @@ export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: an
     if (SC_OWNED_FNS.indexOf(fn) < 0 || !args) return fail('BAD_REQUEST');
     const email = normalizeEmail(p.email);
     if (!isApsEmailAllowed(email, ctx.cfg.allowedDomains)) return fail('BAD_REQUEST');
-    let role = roleFromLists(ctx.cfg, email);
-    if (!role) {
-      try { const [courses, configured] = await Promise.all([ctx.data.readCourses(), ctx.data.readConfiguredUserRoles()]); role = getViewerRoleForEmail(ctx.cfg, email, courses, configured).role; }
-      catch { return fail('NOT_READY', 503); }
-    }
+    const role = await resolveRole(ctx, email);
+    if (role === null) return fail('NOT_READY', 503);
     if (!role || role === 'none') return { status: 200, body: { ok: true, result: { error: 'You do not have access to manage Special Classes.' } } };
     const token = await ctx.sessions.create({ email, role });
     try {
@@ -87,6 +102,14 @@ export async function handleReverse(ctx: AppContext, nonces: NonceBook, body: an
     } finally { await ctx.sessions.remove(token); }
   }
   return fail('BAD_REQUEST');
+}
+
+/** The role for an e-mail — decided by AZURE (same rules as its sign-in), never taken from the request. null = data unavailable. */
+async function resolveRole(ctx: AppContext, email: string): Promise<string | null> {
+  const listed = roleFromLists(ctx.cfg, email);
+  if (listed) return listed;
+  try { const [courses, configured] = await Promise.all([ctx.data.readCourses(), ctx.data.readConfiguredUserRoles()]); return getViewerRoleForEmail(ctx.cfg, email, courses, configured).role; }
+  catch { return null; }
 }
 
 export function mountReverseBridge(app: Express, ctx: AppContext, nonces = new NonceBook()): void {

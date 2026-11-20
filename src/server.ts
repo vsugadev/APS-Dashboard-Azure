@@ -9,11 +9,13 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
-import { bridgeUsable, secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
+import { bridgeUsable, bridgeCall, secretFingerprint, AppsScriptLiveSource, EmptyLiveSource, FixtureLiveSource } from './live/liveSource';
 import { BridgeHeartbeat, NoopHeartbeat } from './live/heartbeat';
 import { registerWrites } from './api/endpoints/writes';
 import { mountReverseBridge } from './api/bridge';
 import { DurableSessionStore, MssqlSessionDb } from './auth/sqlSessions';
+import { ChatOwner, readChatSheet } from './db/chatOwner';
+import { MssqlChatStore } from './db/chatStore';
 import { DbBackedDataSource } from './db/dbData';
 import { MssqlSheetStore } from './db/sheetStore';
 import { startDatabase } from './db/start';
@@ -52,7 +54,12 @@ export function createContext(cfg: AppConfig): AppContext {
   const sessions = data instanceof DbBackedDataSource && cfg.sessionStore === 'sql'
     ? new DurableSessionStore(new MssqlSessionDb(() => (data.storeRef() as unknown as MssqlSheetStore).connectPool()), cfg.sessionTtlSeconds)
     : new MemorySessionStore(cfg.sessionTtlSeconds);
-  return { cfg, data, live, heartbeat, sessions, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+  // Phase 3 step 4 (v0.16.0): chat owned by Azure SQL; a post made here tells Apps Script (forward bridge "chatChanged").
+  const chat = data instanceof DbBackedDataSource && cfg.chatOwner === 'azure'
+    ? new ChatOwner(new MssqlChatStore(() => (data.storeRef() as unknown as MssqlSheetStore).connectPool()),
+        async () => { if (bridgeUsable(cfg)) await bridgeCall(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret, { action: 'chatChanged', v: 1 }, fetch as unknown as FetchLike, Date.now, 15_000).catch((e: unknown) => console.warn('[Chat] Apps Script not told about the new message: ' + String((e as Error).message).slice(0, 40))); })
+    : undefined;
+  return { cfg, data, live, heartbeat, sessions, chat, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
 }
 
 /** Start-up self-check of the Apps Script live-data bridge (Phase 3): key counts only, never names' values. */
@@ -171,6 +178,7 @@ if (require.main === module) {
     void checkGoogleAccess(ctx);
     void checkLiveBridge(ctx);
     if (ctx.sessions instanceof DurableSessionStore) { ctx.sessions.start(); console.log('[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign people out.'); }
+    if (ctx.chat) void ctx.chat.start(() => readChatSheet(ctx));
     if (ctx.data instanceof DbBackedDataSource) void startDatabase(ctx, ctx.data.storeRef(), ctx.data, cfg.dbSyncMinutes * 60_000);
   });
 }

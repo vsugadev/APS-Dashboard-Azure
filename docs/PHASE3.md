@@ -152,3 +152,80 @@ because since v0.14.0 every real function is on Azure.
 
 **Not executed here:** against the real Azure SQL. The start-up log line above, and staying signed in across the next
 Restart, prove it.
+
+
+## Step 4 — chat owned by Azure SQL (v0.16.0, Apps Script r136, 2026-11-19)
+
+**What changes when you switch it on.** The chat lives in Azure SQL table `dbo.chat_message` instead of the
+`Dashboard_Chat_Window` sheet. Both dashboards read and post there, so everyone sees one conversation. The switches are
+Azure app setting `CHAT_OWNER=azure` and Apps Script Script Property `CHAT_OWNER=azure`. Leave both unset to keep the
+chat exactly as before.
+
+**Azure** (`src/db/chatOwner.ts`, `src/db/chatStore.ts`):
+
+- `getChatMessages` and `postChatMessage` answer like Code.gs:
+  - The same message fields: timestamp, email, role, name, message, className.
+  - The newest 200 messages of the last 10 days.
+  - Messages are trimmed and cut at 2 000 characters, and the error messages are the same.
+  - The display name and class name come from the copied `chatDisplayName_` / `findClassNamesForViewer_`.
+- **Chat version** (what makes open pages reload the chat): `v<newest id>.<oldest id>`.
+  - It's refreshed every 10 s and straight after a post.
+  - Azure's realtime poll now carries it, so on Azure the chat badge and new messages update by themselves. Until now
+    Azure's version was always empty.
+- After a post on Azure, Azure tells Apps Script with the signed forward action `chatChanged`. Apps Script then clears
+  its chat cache and mints a new version straight away.
+- Messages older than 10 days are deleted hourly.
+- **First start:** the sheet's messages from the last 10 days are copied in once, and only when the table is empty.
+  The log shows `[Chat] chat is now OWNED by Azure SQL … N message(s) … copied`.
+
+**Reverse bridge** (`/api/bridge`, same signing as Special Classes):
+
+- New action `chatList` `{ email }`, and `call` now also accepts `postChatMessage`.
+- Azure works out the person's role itself, and only an APS e-mail is accepted.
+- Each module has its own owner check: `NOT_OWNER` comes back when Azure isn't the owner of **that** module.
+
+**Apps Script** (`AzureBridge.gs` r136, plus two guarded hooks in Code.gs `getChatMessages` / `postChatMessage`):
+
+- `chatAzureList_` asks Azure for the list and keeps it in the usual `CHAT_CACHE_KEY_` cache.
+- `chatAzurePost_` posts through Azure, then calls `chatChanged_()`.
+- The forward action `chatChanged` is accepted only when signed.
+- Loop guard: a post that arrived from Azure is refused ("owner settings disagree").
+- `ONE_TIME_chatCopyAzureToSheet` is the roll-back helper.
+
+### Switch on (both together)
+
+1. Azure App settings: `CHAT_OWNER` = `azure` → Apply → Restart. The log shows `[Chat] chat is now OWNED by Azure SQL …`.
+2. Apps Script: deploy `Code.gs` + `AzureBridge.gs` r136 (Deploy → New version), then Script Property `CHAT_OWNER` = `azure`.
+   `AZURE_DASHBOARD_URL` is already set from Special Classes.
+3. Check: post on one dashboard and see the message on the other. On Apps Script it can take until its next realtime
+   poll (about 45–90 s).
+
+**Switch back:**
+
+1. Run `ONE_TIME_chatCopyAzureToSheet`.
+2. Delete Script Property `CHAT_OWNER`.
+3. Clear Azure `CHAT_OWNER` and Restart.
+
+**Tests:**
+
+- `test/classes.parity.test.ts` "Phase 3 step 4" (real Code.gs in the mock):
+  - The same post through Code.gs and through Azure gives the same name, class name, role and trimmed message, for an
+    Admin and for a student.
+  - The list has the same fields; the copy is made once and only the last 10 days are copied.
+  - The version changes after a post, Apps Script is told after each post, and the realtime snapshot carries the version.
+  - The empty-message and 2 000-character rules match.
+  - Reverse bridge: `chatList` and `postChatMessage` work; a non-APS e-mail is refused; `NOT_OWNER` when switched off;
+    Special Classes ownership stays separate.
+- `test/chat.test.ts`:
+  - The import runs only when the table is empty; the newest 200 are shown; pruning works; the version changes.
+  - Database down shows "not available".
+  - SQL: the table is created once and values only go in as parameters.
+- Apps Script `test/chatazure.js`, 6 checks:
+  - Owner unset: unchanged behaviour.
+  - Owner `azure`: the list and posts go to Azure (e-mail only) and the sheet is untouched; Azure's messages pass through.
+  - A signed `chatChanged` clears the cache and changes the version; an unsigned one is refused.
+  - Loop guard; Azure down shows the message; the secret is never logged; roll-back helper.
+
+`npm test` 70/70.
+
+**Not executed:** the real Azure SQL and a real Apps Script ↔ Azure call. The `[Chat]` log line and a test post prove them.

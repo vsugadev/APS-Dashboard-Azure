@@ -3372,6 +3372,7 @@ function getChatMessages(sessionToken) {
   var session = requireValidSession_(sessionToken);
   var viewer = { email: session.email, role: session.role };
   if (viewer.role === 'none') return [];
+  if (typeof chatAzureOwner_ === 'function' && chatAzureOwner_()) return chatAzureList_(session); // r136: chat owned by Azure SQL (AzureBridge.gs)
   // r96: served from CacheService (cleared on every post / prune) — no spreadsheet open per poll
   var cache = CacheService.getScriptCache();
   try { var hit = cache.get(CHAT_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (eC) { /* read the sheet */ }
@@ -3427,6 +3428,7 @@ function postChatMessage(sessionToken, text) {
   if (viewer.role === 'none') {
     throw new Error('Only a recognized admin, headmaster, teacher, or student can post in the chat.');
   }
+  if (typeof chatAzureOwner_ === 'function' && chatAzureOwner_()) return chatAzurePost_(sessionToken, session, message); // r136
 
   var name = chatDisplayName_(viewer, courses);
   var className = findClassNamesForViewer_(courses, viewer); // e.g. student/teacher's own Classroom class name(s)
