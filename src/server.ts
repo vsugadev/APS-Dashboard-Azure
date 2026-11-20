@@ -15,6 +15,9 @@ import { registerWrites } from './api/endpoints/writes';
 import { mountReverseBridge } from './api/bridge';
 import { DurableSessionStore, MssqlSessionDb } from './auth/sqlSessions';
 import { ChatOwner, readChatSheet } from './db/chatOwner';
+import { BridgeClassLive } from './live/classLive';
+import { MssqlLiveMirror } from './db/liveMirror';
+import { JobScheduler, MssqlJobStore, bridgeJobRunner, parseJobList } from './jobs/scheduler';
 import { MssqlChatStore } from './db/chatStore';
 import { DbBackedDataSource } from './db/dbData';
 import { MssqlSheetStore } from './db/sheetStore';
@@ -48,7 +51,9 @@ export function createContext(cfg: AppConfig): AppContext {
   // Database pilot (v0.11.0): Special Classes read from Azure SQL when SQL_SERVER + SQL_DATABASE are set (else Google Sheets only).
   const data = cfg.dataMode === 'sheets' && cfg.sqlServer && cfg.sqlDatabase ? new DbBackedDataSource(sheetsData, new MssqlSheetStore(cfg.sqlServer, cfg.sqlDatabase)) : sheetsData;
   const live = cfg.dataMode === 'fixture' ? FixtureLiveSource.fromFile(cfg.fixturePath)
-    : bridgeUsable(cfg) ? new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new EmptyLiveSource();
+    : bridgeUsable(cfg) ? (data instanceof DbBackedDataSource
+      ? new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret).useMirror(new MssqlLiveMirror(() => (data.storeRef() as unknown as MssqlSheetStore).connectPool())) // v0.17.0 settings copy
+      : new AppsScriptLiveSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)) : new EmptyLiveSource();
   const heartbeat = cfg.dataMode !== 'fixture' && cfg.heartbeatEnabled && bridgeUsable(cfg) ? new BridgeHeartbeat(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : new NoopHeartbeat();
   // Phase 3 step 1 (v0.15.0): sign-ins kept in Azure SQL (same connection pool) so restarts / deploys / a second instance keep them.
   const sessions = data instanceof DbBackedDataSource && cfg.sessionStore === 'sql'
@@ -59,7 +64,8 @@ export function createContext(cfg: AppConfig): AppContext {
     ? new ChatOwner(new MssqlChatStore(() => (data.storeRef() as unknown as MssqlSheetStore).connectPool()),
         async () => { if (bridgeUsable(cfg)) await bridgeCall(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret, { action: 'chatChanged', v: 1 }, fetch as unknown as FetchLike, Date.now, 15_000).catch((e: unknown) => console.warn('[Chat] Apps Script not told about the new message: ' + String((e as Error).message).slice(0, 40))); })
     : undefined;
-  return { cfg, data, live, heartbeat, sessions, chat, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+  const classLive = cfg.dataMode !== 'fixture' && cfg.classLiveEnabled && bridgeUsable(cfg) ? new BridgeClassLive(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : undefined;
+  return { cfg, data, live, heartbeat, sessions, chat, classLive, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
 }
 
 /** Start-up self-check of the Apps Script live-data bridge (Phase 3): key counts only, never names' values. */
@@ -179,6 +185,14 @@ if (require.main === module) {
     void checkLiveBridge(ctx);
     if (ctx.sessions instanceof DurableSessionStore) { ctx.sessions.start(); console.log('[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign people out.'); }
     if (ctx.chat) void ctx.chat.start(() => readChatSheet(ctx));
+    { // Phase 4 step 1 (v0.17.0): repeating jobs on Azure's timetable (AZURE_JOBS + Apps Script APS_JOBS_ON_AZURE)
+      const jobs = parseJobList(cfg.jobsOnAzure);
+      if (jobs.unknown.length) console.warn('[Jobs] AZURE_JOBS names not known (ignored): ' + jobs.unknown.join(', '));
+      if (jobs.on.length && ctx.data instanceof DbBackedDataSource && bridgeUsable(cfg)) {
+        const db = ctx.data;
+        new JobScheduler(jobs.on, new MssqlJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), bridgeJobRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)).start();
+      } else if (jobs.on.length) console.warn('[Jobs] AZURE_JOBS is set but Azure SQL or the Apps Script bridge is not — no job runs on Azure (Apps Script keeps running them).');
+    }
     if (ctx.data instanceof DbBackedDataSource) void startDatabase(ctx, ctx.data.storeRef(), ctx.data, cfg.dbSyncMinutes * 60_000);
   });
 }

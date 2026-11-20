@@ -26,6 +26,8 @@ export interface AppContext {
   sessions: SessionStore;
   /** v0.16.0: chat owned by Azure SQL (CHAT_OWNER=azure) — absent otherwise. */
   chat?: import('../db/chatOwner').ChatOwner;
+  /** v0.17.0: live Google Meet class status from Apps Script (absent = schedule-based status only). */
+  classLive?: import('../live/classLive').ClassLiveSource;
   google: GoogleAuth;
   nonces: StateNonces;
 }

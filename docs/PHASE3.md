@@ -229,3 +229,56 @@ chat exactly as before.
 `npm test` 70/70.
 
 **Not executed:** the real Azure SQL and a real Apps Script ↔ Azure call. The `[Chat]` log line and a test post prove them.
+
+
+## Step 5 — live Google Meet class status on Azure (v0.17.0, Apps Script r137)
+
+**Why:** class cards on Azure only showed the schedule-based status. The live status needs the Meet audit log and Meet
+REST APIs, which the Azure service account isn't approved for yet.
+
+**How:**
+
+- Azure asks Apps Script for the **result**: signed bridge action `classLive`, about once every 30 s for the whole app,
+  not per person (`src/live/classLive.ts`).
+- For each class whose live status applies right now, Apps Script returns the `{ code, detail }` that its own
+  `classMeetApplyLive_` produces, plus who is in that class's Meet.
+- The copied Code.gs `applyClassStatus_` uses this exactly where Code.gs uses its own (runtime `classMeetApplyLive_`).
+  So the label, colour, "Teacher joined 6:31 PM · 12 students joined" and the green "in Meet" dots match the Apps Script
+  dashboard.
+- Manual Cancelled / Rescheduled still win, as in Code.gs.
+- If the bridge fails, Azure keeps the last answer for up to 5 minutes, then falls back to the schedule-based status
+  (as before). It logs `[Live] live Google Meet status not available …` at most every 5 minutes.
+- App setting `AZURE_CLASS_LIVE=off` turns this off.
+- Native later: when the service account gets the Meet / Admin Reports scopes, `classMeetLiveSnapshot_` can run on Azure
+  itself (same runtime hook).
+
+**Tests:** `test/classlive.test.ts`:
+
+- The source asks once per 30 s, keeps a stale answer for at most 5 minutes, drops bad entries, and logs at most every
+  5 minutes.
+- `applyClassLive` follows the same contract as Code.gs.
+- The copied `applyClassStatus_` with Apps Script's result gives the code, detail, label, colour and in-Meet dots; without
+  it, the result is as before.
+- The real AzureBridge.gs `classLive` action is signed, skips manual Cancelled, and never forces a refresh.
+
+## Step 6 — settings copy in Azure SQL (v0.17.0)
+
+**Decision: Apps Script keeps owning the live settings until go-live.** These are the Script / User Properties: online
+now, last login, Live / TNIC / NTS, class status overrides and toggles. Apps Script reads and writes them on every
+dashboard visit. Moving the owner now would mean an Apps Script → Azure call per visit, far over Apps Script's daily
+UrlFetch quota. The owner moves in Phase 6, when Apps Script stops serving people.
+
+**What v0.17.0 adds** (`src/db/liveMirror.ts`, table `dbo.live_props`): Azure keeps a **copy**.
+
+- After a good bridge snapshot, at most once a minute, it stores the allow-listed snapshot: only what the bridge already
+  sends, never a secret.
+- After a restart while Apps Script isn't answering, Azure starts from that copy (up to 30 minutes old) instead of showing
+  nobody online. The log says
+  `[Live] Apps Script bridge failed after a restart — using the settings copy from Azure SQL (N min old)`.
+- At go-live, this copy is the starting data of the Azure-owned settings.
+
+**Tests:** `test/classlive.test.ts`, "settings copy":
+
+- Saved at most once a minute; only allow-listed keys are stored.
+- Used after a restart only when 30 minutes old or less.
+- SQL: the table is created once; values are parameters.

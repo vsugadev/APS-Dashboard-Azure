@@ -265,3 +265,9 @@ header is longer, or Code.gs fails quietly in the mock.
   "v<maxId>.<minId>" → runtime chatVersion_ (Azure realtime poll now reloads chat); forward action chatChanged tells
   Apps Script; reverse bridge chatList + call postChatMessage; per-module NOT_OWNER. Apps Script r136: CHAT_OWNER prop,
   guarded hooks in getChatMessages/postChatMessage, ONE_TIME_chatCopyAzureToSheet.
+- v0.17.0 (2026-11-19): Phase 3 steps 5–6 + Phase 4 step 1. Live Meet class status from Apps Script (bridge action
+  classLive → runtime classMeetApplyLive_/classMeetLiveSnapshot_; src/live/classLive.ts; AZURE_CLASS_LIVE). Settings COPY in
+  Azure SQL dbo.live_props (src/db/liveMirror.ts; owner stays Apps Script until go-live — UrlFetch quota). Jobs on Azure's
+  timetable (src/jobs/scheduler.ts; AZURE_JOBS + Apps Script APS_JOBS_ON_AZURE; bridge action job; dbo.job_lease/job_run;
+  Apps Script gate azureJobGate_ in apsRequireTriggerCall_, 5 handler guards, take-over safety net). docs/JOBS.md,
+  docs/FINAL_SETUP.md.

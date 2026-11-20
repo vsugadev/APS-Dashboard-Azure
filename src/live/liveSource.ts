@@ -53,6 +53,12 @@ export class AppsScriptLiveSource implements LiveSource {
   private lastError = '';
   private lastLogged = 0;
   constructor(private url: string, private secret: string, private fetchImpl: FetchLike = fetch as unknown as FetchLike, private now: () => number = Date.now) {}
+  /** v0.17.0: optional copy in Azure SQL (src/db/liveMirror.ts) — saved once a minute, used after a restart while the bridge fails. */
+  private mirror: import('../db/liveMirror').LiveMirrorStore | null = null;
+  private lastSaved = 0;
+  private triedMirror = false;
+  private fromMirror = false;
+  useMirror(m: import('../db/liveMirror').LiveMirrorStore): this { this.mirror = m; return this; }
 
   private stale = false;
   status() { return { ok: !!this.last && this.last.ok, at: this.last ? this.last.at : 0, error: this.lastError }; }
@@ -63,11 +69,20 @@ export class AppsScriptLiveSource implements LiveSource {
     const t = this.now();
     if (this.last && !this.stale && t - this.last.at < LIVE_TTL_MS) return copy(this.last);
     if (!this.inflight) this.inflight = this.fetchOnce().finally(() => { this.inflight = null; });
-    try { this.last = await this.inflight; this.lastError = ''; this.stale = false; return copy(this.last); }
+    try {
+      this.last = await this.inflight; this.lastError = ''; this.stale = false; this.fromMirror = false;
+      if (this.mirror && this.last.at - this.lastSaved >= 60_000) { this.lastSaved = this.last.at; const m = this.mirror, snap = { script: this.last.script, user: this.last.user }; m.save(snap, this.last.at).catch((e) => console.warn('[Live] settings copy not saved in Azure SQL: ' + String((e as Error).message).slice(0, 80))); }
+      return copy(this.last);
+    }
     catch (e) {
+      if (!this.last && this.mirror && !this.triedMirror) { // restarted while Apps Script does not answer: start from the copy in Azure SQL
+        this.triedMirror = true;
+        try { const c = await this.mirror.load(); if (c && t - c.at <= 30 * 60_000) { this.last = { script: { ...c.props.script }, user: { ...c.props.user }, at: c.at, ok: true }; this.fromMirror = true; console.warn('[Live] Apps Script bridge failed after a restart — using the settings copy from Azure SQL (' + Math.round((t - c.at) / 60000) + ' min old).'); } }
+        catch { /* no copy */ }
+      }
       this.lastError = String((e as Error).message || e).slice(0, 120);
       if (t - this.lastLogged > 60_000) { this.lastLogged = t; console.warn('[Live] Apps Script bridge failed: ' + this.lastError + (this.last && t - this.last.at < LIVE_STALE_MAX_MS ? ' — using the last snapshot' : ' — live data empty')); }
-      if (this.last && t - this.last.at < LIVE_STALE_MAX_MS) return copy(this.last);
+      if (this.last && t - this.last.at < (this.fromMirror ? 30 * 60_000 : LIVE_STALE_MAX_MS)) return copy(this.last);
       return { script: {}, user: {} };
     }
   }

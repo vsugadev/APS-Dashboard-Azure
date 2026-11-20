@@ -10,6 +10,7 @@
  *  - PropertiesService: Apps Script's live Script / User Properties (allow-listed, never secrets) under the plain App
  *    Service settings; a write stays in the request only (in memory, like a sheet created in memory).
  */
+import { applyClassLive } from '../live/classLive';
 import { Utilities } from './utilities';
 import type { SheetGrid, WorkbookKey, ValuesRequest } from '../data/types';
 
@@ -133,6 +134,8 @@ export interface RuntimeDeps {
   isOnCallCoordinatorEmail_: (email: unknown) => boolean;
   /** v0.16.0: the chat version when Azure SQL owns the chat (else '' — Code.gs's fallback). */
   chatVersion?: string;
+  /** v0.17.0: live Google Meet status worked out by Apps Script (src/live/classLive.ts); null = schedule-based only. */
+  classLive?: import('../live/classLive').ClassLive | null;
 }
 
 /** Every property key the copied code asked for in this process ('S:' Script, 'U:' User) — tests use it to prove each
@@ -218,8 +221,9 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     apsDashboardUrl_: () => (d.settings.APS_DASHBOARD_URL || 'https://www.avvaiyarpadasalai.org'),
     // Live Google Meet status (Code.gs fetches it with the Meet / Reports APIs under a script lock and keeps it in
     // Apps Script's cache) is not on Azure yet: these throw, Code.gs's own catch then uses the schedule-based status.
-    classMeetLiveSnapshot_: () => { throw new Error('Live Meet status is not on Azure yet.'); },
-    classMeetApplyLive_: () => null,
+    // v0.17.0: when Apps Script's answer is available (classLive), applyClassStatus_ uses it exactly where Code.gs uses its own.
+    classMeetLiveSnapshot_: () => { if (!d.classLive) throw new Error('Live Meet status is not on Azure yet.'); return { at: d.classLive.at, byCourse: {} }; },
+    classMeetApplyLive_: (c: unknown) => (d.classLive ? applyClassLive(d.classLive, c) : null),
     // Chat is not on Azure yet: a constant version (Code.gs's own fallback value) so the realtime poll never asks the page
     // to reload a chat it cannot load here.
     chatVersion_: () => d.chatVersion || '', // v0.16.0: the real version when Azure SQL owns the chat (src/db/chatOwner.ts)

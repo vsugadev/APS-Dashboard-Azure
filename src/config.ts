@@ -46,7 +46,9 @@ export interface AppConfig {
   sqlDatabase: string;                // SQL_DATABASE — database name (free offer, serverless)
   sessionStore: 'sql' | 'memory';     // AZURE_SESSION_STORE — v0.15.0: 'sql' (default when SQL_SERVER + SQL_DATABASE are set) keeps sign-ins across restarts; 'memory' = as before
   scOwner: 'azure' | 'apps-script';
-  chatOwner: 'azure' | 'apps-script'; // CHAT_OWNER — v0.16.0: 'azure' = Azure SQL OWNS the chat (dbo.chat_message); default apps-script   // SC_OWNER — v0.13.0 database stage 3: 'azure' = Azure SQL OWNS Special Classes (programs + audit); default apps-script
+  chatOwner: 'azure' | 'apps-script';
+  classLiveEnabled: boolean;
+  jobsOnAzure: string;                // AZURE_JOBS — v0.17.0: comma list of Apps Script job handlers run on Azure's timetable (src/jobs/scheduler.ts)          // AZURE_CLASS_LIVE (default on) — v0.17.0: live Google Meet class status from Apps Script // CHAT_OWNER — v0.16.0: 'azure' = Azure SQL OWNS the chat (dbo.chat_message); default apps-script   // SC_OWNER — v0.13.0 database stage 3: 'azure' = Azure SQL OWNS Special Classes (programs + audit); default apps-script
   dbSyncMinutes: number;              // DB_SYNC_MINUTES — how often Special Classes are copied into the database (default 5, 1–60)       // AZURE_WRITE_THROUGH (default on; "off" = Saves answer "not on Azure yet") — write phase          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
@@ -154,6 +156,8 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     sqlDatabase: String(env.SQL_DATABASE || '').trim(),
     dbSyncMinutes: Math.min(60, Math.max(1, Math.floor(Number(env.DB_SYNC_MINUTES) || 5))), // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
     sessionStore: String(env.AZURE_SESSION_STORE || '').trim().toLowerCase() === 'memory' ? 'memory' : 'sql',
+    jobsOnAzure: String(env.AZURE_JOBS || '').trim(),
+    classLiveEnabled: String(env.AZURE_CLASS_LIVE || 'on').trim().toLowerCase() !== 'off',
     chatOwner: String(env.CHAT_OWNER || '').trim().toLowerCase() === 'azure' ? 'azure' : 'apps-script',
     scOwner: String(env.SC_OWNER || '').trim().toLowerCase() === 'azure' ? 'azure' : 'apps-script',
     devLogin: env.DEV_LOGIN === '1',

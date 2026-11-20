@@ -1,7 +1,7 @@
 # APS Dashboard on Azure — Guide
 
 *Avvaiyar Padasalai · ஔவையார் பாடசாலை — the Azure version of the APS Classroom Dashboard.*
-*Last updated: 2026-11-19 (v0.16.0, chat can be owned by Azure SQL). Keep this guide updated with every Azure change.*
+*Last updated: 2026-11-19 (v0.17.0, live class status, settings copy, jobs on Azure's timetable). Complete switch-on list: `docs/FINAL_SETUP.md`. Keep this guide updated with every Azure change.*
 
 The **live dashboard is still the Apps Script web app** — every teacher, student and admin keeps using it.
 The Azure version is being built beside it, one screen at a time, and reads the **same Google Sheets**, so both always
@@ -86,6 +86,8 @@ az webapp restart -g rg-aps-dashboard -n aps-dashboard-ap
 | `SQL_SERVER`, `SQL_DATABASE`, `DB_SYNC_MINUTES` | optional | Azure SQL database (Special Classes) — `docs/DATABASE.md` |
 | `AZURE_SESSION_STORE` | optional | Empty = sign-ins kept in Azure SQL when the database is set (v0.15.0); `memory` = as before (a restart signs everyone out) |
 | `CHAT_OWNER` | optional | `azure` = Azure SQL owns the chat (v0.16.0) — set together with Apps Script Script Property `CHAT_OWNER=azure`; empty = the sheet (default) |
+| `AZURE_CLASS_LIVE` | optional | Default on: live Google Meet class status from Apps Script (v0.17.0); `off` = schedule-based status only |
+| `AZURE_JOBS` | optional | Apps Script job handlers run on Azure's timetable (v0.17.0) — set together with Script Property `APS_JOBS_ON_AZURE`; see `docs/JOBS.md` |
 | `SC_OWNER` | optional | `azure` = Azure SQL OWNS Special Classes (stage 3) — set together with Apps Script Script Property `SPECIAL_CLASSES_OWNER=azure`; empty = Apps Script owns them (default) |
 | `APS_SCHOOL_LEAVE_ENABLED`, `APS_COUNTRY_FEATURE`, `APS_ENVIRONMENT`, `TCC_CLEANUP_GRACE_MINUTES`, `APS_CLASS_TEACHER_AVAILABILITY_*`, `ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS`, `APS_GRADING_TEAM_EMAILS`, `APS_CLASSES_ALWAYS_SHOW_EMAILS` | optional | Same meaning as in Apps Script; unset = Apps Script default |
 
@@ -174,6 +176,8 @@ az webapp log tail -g rg-aps-dashboard -n aps-dashboard-ap
 | `[DB] SC_OWNER=azure: Special Classes could not be imported: …` (v0.13.0) | Database not reachable at start, or the programs sheet missing — fix as the message says, then Restart; Special Classes show "not available" until then |
 | `[Config] "ADMIN_EMAILS" is written with single quotes …` (v0.15.1) | The value was pasted from a .gs file. It is read, but store it as JSON (`["a@x.org","b@x.org"]`, double quotes) when you next change it |
 | `[Config] "ADMIN_EMAILS" is not a list Azure can read …` | The value is not a plain list — those people do NOT get that role on Azure. Key Vault → Secrets → that secret → New Version → `["a@x.org","b@x.org"]`; Restart |
+| `[Jobs] <handler> ran on Azure's timetable: FAILED — NOT_ON_AZURE …` (v0.17.0) | Add the handler to Apps Script Script Property `APS_JOBS_ON_AZURE` (Apps Script keeps running it meanwhile) |
+| `[Live] live Google Meet status not available from Apps Script (BAD_REQUEST)` | Deploy `AzureBridge.gs` r137 |
 | `[Chat] CHAT_OWNER=azure: the chat table could not be prepared: …` (v0.16.0) | Database problem at start — fix as the message says, then Restart; the chat shows "not available" until then |
 | `[Chat] Apps Script not told about the new message: …` | The forward bridge failed once; Apps Script users see the message after its cache expires (≤ 10 min) — check `[Live]` lines |
 | `[Sessions] a sign-in could not be … in Azure SQL (…)` (v0.15.0) | Database slow (waking up) or unreachable — sign-ins still work on this server; fix the database (see `[DB]` lines) so they survive the next restart |
@@ -222,6 +226,7 @@ Project folders: `src/` (Azure app), `src/gas/` (copied Code.gs code — generat
 | 0.5.0 | 2026-11-11 | Phase 2 step 4: Active Directory (Directory Search, role-tiered); one shared set of live-data passes for every screen |
 | 0.6.0 | 2026-11-11 | Phase 2 step 5: Attendance tab reads (7, read-only); on-demand sheet loading; Sheets advanced service (read) |
 | 0.7.0 | 2026-11-11 | Phase 2 step 6: 62 remaining read-only calls; Special Classes / Zoho sync spreadsheets opened read-only by ID; number format no-op |
+| 0.17.0 | 2026-11-19 | Phase 3: live Google Meet class status (from Apps Script), settings copy in Azure SQL; Phase 4 step 1: five repeating jobs on Azure's timetable (`AZURE_JOBS`); `AzureBridge.gs` r137 |
 | 0.16.0 | 2026-11-19 | Phase 3 step 4: chat owned by Azure SQL (`CHAT_OWNER=azure`, `dbo.chat_message`), shared with Apps Script through the reverse bridge (`AzureBridge.gs` r136); Azure's realtime poll now carries the chat version |
 | 0.15.1 | 2026-11-19 | Role lists (SUPERADMIN / ADMIN / HEADMASTER / BOD / On-Call Coordinator …) pasted from a .gs file (single quotes, line breaks, trailing comma, `//` comments) are read; the warning never prints any part of a value |
 | 0.15.0 | 2026-11-19 | Phase 3 step 3: lasting sign-ins — sessions kept in Azure SQL (`dbo.app_session`, token hashes only) behind a memory cache; restarts / deploys / a second instance no longer sign people out; `AZURE_SESSION_STORE=memory` |

@@ -157,3 +157,9 @@ Restart.
 
 `dbo.chat_message`: id, created_at, email, role, name, message, class_name. It is used only when `CHAT_OWNER=azure`; see
 `docs/PHASE3.md` step 4. To read it: `SELECT TOP 50 created_at, name, message FROM dbo.chat_message ORDER BY id DESC;`
+
+## Tables added in v0.17.0
+
+- `dbo.live_props`: one row holding the copy of Apps Script's allow-listed live settings (`docs/PHASE3.md` step 6).
+- `dbo.job_lease` and `dbo.job_run`: the job timetable's lease and run log (`docs/JOBS.md`). To see recent runs:
+  `SELECT TOP 20 handler, started_at, finished_at, ok, summary FROM dbo.job_run ORDER BY id DESC;`

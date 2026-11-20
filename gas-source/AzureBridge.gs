@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -135,6 +135,8 @@ function azureBridgeDoPost_(body) {
     else if (req.action === 'heartbeat') out = { ok: true, result: azureBridgeHeartbeats_(req) }; // r131
     else if (req.action === 'call') out = { ok: true, result: azureBridgeCall_(req) }; // r132
     else if (req.action === 'result') out = { ok: true, result: azureBridgeJobResult_(req) }; // r135
+    else if (req.action === 'job') out = { ok: true, result: azureBridgeRunJob_(req) }; // r137
+    else if (req.action === 'classLive') out = { ok: true, result: azureBridgeClassLive_() }; // r137
     else if (req.action === 'chatChanged') { chatChanged_(); out = { ok: true, result: { changed: true } }; } // r136: a message was posted on Azure
     else throw portalErr_('BAD_REQUEST', 'Unknown action.');
   } catch (err) {
@@ -434,4 +436,99 @@ function ONE_TIME_chatCopyAzureToSheet() {
   chatChanged_();
   console.log('Copied ' + list.length + ' chat message(s) from Azure into ' + CHAT_SHEET_NAME + '. Now remove CHAT_OWNER here and in Azure.');
   return { ok: true, messages: list.length };
+}
+
+/* ==========================================================================
+ *  r137 — LIVE GOOGLE MEET CLASS STATUS FOR AZURE (action "classLive", read only)
+ * --------------------------------------------------------------------------
+ *  The live status needs the Meet audit log / Meet REST APIs this project already uses. Azure asks for the RESULT
+ *  (once per ~30 s for the whole Azure app): for each class whose live status applies right now, the same
+ *  { code, detail } classMeetApplyLive_ gives applyClassStatus_ here, plus who is in that class's Meet.
+ *  Uses the cached snapshot (classMeetLiveSnapshot_ refreshes at most every 45–120 s, never forced) and COPIES of the
+ *  started / ended marks: this action stores nothing itself (the snapshot keeps its own diagnostic, at most every
+ *  5 minutes, exactly as on any dashboard visit).
+ * ========================================================================== */
+function azureBridgeClassLive_() {
+  var courses = JSON.parse(JSON.stringify(readAllCoursesFromCache_() || [])), now = new Date(), props = PropertiesService.getScriptProperties();
+  var snap = classMeetLiveSnapshot_(courses, now, false) || { at: 0, byCourse: {} };
+  var started = {}, ended = {};
+  try { started = JSON.parse(props.getProperty(CLASS_STARTED_MARK_PROP_KEY) || '{}'); } catch (e1) { started = {}; }
+  try { ended = JSON.parse(props.getProperty(CLASS_MEET_ENDED_PROP_KEY) || '{}'); } catch (e2) { ended = {}; }
+  var override = getClassStatusOverrideMap_(), cache = CacheService.getScriptCache(), out = {};
+  courses.forEach(function (c) {
+    var o = override[c.id];
+    if (o && (o.status === 'cancelled' || o.status === 'rescheduled')) return; // manual status wins (Azure reads it too)
+    var schedule = parseCourseSchedule_(c.name);
+    if (!computeAutomaticClassStatus_(schedule, now, false).scheduledStartIso) return;
+    var live = null;
+    try { live = classMeetApplyLive_(c, schedule, now, snap, cache, started, ended); } catch (eOne) { live = null; }
+    if (!live) return;
+    var inMeet = [];
+    (c.teachers || []).concat(c.students || []).forEach(function (p) { if (p && p.inMeet) inMeet.push({ e: normalizeEmail_(p.email), since: String(p.meetSince || '') }); });
+    out[String(c.id)] = { code: live.code, detail: live.detail, inMeet: inMeet };
+  });
+  return { at: snap.at || 0, byCourse: out };
+}
+
+/* ==========================================================================
+ *  r137 — JOBS ON AZURE'S TIMETABLE (Azure Phase 4 step 1)
+ * --------------------------------------------------------------------------
+ *  The five repeating jobs that decide for themselves what is due (every run is safe to repeat):
+ *    apsWeeklyJobs (hourly — the 7 weekly jobs), amScheduler (hourly), processTemporaryTeacherAssignments (hourly),
+ *    apsCoverageCleanup (30 min), processExamQuestionPaperAutoEmail (5 min).
+ *  Switch, per job: Script Property APS_JOBS_ON_AZURE = comma list of those handler names, together with the Azure app
+ *  setting AZURE_JOBS (same names). Then:
+ *   - Azure calls the job here (signed action "job") on its timetable; the job runs exactly as from its trigger.
+ *   - The Apps Script trigger of that job does nothing ("ON_AZURE") — no double run, nothing deleted.
+ *   - Safety net: if Azure has not run a listed job for its fallback time (below), the Apps Script trigger runs it again
+ *     (and logs why) — a job never stops because one side is misconfigured or down.
+ *   - A job NOT listed here is refused when Azure asks (NOT_ON_AZURE) — Azure can never run a job Apps Script still runs.
+ *  Runs answering with a Promise (the exam auto-email) are collected with the r135 "result" action.
+ * ========================================================================== */
+var AZURE_JOB_HANDLERS_ = { apsWeeklyJobs: 180, amScheduler: 180, processTemporaryTeacherAssignments: 180, apsCoverageCleanup: 90, processExamQuestionPaperAutoEmail: 30 }; // fallback minutes
+var AZURE_JOB_LAST_PREFIX_ = 'APS_AZURE_JOB_LAST_';
+var AZURE_JOB_RUN_ = null; // { handler, runId } — set ONLY while azureBridgeRunJob_ runs a job (after the signature check)
+function azureJobsOnAzure_() {
+  var o = {};
+  try { String(PropertiesService.getScriptProperties().getProperty('APS_JOBS_ON_AZURE') || '').split(/[\s,]+/).forEach(function (h) { if (h && AZURE_JOB_HANDLERS_[h]) o[h] = true; }); } catch (e) { o = {}; }
+  return o;
+}
+/** Called first by apsRequireTriggerCall_: 'AZURE_RUN' = this is Azure's run; 'ON_AZURE' = the trigger should skip; '' = as before. */
+function azureJobGate_(e, handler) {
+  if (e && e.azureJob && AZURE_JOB_RUN_ && AZURE_JOB_RUN_.handler === handler && AZURE_JOB_RUN_.runId === e.azureJob) return 'AZURE_RUN';
+  if (!AZURE_JOB_HANDLERS_[handler] || !(e && e.triggerUid) || !azureJobsOnAzure_()[handler]) return '';
+  var uid = String(e.triggerUid), real = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === handler && String(t.getUniqueId()) === uid; });
+  if (!real) return ''; // not its own trigger → the usual check refuses it
+  var last = Number(PropertiesService.getScriptProperties().getProperty(AZURE_JOB_LAST_PREFIX_ + handler) || 0);
+  if (Date.now() - last <= AZURE_JOB_HANDLERS_[handler] * 60000) return 'ON_AZURE';
+  console.warn('[AzureJobs] ' + handler + ' is set to run on Azure, but Azure has not run it for ' + AZURE_JOB_HANDLERS_[handler] + ' minutes — running it here (check the Azure log / AZURE_JOBS).');
+  return '';
+}
+/** Signed action "job" { handler, runId }: runs one listed job exactly as its trigger would. */
+function azureBridgeRunJob_(req) {
+  var handler = String(req.handler || ''), runId = String(req.runId || ''), g = globalThis;
+  if (!AZURE_JOB_HANDLERS_[handler] || typeof g[handler] !== 'function' || !/^[0-9a-f-]{8,64}$/i.test(runId)) throw portalErr_('BAD_REQUEST', 'This job cannot be run from Azure.');
+  if (!azureJobsOnAzure_()[handler]) throw portalErr_('NOT_ON_AZURE', handler + ' still runs on its Apps Script trigger (add it to Script Property APS_JOBS_ON_AZURE).');
+  PropertiesService.getScriptProperties().setProperty(AZURE_JOB_LAST_PREFIX_ + handler, String(Date.now()));
+  AZURE_JOB_RUN_ = { handler: handler, runId: runId };
+  var started = Date.now();
+  try {
+    var v = g[handler]({ azureJob: runId });
+    if (v && typeof v.then === 'function') {
+      var job = Utilities.getUuid().replace(/-/g, '');
+      azureBridgeJobPut_(job, { email: 'azure-job', state: 'PENDING' });
+      v.then(function (x) { azureBridgeJobPut_(job, { email: 'azure-job', state: 'DONE', value: azureJobSummary_(x) }); },
+             function (err) { azureBridgeJobPut_(job, { email: 'azure-job', state: 'DONE', error: azureBridgeSafeMsg_(err) }); });
+      return { pending: job };
+    }
+    console.log('[AzureJobs] ' + handler + ' ran for Azure in ' + Math.round((Date.now() - started) / 1000) + ' s');
+    return { value: azureJobSummary_(v) };
+  } catch (e) {
+    console.error('[AzureJobs] ' + handler + ' failed: ' + azureBridgeSafeMsg_(e));
+    return { error: azureBridgeSafeMsg_(e) };
+  } finally { AZURE_JOB_RUN_ = null; } // the gate is checked at the very start of the job, so the run is already allowed
+}
+/** A short, safe summary of what the job returned (counts / skipped reasons — never message bodies or lists of people). */
+function azureJobSummary_(x) {
+  try { var t = JSON.stringify(x === undefined ? null : x); return t.length > 2000 ? t.slice(0, 2000) + '…' : t; } catch (e) { return String(x).slice(0, 200); }
 }

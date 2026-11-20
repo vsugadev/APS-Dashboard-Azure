@@ -13515,7 +13515,7 @@ function examQpAutoEmailText_(d) {
 }
 /** Time trigger (every 5 minutes while a published paper is upcoming). */
 function processExamQuestionPaperAutoEmail(e) {
-  apsRequireTriggerCall_(e, EXAM_QP_AUTO_.HANDLER);
+  if (apsRequireTriggerCall_(e, EXAM_QP_AUTO_.HANDLER) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r137
   // r104 / r123: the Teacher Copy email first (it never blocks the student fallback), then the student fallback on a fresh clock.
   return Promise.resolve().then(function () { return examQpTeacherCopyEmailRun_(new Date()); })
     .catch(function (eT) { console.error('[ExamQP teacher copy] ' + (eT && eT.message)); return null; })
@@ -14531,6 +14531,7 @@ var APS_TRIGGER_CHECK_KEY_ = 'apsTriggersChecked_v5'; // v5 (r117): one apsWeekl
 function apsDailySyncEnabled_() { return String(rosterProp_('APS_DAILY_SYNC_ENABLED', 'true')).trim().toLowerCase() !== 'false'; }
 function apsDailySyncHour_() { var h = Number(rosterProp_('APS_DAILY_SYNC_HOUR', '17')); return h >= 0 && h <= 23 && Math.floor(h) === h ? h : 17; }
 function apsRequireTriggerCall_(e, handler) {
+  if (typeof azureJobGate_ === 'function') { var gate = azureJobGate_(e, handler); if (gate) return gate; } // r137: 'AZURE_RUN' (Azure's timetable) / 'ON_AZURE' (skip — Azure runs it)
   var uid = e && e.triggerUid ? String(e.triggerUid) : '';
   var ok = !!uid && ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === handler && String(t.getUniqueId()) === uid; });
   if (!ok) throw new Error('Access denied.');
@@ -19173,7 +19174,7 @@ function tccEnsureCleanupTrigger_() {
 }
 /** Time-driven trigger (every 30 min, only while a cleanup is pending). Refused unless called by its own trigger. */
 function apsCoverageCleanup(e) {
-  apsRequireTriggerCall_(e, TCC_CLEANUP_HANDLER_);
+  if (apsRequireTriggerCall_(e, TCC_CLEANUP_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r137
   return tccRunCleanup_(new Date());
 }
 function tccRunCleanup_(now) {
@@ -23350,7 +23351,7 @@ function amRunWeekly_(now, opts) {
 }
 /** Hourly trigger: student reminders every hour; teacher Action emails from teacherDailyHour; weekly summaries on Monday from weeklyHour. */
 function amScheduler(e) {
-  apsRequireTriggerCall_(e, AM_SCHED_HANDLER_);
+  if (apsRequireTriggerCall_(e, AM_SCHED_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r137
   if (apsLeaveSkip_('ASSIGNMENT_MONITORING', new Date())) return { skipped: 'SKIPPED_SCHOOL_LEAVE' }; // r110
   return amSchedulerRun_(new Date());
 }
@@ -24117,7 +24118,7 @@ function cancelTempTeacherAssignment(sessionToken, req) {
 /* ---------- scheduler ---------- */
 /** Hourly (installed only while an open assignment exists). Idempotent: every step is decided from the stored status under the lock. */
 function processTemporaryTeacherAssignments(e) {
-  apsRequireTriggerCall_(e, TTM_HANDLER_);
+  if (apsRequireTriggerCall_(e, TTM_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r137
   return ttmProcess_(new Date());
 }
 var TTM_MAX_AUTO_REMOVE_ATTEMPTS_ = 24; // r100: ~1 day of hourly retries, then Admin uses "Remove Temp Teacher Now"
@@ -27573,7 +27574,7 @@ function wjRun_(now, by, opts) {
 }
 
 /* ---------- trigger management ---------- */
-function apsWeeklyJobs(e) { apsRequireTriggerCall_(e, WJ_HANDLER_); return wjRun_(new Date(), 'trigger', {}); }
+function apsWeeklyJobs(e) { if (apsRequireTriggerCall_(e, WJ_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; /* r137 */ return wjRun_(new Date(), 'trigger', {}); }
 /** True when the hourly scheduler is installed (an old per-job trigger then does nothing). */
 function wjOwns_() { try { return ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === WJ_HANDLER_; }); } catch (e) { return false; } }
 /** An absorbed per-job trigger fired after the move: remove the old trigger(s) and do nothing. */
