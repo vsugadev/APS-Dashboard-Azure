@@ -150,6 +150,14 @@ runs it again and logs `[AzureJobs] … running it here`.
 1. Azure: `DB_COPY` = `main,attendance` → Apply. Log line: `[DB] Spreadsheet "main" copied to Azure SQL — … checked identical`.
 2. After two weeks with no mismatches (queries in `docs/PHASE5.md`), set `DB_READS` = `main` → Apply.
 
+### 5.7 Email sent by Azure (Phase 4 step 3, v0.19.0)
+
+Google project: **APS Dashboard Azure** (not the `sys-…` Apps Script projects). Gmail API enabled; delegation entry
+for the Azure Client ID includes `https://www.googleapis.com/auth/gmail.send` (§6).
+1. Azure: `AZURE_MAIL` = `on`, `MAIL_TEST_TO` = your own APS address → Apply (restarts).
+2. Log: `[Mail] Azure can send as donotreply@…` then `[Mail] test email sent to …`. Check the inbox.
+3. **Delete `MAIL_TEST_TO`** → Apply. Leave `AZURE_MAIL=on`. No job sends from Azure yet. Details: `docs/MAIL.md`.
+
 ### 5.5 Settings copy: automatic
 
 The `dbo.live_props` row refreshes every minute. To check:
@@ -168,7 +176,7 @@ account's client ID → add the scopes:
 | Needed for | Scopes |
 |---|---|
 | Live Meet status on Azure | `https://www.googleapis.com/auth/admin.reports.audit.readonly`, `https://www.googleapis.com/auth/meetings.space.readonly` |
-| Emails from Azure (as donotreply@) | `https://www.googleapis.com/auth/gmail.send` |
+| Emails from Azure (as donotreply@) — **needed now for v0.19.0** (§5.7) | `https://www.googleapis.com/auth/gmail.send` |
 | Classroom jobs (sync, add / remove, announcements) | `https://www.googleapis.com/auth/classroom.courses.readonly`, `…/classroom.rosters`, `…/classroom.profile.emails`, `…/classroom.announcements`, `…/classroom.coursework.students` |
 | Drive / Docs (backups, letters, question papers) | `https://www.googleapis.com/auth/drive`, `https://www.googleapis.com/auth/documents` |
 | Google profile names (badge) | `https://www.googleapis.com/auth/admin.directory.user.readonly` |
@@ -186,6 +194,7 @@ scope widens what the service account can do.
 | Chat | Run `ONE_TIME_chatCopyAzureToSheet` → delete `CHAT_OWNER` (Apps Script) → clear `CHAT_OWNER` (Azure) → Restart |
 | Special Classes | Run `ONE_TIME_scCopyAzureToSheet` → delete `SPECIAL_CLASSES_OWNER` → clear `SC_OWNER` → Restart |
 | Live class status | `AZURE_CLASS_LIVE=off` → Restart |
+| Email from Azure | Clear `AZURE_MAIL` → Restart (Apps Script sends every email anyway) |
 | Sign-ins | `AZURE_SESSION_STORE=memory` → Restart |
 | Everything on Azure | Users keep using the Apps Script dashboard, which has been production throughout |
 

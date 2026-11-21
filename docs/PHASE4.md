@@ -110,3 +110,13 @@ GitHub Actions.
 
 **Not executed:** real PDF stamping inside a doPost on Google's servers (only the Promise mechanism is tested), and real
 uploads close to the size limits.
+
+## Step 3 — Email sent by Azure (v0.19.0, 2026-11-21)
+
+Azure now has its own mail sender, From donotreply@, using the Gmail API and the service account of the Google Cloud
+project **APS Dashboard Azure** (domain-wide delegation, `gmail.send` only). It is the same transport, MIME and TEST
+guard as Code.gs `apsGmailSend_` (the test runs the real Code.gs function and compares the message byte for byte).
+Switched on with `AZURE_MAIL=on`; the start-up check signs in without sending; `MAIL_TEST_TO` sends one test email.
+**No job sends from Azure yet** — Apps Script still sends every email. Set-up and log lines: `docs/MAIL.md`.
+`npm test` 88/88 (6 new in `test/mail.test.ts`).
+

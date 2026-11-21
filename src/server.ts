@@ -35,6 +35,7 @@ import { registerReads2 } from './api/endpoints/reads';
 import { DashboardPage } from './web/render';
 import { signInWithClaims, type AppContext, type SignInResult } from './app/context';
 import { describeGoogleError } from './google/diagnose';
+import { createMailSender, checkMail } from './mail/gmailSender';
 
 export function buildRegistry(fetchImpl?: FetchLike): Registry {
   const reg = new Registry();
@@ -186,6 +187,10 @@ if (require.main === module) {
     console.log(`[Server] APS Dashboard (Azure) v${APP_VERSION} listening on ${cfg.port} — data: ${cfg.dataMode}`);
     void checkGoogleAccess(ctx);
     void checkLiveBridge(ctx);
+    { // Phase 4 step 3 (v0.19.0): email From donotreply@ sent by Azure (AZURE_MAIL=on) — sign-in check + optional test email
+      const mail = createMailSender(cfg);
+      if (mail) void checkMail(mail, cfg, APP_VERSION);
+    }
     if (ctx.sessions instanceof DurableSessionStore) { ctx.sessions.start(); console.log('[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign people out.'); }
     if (ctx.chat) void ctx.chat.start(() => readChatSheet(ctx));
     { // Phase 4 step 1 (v0.17.0): repeating jobs on Azure's timetable (AZURE_JOBS + Apps Script APS_JOBS_ON_AZURE)

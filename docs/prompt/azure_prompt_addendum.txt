@@ -278,3 +278,9 @@ header is longer, or Code.gs fails quietly in the mock.
   DB_READS switches reads per book; saves mark copies dirty (reads → Google until a copy started after the save finishes).
   Live status fallback without classLive = Code.gs classMeetApplyLive_ copied as classMeetApplyLiveCopied_ (generator
   ALIASES; runtime rt.__copied). AzureBridge.gs r138: classMeetEndedMarkMap exported. docs/PHASE5.md.
+- v0.19.0 (2026-11-21): Phase 4 step 3 — Azure mail sender src/mail/gmailSender.ts. From donotreply@ (MAIL_FROM) via
+  Gmail API users/me/messages/send; service account of Google Cloud project "APS Dashboard Azure" (aps-dashboard-azure;
+  the Apps Script projects are sys-… and untouched) impersonates the mailbox, scope gmail.send ONLY. MIME identical to
+  Code.gs apsGmailSend_ (test runs the real function); TEST guard as apsTestMailGuard_ (APS_ENVIRONMENT=TESTING);
+  CR/LF stripped from headers. AZURE_MAIL=on (default off); start-up sign-in check (sends nothing); MAIL_TEST_TO = one APS
+  address → one test email per start (remove after). No job sends from Azure yet. docs/MAIL.md.
