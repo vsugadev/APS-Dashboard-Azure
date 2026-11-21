@@ -120,3 +120,11 @@ Switched on with `AZURE_MAIL=on`; the start-up check signs in without sending; `
 **No job sends from Azure yet** — Apps Script still sends every email. Set-up and log lines: `docs/MAIL.md`.
 `npm test` 88/88 (6 new in `test/mail.test.ts`).
 
+## Step 4 — The first email job sent by Azure (v0.20.0, 2026-11-21)
+
+`MULTIPLE_CLASSROOM_REPORT` (Monday report to admin@) is built on Azure by the copied Code.gs `admcBuild_` / `admcEmail_` and
+sent From donotreply@. This follows the plan's rule for jobs: one owner, switched off in `apsWeeklyJobs` (existing `wjSetOff_`,
+through `removeMultipleClassroomReportTrigger`) before Azure sends it; test mode first (preview copies to one address); compare the
+runs. Apps Script records each result (audit row + "last sent" week) through `AzureBridge.gs` r139. Azure SQL `dbo.mail_job` makes
+sure a week is sent once. Details: `docs/MAIL.md`. `npm test` 97/97; Apps Script regression 105/105.
+

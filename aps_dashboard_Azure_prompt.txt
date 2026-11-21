@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 7a2a1cf83f0499aa00b6e9dbc9dc48b8
+#   Part B md5    : 35baa2b7b74b51027ba3359285427b0d
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1027,3 +1027,12 @@ header is longer, or Code.gs fails quietly in the mock.
   Code.gs apsGmailSend_ (test runs the real function); TEST guard as apsTestMailGuard_ (APS_ENVIRONMENT=TESTING);
   CR/LF stripped from headers. AZURE_MAIL=on (default off); start-up sign-in check (sends nothing); MAIL_TEST_TO = one APS
   address → one test email per start (remove after). No job sends from Azure yet. docs/MAIL.md.
+- v0.20.0 (2026-11-21): Phase 4 step 4 — first email job sent by Azure: MULTIPLE_CLASSROOM_REPORT (src/mail/mailJobs.ts).
+  Built by copied admcBuild_/admcEmail_ (gen-gas-scope feature mailJobs; test = Code.gs admcEmail_ byte for byte); slot = Code.gs
+  wjSlot_ (Mon 07:00 NY, 24 h window, 3 tries, apsLeaveSkip_). AZURE_MAIL_JOBS; PREVIEW (MAIL_JOBS_PREVIEW_TO: weekly
+  "[AZURE PREVIEW]" copy, Apps Script keeps sending) / OWNER (only when bridge mailJob check says offHere — Apps Script
+  removeMultipleClassroomReportTrigger — and the week isn't recorded). dbo.mail_job claim (PK; interrupted send → UNKNOWN,
+  never re-sent); result recorded in Apps Script (AzureBridge.gs r139 mailJob record: MULTI_CLASSROOM_REPORT_LAST_WEEK +
+  adsFinish_ row "Azure weekly job", admin@ from Apps Script; repeat-safe). r139 also exports SPECIAL_CLASS_COURSE_IDS,
+  CLASSROOM_TYPE_OVERRIDES. gasSettings: APS_DASHBOARD_URL defaults to APPS_SCRIPT_BRIDGE_URL (= ScriptApp getUrl).
+

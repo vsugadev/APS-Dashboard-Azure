@@ -36,6 +36,7 @@ import { DashboardPage } from './web/render';
 import { signInWithClaims, type AppContext, type SignInResult } from './app/context';
 import { describeGoogleError } from './google/diagnose';
 import { createMailSender, checkMail } from './mail/gmailSender';
+import { MailJobRunner, MssqlMailJobStore, liveMailJobDeps, parseMailJobList } from './mail/mailJobs';
 
 export function buildRegistry(fetchImpl?: FetchLike): Registry {
   const reg = new Registry();
@@ -190,6 +191,14 @@ if (require.main === module) {
     { // Phase 4 step 3 (v0.19.0): email From donotreply@ sent by Azure (AZURE_MAIL=on) — sign-in check + optional test email
       const mail = createMailSender(cfg);
       if (mail) void checkMail(mail, cfg, APP_VERSION);
+      // Phase 4 step 4 (v0.20.0): email jobs built and sent by Azure (AZURE_MAIL_JOBS; preview with MAIL_JOBS_PREVIEW_TO)
+      const mj = parseMailJobList(cfg.mailJobs);
+      if (mj.unknown.length) console.warn('[MailJobs] AZURE_MAIL_JOBS names not known (ignored): ' + mj.unknown.join(', '));
+      const previewOk = !cfg.mailJobsPreviewTo || cfg.allowedDomains.includes(cfg.mailJobsPreviewTo.split('@')[1] || '');
+      if (mj.on.length && mail && previewOk && ctx.data instanceof DbBackedDataSource && bridgeUsable(cfg)) {
+        const db = ctx.data;
+        new MailJobRunner(mj.on, new MssqlMailJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), mail, liveMailJobDeps(ctx), cfg.mailJobsPreviewTo).start();
+      } else if (mj.on.length) console.warn('[MailJobs] AZURE_MAIL_JOBS is set but ' + (!mail ? 'AZURE_MAIL is not on' : !previewOk ? 'MAIL_JOBS_PREVIEW_TO is not an APS address' : 'Azure SQL or the Apps Script bridge is not set') + ' — Apps Script keeps sending.');
     }
     if (ctx.sessions instanceof DurableSessionStore) { ctx.sessions.start(); console.log('[Sessions] sign-ins are kept in Azure SQL (dbo.app_session) — restarts and deploys no longer sign people out.'); }
     if (ctx.chat) void ctx.chat.start(() => readChatSheet(ctx));

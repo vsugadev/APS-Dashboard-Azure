@@ -47,7 +47,43 @@ Gmail's daily sending limit is **per mailbox** (about 2,000/day on Workspace). A
 donotreply@, so they share it. Each email job will run on only one side at a time (like the job switches), so the total
 doesn't grow.
 
-## Not yet
+## Email jobs sent by Azure (v0.20.0)
 
-No job sends through Azure in v0.19.0. Next: the first email job on Azure (one weekly email), with its own switch and the
-same idempotency log as Code.gs, so a job can never send twice.
+| Job | When | To |
+|---|---|---|
+| `MULTIPLE_CLASSROOM_REPORT`: Students Assigned to Multiple Google Classrooms | Monday from 07:00 New York (within 24 h, up to 3 tries, skipped on school leave) | admin@ (`ATTENDANCE_MAIL_ADMIN_CC`) |
+
+The email is built by the same Code.gs functions (`admcBuild_`, `admcEmail_`, copied word for word; a test compares
+the result with Apps Script's byte for byte). Code: `src/mail/mailJobs.ts`. Apps Script: `AzureBridge.gs` r139.
+
+| Setting | Value | Meaning |
+|---|---|---|
+| `AZURE_MAIL_JOBS` | `MULTIPLE_CLASSROOM_REPORT` | The job runs on Azure (needs `AZURE_MAIL=on`, Azure SQL and the bridge) |
+| `MAIL_JOBS_PREVIEW_TO` | one APS address | **Preview:** Apps Script keeps sending the real email; Azure sends one `[AZURE PREVIEW]` copy per week to this address only. Remove it to make Azure the sender |
+
+**Steps:**
+
+1. **Preview.** Set `AZURE_MAIL_JOBS=MULTIPLE_CLASSROOM_REPORT` and `MAIL_JOBS_PREVIEW_TO=<you>`. A preview of this week arrives
+   within minutes, then one each Monday. Compare it with Apps Script's email to admin@: subject, the list of students,
+   the "require review" count.
+2. **Owner.** Apps Script editor: run `removeMultipleClassroomReportTrigger` (switches the job off in apsWeeklyJobs). Azure:
+   delete `MAIL_JOBS_PREVIEW_TO` → Apply. From the next Monday 07:00 Azure sends it, and the dashboard's audit log shows the row
+   "Azure weekly job".
+3. **Back.** Apps Script: run `createMultipleClassroomReportTrigger`. Azure stops by itself, because it sends only while Apps Script
+   has the job off. Then clear `AZURE_MAIL_JOBS`.
+
+**Never twice:**
+
+- One owner: Azure asks Apps Script first and sends only when the job is off there and that week isn't recorded.
+- One row per week in `dbo.mail_job` is claimed before sending, so two instances can't both send.
+- A send interrupted half-way is **not** repeated. The log says to check admin@'s inbox.
+- Apps Script records the result: the "last sent" week and the audit row.
+
+| Log line | Meaning |
+|---|---|
+| `[MailJobs] … PREVIEW sent to …` | Preview mode worked |
+| `[MailJobs] … is still ON in Apps Script — Azure does NOT send it` | Owner mode, but step 2 in Apps Script isn't done |
+| `[MailJobs] … email sent by Azure to admin@ (N students, M require review)` | Azure sent the real email |
+| `[MailJobs] … result not recorded in Apps Script yet` | Retried every 10 min; never re-sent |
+
+`SELECT * FROM dbo.mail_job ORDER BY updated_at DESC;` shows every week's status.

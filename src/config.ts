@@ -56,7 +56,9 @@ export interface AppConfig {
   mailEnabled: boolean;                // AZURE_MAIL — v0.19.0 (Phase 4 step 3): 'on' = Azure signs in as MAIL_FROM through the Gmail API (default off)
   mailFrom: string;                    // MAIL_FROM (default donotreply@avvaiyarpadasalai.org = Code.gs TICKET_MAIL_FROM default)
   mailDisplayName: string;             // MAIL_DISPLAY_NAME (default 'APS Dashboard Tickets', as Code.gs mail profile TICKETS)
-  mailTestTo: string;                  // MAIL_TEST_TO — one APS address: a test email is sent at start-up (remove after the test)
+  mailTestTo: string;
+  mailJobs: string;                    // AZURE_MAIL_JOBS — v0.20.0: email jobs built and sent by Azure (src/mail/mailJobs.ts): MULTIPLE_CLASSROOM_REPORT
+  mailJobsPreviewTo: string;           // MAIL_JOBS_PREVIEW_TO — one APS address: PREVIEW mode (Apps Script keeps sending; Azure sends a copy there weekly)                  // MAIL_TEST_TO — one APS address: a test email is sent at start-up (remove after the test)
   testEmail: { mode: string; redirectTo: string; dailyCap: string }; // TEST_EMAIL_MODE / TEST_EMAIL_REDIRECT_TO / TEST_EMAIL_DAILY_CAP (only with APS_ENVIRONMENT=TESTING)
   devLogin: boolean;                   // LOCAL ONLY — refused when running in Azure
   runningInAzure: boolean;
@@ -175,6 +177,8 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     mailFrom: String(env.MAIL_FROM || 'donotreply@avvaiyarpadasalai.org').trim().toLowerCase(),
     mailDisplayName: String(env.MAIL_DISPLAY_NAME || 'APS Dashboard Tickets').trim(),
     mailTestTo: String(env.MAIL_TEST_TO || '').trim().toLowerCase(),
+    mailJobs: String(env.AZURE_MAIL_JOBS || '').trim(),
+    mailJobsPreviewTo: String(env.MAIL_JOBS_PREVIEW_TO || '').trim().toLowerCase(),
     testEmail: { mode: String(env.TEST_EMAIL_MODE || ''), redirectTo: String(env.TEST_EMAIL_REDIRECT_TO || ''), dailyCap: String(env.TEST_EMAIL_DAILY_CAP || '') },
     devLogin: env.DEV_LOGIN === '1',
     runningInAzure,
@@ -206,6 +210,8 @@ export function configWarnings(cfg: AppConfig): string[] {
     if (cfg.chatOwner === 'azure' && !(cfg.sqlServer && cfg.sqlDatabase)) w.push('CHAT_OWNER=azure needs SQL_SERVER + SQL_DATABASE — the chat shows "not available" until the database is set.');
     if (cfg.scOwner === 'azure' && !(cfg.sqlServer && cfg.sqlDatabase)) w.push('SC_OWNER=azure needs SQL_SERVER + SQL_DATABASE — Special Classes saves are refused until the database is set.');
     if (cfg.mailEnabled && !cfg.allowedDomains.includes(cfg.mailFrom.split('@')[1] || '')) w.push('MAIL_FROM must be a mailbox in your Workspace domain (APS_ALLOWED_DOMAINS) — Azure email stays off.');
+    if (cfg.mailJobs && !cfg.mailEnabled) w.push('AZURE_MAIL_JOBS is set but AZURE_MAIL is not "on" — no email job runs on Azure (Apps Script keeps sending).');
+    if (cfg.mailJobsPreviewTo && !cfg.allowedDomains.includes(cfg.mailJobsPreviewTo.split('@')[1] || '')) w.push('MAIL_JOBS_PREVIEW_TO must be one APS address — no email job runs on Azure until it is fixed or removed.');
     if (!cfg.mailEnabled && cfg.mailTestTo) w.push('MAIL_TEST_TO is set but AZURE_MAIL is not "on" — no test email is sent.');
     if (!cfg.appsScriptBridgeUrl || !cfg.appsScriptBridgeSecret) w.push('APPS_SCRIPT_BRIDGE_URL / APPS_SCRIPT_BRIDGE_SECRET not set — live data (online now, last login, class status, on-call banner) stays empty (Phase 3).');
     else if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl)) w.push('APPS_SCRIPT_BRIDGE_URL must be the Apps Script web app address (https://script.google.com/macros/s/…/exec).');

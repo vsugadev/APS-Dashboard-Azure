@@ -158,6 +158,14 @@ for the Azure Client ID includes `https://www.googleapis.com/auth/gmail.send` (�
 2. Log: `[Mail] Azure can send as donotreply@…` then `[Mail] test email sent to …`. Check the inbox.
 3. **Delete `MAIL_TEST_TO`** → Apply. Leave `AZURE_MAIL=on`. No job sends from Azure yet. Details: `docs/MAIL.md`.
 
+### 5.8 First email job on Azure (Phase 4 step 4, v0.20.0)
+
+Needs §5.7 working. Apps Script: deploy `AzureBridge.gs` r139 (New version).
+1. Preview: Azure `AZURE_MAIL_JOBS` = `MULTIPLE_CLASSROOM_REPORT`, `MAIL_JOBS_PREVIEW_TO` = your address → Apply. A `[AZURE PREVIEW]`
+   copy arrives within minutes. Compare it with Monday's Apps Script email.
+2. After one or two matching Mondays: Apps Script run `removeMultipleClassroomReportTrigger`; Azure delete `MAIL_JOBS_PREVIEW_TO`.
+3. Back: Apps Script `createMultipleClassroomReportTrigger` (Azure stops by itself). Details: `docs/MAIL.md`.
+
 ### 5.5 Settings copy: automatic
 
 The `dbo.live_props` row refreshes every minute. To check:
@@ -195,6 +203,7 @@ scope widens what the service account can do.
 | Special Classes | Run `ONE_TIME_scCopyAzureToSheet` → delete `SPECIAL_CLASSES_OWNER` → clear `SC_OWNER` → Restart |
 | Live class status | `AZURE_CLASS_LIVE=off` → Restart |
 | Email from Azure | Clear `AZURE_MAIL` → Restart (Apps Script sends every email anyway) |
+| Multiple Classrooms report | Apps Script `createMultipleClassroomReportTrigger` first (Azure stops at once), then clear `AZURE_MAIL_JOBS` |
 | Sign-ins | `AZURE_SESSION_STORE=memory` → Restart |
 | Everything on Azure | Users keep using the Apps Script dashboard, which has been production throughout |
 

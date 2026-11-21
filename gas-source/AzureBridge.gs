@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -52,6 +52,7 @@ var AZURE_BRIDGE_LIVE_KEYS_ = [
   'SPECIAL_CLASSES_INTRO_TEXT', 'SPECIAL_CLASSES_SHEET_NAME', 'SPECIAL_CLASSES_SHOW_COMPLETED',
   'TCC_CLEANUP_GRACE_MINUTES', 'TEMP_TEACHER_REMOVAL_HOUR', 'TICKET_MAIL_ALLOW_MAILAPP_FALLBACK', 'TICKET_MAIL_FROM',
   'ZOHO_SYNC_JOB', 'attendanceLastSyncSummary_v1', 'attendanceSyncDiagnostic_v1', 'classStartedMarkMap', 'classMeetEndedMarkMap',
+  'SPECIAL_CLASS_COURSE_IDS', 'CLASSROOM_TYPE_OVERRIDES', // r139: classroom types for the weekly Multiple Classrooms report built on Azure
   'classStatusMap', 'lastLoginMap', 'lastSync', 'lastSyncError', 'onCallTeachers_v1', 'onboardedStudents',
   'presenceMap', 'rosterHiddenStaffVisible_v1', 'liveMap', 'teacherNotInClassMap', 'needsTechSupportMap',
   'teacherAvailabilityRealtimeMap', 'externalActivityRealtimeMap'
@@ -137,6 +138,7 @@ function azureBridgeDoPost_(body) {
     else if (req.action === 'result') out = { ok: true, result: azureBridgeJobResult_(req) }; // r135
     else if (req.action === 'job') out = { ok: true, result: azureBridgeRunJob_(req) }; // r137
     else if (req.action === 'classLive') out = { ok: true, result: azureBridgeClassLive_() }; // r137
+    else if (req.action === 'mailJob') out = { ok: true, result: azureBridgeMailJob_(req) }; // r139: email jobs sent by Azure
     else if (req.action === 'chatChanged') { chatChanged_(); out = { ok: true, result: { changed: true } }; } // r136: a message was posted on Azure
     else throw portalErr_('BAD_REQUEST', 'Unknown action.');
   } catch (err) {
@@ -532,3 +534,42 @@ function azureBridgeRunJob_(req) {
 function azureJobSummary_(x) {
   try { var t = JSON.stringify(x === undefined ? null : x); return t.length > 2000 ? t.slice(0, 2000) + '…' : t; } catch (e) { return String(x).slice(0, 200); }
 }
+
+/* ==========================================================================
+ *  r139 — EMAIL JOBS SENT BY AZURE (Phase 4 step 4)
+ *  Azure builds the email with the SAME Code.gs functions (copied word for word) and sends it From donotreply@ itself.
+ *  Apps Script stays the record keeper, so the dashboard shows the same audit rows and a job can never be sent twice:
+ *   { action:'mailJob', v:1, op:'check',  job, period }  → { sent, offHere }   sent = this period's email is already
+ *        recorded here; offHere = the job is switched off in apsWeeklyJobs (Azure sends ONLY when it is — one owner).
+ *   { action:'mailJob', v:1, op:'record', job, period, sent, students, review, error, at } → writes what admcRun_ writes:
+ *        the "last sent" Script Property (only when sent) and the audit row (Requested_By "Azure weekly job").
+ *        The recipient in the row is Apps Script's own admin@ setting, never taken from the request. A repeated
+ *        record for the same period and result writes nothing (Azure may retry after a timeout).
+ *  Jobs: MULTIPLE_CLASSROOM_REPORT only. Switch: Apps Script removeMultipleClassroomReportTrigger() (switches the job off
+ *  here), then Azure AZURE_MAIL_JOBS. Back: createMultipleClassroomReportTrigger() — Apps Script sends it again.
+ * ========================================================================== */
+var AZURE_MAIL_JOBS_ = { MULTIPLE_CLASSROOM_REPORT: { lastProp: 'MULTI_CLASSROOM_REPORT_LAST_WEEK' } };
+var AZURE_MAIL_RECORDED_PREFIX_ = 'APS_AZURE_MAIL_RECORDED_';
+function azureBridgeMailJob_(req) {
+  var id = String(req.job || ''), period = String(req.period || ''), op = String(req.op || ''), j = AZURE_MAIL_JOBS_[id];
+  if (!j || !/^\d{4}-\d{2}-\d{2}$/.test(period) || (op !== 'check' && op !== 'record')) throw portalErr_('BAD_REQUEST', 'This email job cannot be handled from Azure.');
+  var props = PropertiesService.getScriptProperties();
+  if (op === 'check') return { sent: props.getProperty(j.lastProp) === period, offHere: !!wjOff_()[id] };
+  var sent = req.sent === true, key = AZURE_MAIL_RECORDED_PREFIX_ + id, mark = period + (sent ? ':SENT' : ':FAILED:' + String(Number(req.at) || ''));
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) throw portalErr_('BUSY', 'The Dashboard is busy — try again.');
+  try {
+    if (props.getProperty(key) === mark) return { recorded: true, again: true };
+    var now = new Date(Number(req.at) || Date.now()), n = Math.max(0, Math.floor(Number(req.students) || 0)), rv = Math.max(0, Math.floor(Number(req.review) || 0));
+    var admin = attMailAdminCc_(), err = String(req.error || '').replace(/[\r\n]+/g, ' ').slice(0, 300);
+    if (sent) props.setProperty(j.lastProp, period);
+    var rec = { Request_ID: 'WMC-' + period + '-' + Utilities.formatDate(now, APS_TZ, 'HHmmss'), Requested_At: now.toISOString(), Requested_By: 'Azure weekly job', Requested_By_Role: 'System',
+      Action: ADS_ACTIONS_.WEEKLY, Existing_Classroom_Count: String(n), Source: 'Weekly job on Azure (Monday, ' + APS_TZ + ')', Email_Status: sent ? 'EMAIL_SENT' : 'EMAIL_FAILED', Email_Recipients: admin,
+      Error: sent ? '' : 'Email: ' + err, _countAfter: n };
+    adsFinish_(rec, sent ? 'SUCCESS' : 'FAILED', n + ' student(s) in multiple classrooms; ' + rv + ' require review (Regular + Regular). ' + (sent ? 'Emailed to ' + admin + ' by Azure.' : 'Email could not be sent by Azure.') + ' No student was removed.');
+    props.setProperty(key, mark);
+    console.log('[AzureMailJobs] ' + id + ' ' + period + ' recorded (' + (sent ? 'sent' : 'failed') + ' by Azure)');
+    return { recorded: true };
+  } finally { lock.releaseLock(); }
+}
+

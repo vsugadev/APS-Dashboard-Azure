@@ -65,6 +65,8 @@ export function gasSettings(cfg: AppConfig): Record<string, string> {
     SUPERADMIN_EMAILS: JSON.stringify(cfg.superadminEmails), ADMIN_EMAILS: JSON.stringify(cfg.adminEmails), HEADMASTER_EMAILS: JSON.stringify(cfg.headmasterEmails),
     VCFO_AMCHATS_BOD_EMAILS: JSON.stringify(cfg.bodEmails), ON_CALL_COORDINATOR_EMAILS: JSON.stringify(cfg.onCallCoordinatorEmails),
     ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS: JSON.stringify(cfg.rosterHiddenStaffAdditionalEmails), APS_GRADING_TEAM_EMAILS: JSON.stringify(cfg.gradingTeamEmails),
+    // v0.20.0: links in emails built on Azure ('ACCESS APS DASHBOARD') = Code.gs ScriptApp.getService().getUrl() = the live web app /exec
+    ...(!cfg.scriptSettings.APS_DASHBOARD_URL && cfg.appsScriptBridgeUrl ? { APS_DASHBOARD_URL: cfg.appsScriptBridgeUrl } : {}),
     ...(cfg.targetSpreadsheetId ? { TARGET_SPREADSHEET_ID: cfg.targetSpreadsheetId } : {}), // the main spreadsheet ID as Code.gs reads it (e.g. getCacheSheetUrl)
     ...(cfg.rolePermissionsJson ? { dashboardRolePermissions_v1: cfg.rolePermissionsJson } : {}) }; // Azure's own (Key Vault), never the Apps Script value
 }
