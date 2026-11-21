@@ -62,3 +62,36 @@ export async function importOwned(db: DbBackedDataSource, store: OwnedStore, boo
     return false;
   }
 }
+
+/**
+ * v0.18.0 (Phase 5 step 1): whole-spreadsheet copies of the books in DB_COPY ('main', 'attendance'). Every tab (new tabs
+ * included, minus DB_COPY_EXCLUDE) is copied every DB_SYNC_MINUTES, read back and checked identical, and the check is
+ * counted per day (dbo.sheet_sync_log). Reads switch to the copy only for the books in DB_READS. A save marks the copies
+ * dirty: reads go to Google and a fresh copy starts at once (at most one every 20 s).
+ */
+export async function startCopies(ctx: AppContext, store: SheetStore, db: DbBackedDataSource, everyMs: number,
+  log: (m: string) => void = console.log): Promise<SheetSync[]> {
+  const books = ctx.cfg.dbCopyBooks.filter((b) => b === 'main' || (b === 'attendance' && !!ctx.cfg.attendanceSpreadsheetId));
+  if (!books.length) return [];
+  try { await store.ensureSchema(); } catch (e) { log('[DB] spreadsheet copies not started: ' + describeDbError(e)); return []; }
+  let exclude: RegExp | null = null;
+  try { exclude = ctx.cfg.dbCopyExclude ? new RegExp(ctx.cfg.dbCopyExclude) : null; } catch { log('[DB] DB_COPY_EXCLUDE is not a valid pattern — nothing excluded.'); }
+  const syncs: SheetSync[] = [];
+  for (const book of books) {
+    const reads = ctx.cfg.dbReadBooks.indexOf(book) > -1;
+    const sync = new SheetSync(db.innerSource(), store, book, [], log, Date.now, 'Spreadsheet "' + book + '"', { discover: true, exclude, onDone: (t, ok) => db.copyDone(book, t, ok) });
+    db.addCopy(book, () => new Set(sync.names), reads);
+    syncs.push(sync);
+    await sync.runOnce();
+    sync.start(everyMs);
+    log('[DB] Spreadsheet "' + book + '": copied to Azure SQL every ' + Math.round(everyMs / 60000) + ' min and checked; reads ' + (reads ? 'come from the copy (DB_READS)' : 'stay on Google Sheets until DB_READS includes it') + '.');
+  }
+  let pending: NodeJS.Timeout | null = null, lastKick = 0;
+  db.onDirty = () => { // after a save: one fresh copy of every book, at most every 20 s
+    if (pending) return;
+    const wait = Math.max(0, 20_000 - (Date.now() - lastKick));
+    pending = setTimeout(() => { pending = null; lastKick = Date.now(); for (const s of syncs) void s.runOnce(); }, wait);
+    pending.unref?.();
+  };
+  return syncs;
+}

@@ -46,6 +46,7 @@ t('owner = azure: the list comes from Azure (cached; the e-mail only is sent); t
 t('owner = azure: a post goes to Azure, the version changes (open pages reload), the next list asks Azure again', () => {
   const F = prep('azure'); const G = F.G; const before = F.sheetRows();
   G.getChatMessages(F.A); const v0 = G.chatVersion_();
+  const wait = Date.now() + 3; while (Date.now() < wait) { /* see above */ }
   const out = J(G.postChatMessage(F.A, '  posted here  '));
   const c = F.az.calls.find(x => x.action === 'call'); assert.strictEqual(c.fn, 'postChatMessage'); assert.deepStrictEqual(c.args, ['posted here']); assert.strictEqual(c.email, 'admin@aps.org');
   assert.strictEqual(out[out.length - 1].message, 'posted here'); assert.notStrictEqual(G.chatVersion_(), v0);
@@ -57,6 +58,7 @@ t('owner = azure: a post goes to Azure, the version changes (open pages reload),
 t('Azure says "chatChanged" (signed): cache cleared + version changed; unsigned refused', () => {
   const F = prep('azure'); const G = F.G;
   G.getChatMessages(F.A); const v0 = G.chatVersion_();
+  const until = Date.now() + 3; while (Date.now() < until) { /* the version is 'v' + milliseconds — let one pass */ }
   assert.deepStrictEqual(signedForward(G, { action: 'chatChanged', v: 1 }), { ok: true, result: { changed: true } });
   assert.notStrictEqual(G.chatVersion_(), v0); G.getChatMessages(F.A); assert.strictEqual(F.az.calls.filter(x => x.action === 'chatList').length, 2);
   const p = JSON.stringify({ action: 'chatChanged', v: 1 }), ts = String(Date.now()), nonce = crypto.randomUUID();

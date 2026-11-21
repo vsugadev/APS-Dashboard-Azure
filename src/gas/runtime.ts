@@ -169,7 +169,8 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
   };
   const props = store(() => ({ ...live.script, ...d.settings }), 'S:');
   const userProps = store(() => ({ ...live.user }), 'U:');
-  return {
+  const rtSelf: any = {};
+  return Object.assign(rtSelf, {
     // openById: the two APS spreadsheets, plus the extra ones the copied code computes (read-only snapshots).
     SpreadsheetApp: { openById: (id: string) => {
       const book = d.bookIds && d.bookIds[String(id)];
@@ -222,8 +223,11 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     // Live Google Meet status (Code.gs fetches it with the Meet / Reports APIs under a script lock and keeps it in
     // Apps Script's cache) is not on Azure yet: these throw, Code.gs's own catch then uses the schedule-based status.
     // v0.17.0: when Apps Script's answer is available (classLive), applyClassStatus_ uses it exactly where Code.gs uses its own.
-    classMeetLiveSnapshot_: () => { if (!d.classLive) throw new Error('Live Meet status is not on Azure yet.'); return { at: d.classLive.at, byCourse: {} }; },
-    classMeetApplyLive_: (c: unknown) => (d.classLive ? applyClassLive(d.classLive, c) : null),
+    // Without it (AZURE_CLASS_LIVE=off, Apps Script not answering): Code.gs's own classMeetApplyLive_ (copied as
+    // classMeetApplyLiveCopied_) on an EMPTY snapshot — the same "Live Google Meet status not available" Apps Script shows
+    // when its own Meet check cannot see a class (v0.18.0; before, Azure fell back to the schedule and said "Teacher not in Meet").
+    classMeetLiveSnapshot_: () => ({ at: d.classLive ? d.classLive.at : 0, byCourse: {} }),
+    classMeetApplyLive_: (...a: unknown[]) => (d.classLive ? applyClassLive(d.classLive, a[0]) : (rtSelf.__copied ? rtSelf.__copied.classMeetApplyLive_(...a) : null)),
     // Chat is not on Azure yet: a constant version (Code.gs's own fallback value) so the realtime poll never asks the page
     // to reload a chat it cannot load here.
     chatVersion_: () => d.chatVersion || '', // v0.16.0: the real version when Azure SQL owns the chat (src/db/chatOwner.ts)
@@ -234,7 +238,7 @@ export function makeRuntime(d: RuntimeDeps): Record<string, unknown> {
     // secret EXAM_QP_DOWNLOAD_KEY_SECRET, which never leaves Apps Script (NEVER list) — Azure shows no key for those students
     // (keys of Dashboard downloads come from the download log and still show). Never a guessed or wrong key.
     examQpDownloadKey_: () => '',
-  };
+  });
 }
 
 /** Sheets API serial date/time (days since 1899-12-30, wall time of the spreadsheet's time zone) → instant. */

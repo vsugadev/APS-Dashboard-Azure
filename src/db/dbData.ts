@@ -14,6 +14,10 @@ export class DbBackedDataSource implements DataSource {
    *  (never from Google, never "stale"); `ownedReady` once the programs sheet is in the store (import done). */
   owned = new Set<string>();
   ownedReady = false;
+  /** v0.18.0 (Phase 5 step 1): whole-spreadsheet copies ('main', 'attendance'). `reads` = serve reads from the copy
+   *  (DB_READS); a save marks the copy dirty and reads go to Google until a copy that STARTED after the save has finished. */
+  copies = new Map<string, { names: () => Set<string>; reads: boolean; dirtySince: number }>();
+  onDirty: (() => void) | null = null;
   private lastLogged = 0;
   constructor(private inner: DataSource, private store: SheetStore, private maxAgeMs = 15 * 60_000,
     private now: () => number = Date.now, private log: (m: string) => void = console.warn) {}
@@ -22,7 +26,13 @@ export class DbBackedDataSource implements DataSource {
   readConfiguredUserRoles(): Promise<Record<string, string>> { return this.inner.readConfiguredUserRoles(); }
   readAccessOverrides(): Promise<AccessOverrides> { return this.inner.readAccessOverrides(); }
   readValues(book: WorkbookKey, req: ValuesRequest) { return this.inner.readValues(book, req); }
-  invalidate(): void { this.inner.invalidate?.(); }
+  invalidate(): void {
+    this.inner.invalidate?.();
+    if (this.copies.size) { const t = this.now(); for (const c of this.copies.values()) c.dirtySince = t; this.onDirty?.(); }
+  }
+  addCopy(book: string, names: () => Set<string>, reads: boolean): void { this.copies.set(book, { names, reads, dirtySince: 0 }); }
+  /** A copy of `book` that started at `startedAt` finished; clean again only when it started after the last save. */
+  copyDone(book: string, startedAt: number, ok: boolean): void { const c = this.copies.get(book); if (c && ok && c.dirtySince && startedAt >= c.dirtySince) c.dirtySince = 0; }
   /** The Google Sheets source behind (the sync reads from it — never from the copy). */
   innerSource(): DataSource { return this.inner; }
   /** The database store (one connection pool, shared with the sync). */
@@ -37,6 +47,11 @@ export class DbBackedDataSource implements DataSource {
 
   async readSheets(book: WorkbookKey, names: string[]): Promise<SheetSnapshot> {
     if (this.owned.size && this.book && book === this.book) return this.readWithOwned(book, names);
+    const c = this.copies.get(book);
+    if (c) {
+      if (!c.reads || c.dirtySince) return this.inner.readSheets(book, names);
+      return this.readStored(book, names, book, c.names(), true); // tabs that do not exist are answered from the stored tab list
+    }
     return this.readCopy(book, names);
   }
 
@@ -54,9 +69,14 @@ export class DbBackedDataSource implements DataSource {
   }
 
   private async readCopy(book: WorkbookKey, names: string[]): Promise<SheetSnapshot> {
-    if (!this.book || book !== this.book || !names.every((n) => this.names.has(n))) return this.inner.readSheets(book, names);
+    if (!this.book || book !== this.book) return this.inner.readSheets(book, names);
+    return this.readStored(book, names, this.book, this.names);
+  }
+
+  private async readStored(book: WorkbookKey, names: string[], key: string, have: Set<string>, missingOk = false): Promise<SheetSnapshot> {
+    if (!missingOk && !names.every((n) => have.has(n))) return this.inner.readSheets(book, names);
     try {
-      const got = await this.store.get(this.book, [TITLES_ROW].concat(names));
+      const got = await this.store.get(key, [TITLES_ROW].concat(names));
       const t = this.now(), fresh = (x: { syncedAt: number } | null) => !!x && t - x.syncedAt <= this.maxAgeMs;
       const titlesRow = got[TITLES_ROW];
       if (!fresh(titlesRow)) throw new Error('STALE_COPY');
@@ -64,6 +84,7 @@ export class DbBackedDataSource implements DataSource {
       const sheets: Record<string, SheetGrid | null> = {};
       for (const n of names) {
         if (titles.indexOf(n) < 0) { sheets[n] = null; continue; } // not in the spreadsheet (same as the Sheets API answer)
+        if (!have.has(n)) throw new Error('NOT_COPIED'); // a tab that exists but is not copied (DB_COPY_EXCLUDE)
         const g = got[n];
         if (!fresh(g)) throw new Error('STALE_COPY');
         sheets[n] = { values: g!.values };
@@ -71,6 +92,7 @@ export class DbBackedDataSource implements DataSource {
       this.served++;
       return { timeZone: titlesRow!.timeZone, sheets, titles };
     } catch (e) {
+      if (String((e as Error).message) === 'NOT_COPIED') return this.inner.readSheets(book, names);
       this.fallbacks++;
       const t = this.now();
       if (t - this.lastLogged > 60_000) { this.lastLogged = t; this.log('[DB] read from Google Sheets instead: ' + (String((e as Error).message) === 'STALE_COPY' ? 'the database copy is older than ' + Math.round(this.maxAgeMs / 60000) + ' minutes' : describeDbError(e))); }

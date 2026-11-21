@@ -26,7 +26,7 @@ export const LIVE_KEYS: string[] = [
   'ROSTER_DATA_GEN', 'SCHOOL_LEAVE_EMAIL_LISTS', 'SCHOOL_LEAVE_EMAIL_PROFILE', 'SPECIAL_CLASSES_EMPTY_TEXT',
   'SPECIAL_CLASSES_INTRO_TEXT', 'SPECIAL_CLASSES_SHEET_NAME', 'SPECIAL_CLASSES_SHOW_COMPLETED',
   'TCC_CLEANUP_GRACE_MINUTES', 'TEMP_TEACHER_REMOVAL_HOUR', 'TICKET_MAIL_ALLOW_MAILAPP_FALLBACK', 'TICKET_MAIL_FROM',
-  'ZOHO_SYNC_JOB', 'attendanceLastSyncSummary_v1', 'attendanceSyncDiagnostic_v1', 'classStartedMarkMap',
+  'ZOHO_SYNC_JOB', 'attendanceLastSyncSummary_v1', 'attendanceSyncDiagnostic_v1', 'classStartedMarkMap', 'classMeetEndedMarkMap',
   'classStatusMap', 'lastLoginMap', 'lastSync', 'lastSyncError', 'onCallTeachers_v1', 'onboardedStudents',
   'presenceMap', 'rosterHiddenStaffVisible_v1', 'liveMap', 'teacherNotInClassMap', 'needsTechSupportMap',
   'teacherAvailabilityRealtimeMap', 'externalActivityRealtimeMap',

@@ -145,6 +145,11 @@ For each step:
 **Safety net:** if Azure misses a listed job (3 h; 30 min for the exam auto-email; 90 min for the clean-up), Apps Script
 runs it again and logs `[AzureJobs] … running it here`.
 
+### 5.6 Spreadsheet copies (Phase 5 step 1, v0.18.0)
+
+1. Azure: `DB_COPY` = `main,attendance` → Apply. Log line: `[DB] Spreadsheet "main" copied to Azure SQL — … checked identical`.
+2. After two weeks with no mismatches (queries in `docs/PHASE5.md`), set `DB_READS` = `main` → Apply.
+
 ### 5.5 Settings copy: automatic
 
 The `dbo.live_props` row refreshes every minute. To check:

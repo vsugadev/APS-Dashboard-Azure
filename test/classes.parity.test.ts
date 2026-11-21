@@ -586,3 +586,49 @@ test('Phase 3 step 4 (v0.16.0): CHAT_OWNER=azure — posts stored in Azure SQL c
   ctx.cfg = { ...cfg }; // still owner for Special Classes? no — SC unaffected:
   assert.equal((await handleReverse(ctx, nonces, mk({ action: 'scGrid', v: 1 }))).body.code, 'NOT_OWNER', 'Special Classes ownership is separate');
 });
+
+test('Phase 5 step 1 (v0.18.0): with DB_READS, screens answered from the Azure SQL copy of the spreadsheets are IDENTICAL to Google Sheets (Directory, Classes); a save sends reads back to Google until a fresh copy is made', { skip: !have && 'Apps Script fixture not found' }, async () => {
+  const F = loadFixture(); const G = F.G;
+  seedSheets(F); seedLive(F);
+  const list = (k: string) => J(G.getConfigList_(k, []));
+  const cfg = testConfig({ superadminEmails: list('SUPERADMIN_EMAILS'), adminEmails: J(G.ADMIN_EMAILS), headmasterEmails: J(G.HEADMASTER_EMAILS), bodEmails: list('VCFO_AMCHATS_BOD_EMAILS'),
+    onCallCoordinatorEmails: list('ON_CALL_COORDINATOR_EMAILS'), rosterHiddenStaffAdditionalEmails: J(G.ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS), gradingTeamEmails: J(G.APS_GRADING_TEAM_EMAILS_),
+    scriptSettings: scriptSettingsFrom(J(G.PropertiesService.getScriptProperties().getProperties())), attendanceSpreadsheetId: 'mock', targetSpreadsheetId: 'TGT',
+    dbCopyBooks: ['main', 'attendance'], dbReadBooks: ['main', 'attendance'], dbCopyExclude: '^__' });
+  const { MemorySheetStore } = await import('../src/db/sheetStore');
+  const { DbBackedDataSource } = await import('../src/db/dbData');
+  const { startCopies } = await import('../src/db/start');
+  const reg = (await import('../src/server')).buildRegistry();
+  const plain = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+  const inner = new FixtureDataSource({ courses: J(G.readAllCoursesFromCache_()), userRoles: {}, accessOverrides: {}, sheets: sheetsFromMock(F) });
+  let googleReads = 0; const orig = inner.readSheets.bind(inner);
+  (inner as any).readSheets = async (b: any, n: string[]) => { if (n.length && (b === 'main' || b === 'attendance')) googleReads++; return orig(b, n); }; // the copied books only
+  const store = new MemorySheetStore(); const db = new DbBackedDataSource(inner, store);
+  const ctxDb = testContext({ cfg }); ctxDb.data = db; ctxDb.live = liveFromMock(F);
+  const ctxPlain = testContext({ cfg }); ctxPlain.data = plain; ctxPlain.live = liveFromMock(F);
+  const logs: string[] = [];
+  const syncs = await startCopies(ctxDb, store, db, 3_600_000, (m) => logs.push(m)); syncs.forEach((s) => s.stop());
+  assert.equal(syncs.length, 2); assert.ok(syncs.every((s) => s.last && s.last.ok), logs.join('\n'));
+  assert.match(logs.join('\n'), /Spreadsheet "main" copied to Azure SQL — \d+ sheets, \d+ rows; checked identical/);
+  const report = await store.syncReport!('2000-01-01');
+  assert.ok(report.length >= 10 && report.every((r) => r.copies === 1 && r.mismatches === 0), 'every tab checked once, no mismatch');
+  for (const [name, email, role] of [['getDirectoryIndex', 'admin@aps.org', 'admin'], ['getDirectoryIndex', 'kavitha_aps8130@avvaiyarpadasalai.org', 'teacher'], ['getDashboardData', 'admin@aps.org', 'admin'], ['getDashboardData', 'sa0_aps6650@avvaiyarpadasalai.org', 'student']] as [string, string, string][]) {
+    const before = googleReads;
+    const a: any = await reg.call(ctxDb, name, [await ctxDb.sessions.create({ email, role })]);
+    const b: any = await reg.call(ctxPlain, name, [await ctxPlain.sessions.create({ email, role })]);
+    assert.ok(a.ok && b.ok, name + ': ' + JSON.stringify(a).slice(0, 150));
+    const strip = (x: any) => JSON.parse(JSON.stringify(x, (k, v) => (/^(builtAt|generatedAt|serverNow|asOf)$/.test(k) ? undefined : v)));
+    assert.deepEqual(diffs(strip(a.ok), strip(b.ok)), [], role + ' ' + name + ': copy = Google');
+    assert.equal(googleReads, before, name + ': no Google Sheets read — answered from the copy');
+  }
+  // a save → reads go to Google until a copy that started after the save has finished
+  db.invalidate();
+  const t0 = googleReads; await reg.call(ctxDb, 'getDirectoryIndex', [await ctxDb.sessions.create({ email: 'admin@aps.org', role: 'admin' })]);
+  assert.ok(googleReads > t0, 'dirty → Google');
+  await new Promise((r) => setTimeout(r, 30)); await Promise.all(syncs.map((s) => s.runOnce()));
+  const t1 = googleReads; await reg.call(ctxDb, 'getDirectoryIndex', [await ctxDb.sessions.create({ email: 'admin@aps.org', role: 'admin' })]);
+  assert.equal(googleReads, t1, 'fresh copy → from the copy again');
+  // DB_READS off for a book → always Google, but still copied and checked
+  db.copies.get('main')!.reads = false;
+  const t2 = googleReads; await reg.call(ctxDb, 'getDirectoryIndex', [await ctxDb.sessions.create({ email: 'admin@aps.org', role: 'admin' })]); assert.ok(googleReads > t2);
+});

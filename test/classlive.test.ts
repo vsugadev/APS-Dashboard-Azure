@@ -46,7 +46,8 @@ test('the copied applyClassStatus_ uses Apps Script\'s live result for today\'s 
   assert.ok(withLive.classStatusLabel && withLive.classStatusColorCategory, 'Code.gs label + colour');
   ctx.classLive = { peek: async () => null };
   const without: any = await gasRun(ctx, null, (S) => { const cs = course(); S.applyClassStatus_(cs); return cs[0]; });
-  assert.equal(without.classMeetDetail, null); assert.notEqual(without.students[0].inMeet, true, 'schedule-based, as before');
+  assert.equal(without.classMeetDetail && without.classMeetDetail.statusUnknown, true, 'v0.18.0: "not known", as Apps Script when its Meet check cannot see a class');
+  assert.match(String(without.classMeetDetail.text), /Live Google Meet status not available|not started|ended|No Google Meet activity/); assert.notEqual(without.students[0].inMeet, true);
 });
 
 const GAS = path.resolve(__dirname, '..', '..', 'gas-source'); const have = fs.existsSync(path.join(GAS, 'AzureBridge.gs'));

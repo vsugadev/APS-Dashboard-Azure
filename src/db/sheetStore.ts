@@ -18,7 +18,11 @@ export interface SheetStore {
   put(book: string, sheet: string, snap: { values: unknown[][]; timeZone: string }): Promise<number>;
   /** The stored copies of `names` (null when never copied). */
   get(book: string, names: string[]): Promise<Record<string, StoredSheet | null>>;
+  /** v0.18.0 (Phase 5): one verification result per sheet per copy — counted per day (the "two clean weeks" evidence). */
+  logSync?(day: string, book: string, sheet: string, rows: number, ok: boolean): Promise<void>;
+  syncReport?(sinceDay: string): Promise<SyncDayRow[]>;
 }
+export interface SyncDayRow { day: string; book: string; sheet: string; copies: number; mismatches: number; rows: number }
 
 /** v0.13.0 — database stage 3: sheets OWNED by the database (Special Classes programs + audit). Optimistic versions. */
 export interface OwnedSheet { values: unknown[][]; timeZone: string; version: number; updatedAt: number; updatedBy: string }
@@ -70,8 +74,16 @@ export class MemorySheetStore implements SheetStore, OwnedStore {
     if (this.failNext) { this.failNext = false; throw new Error('memory store failure'); }
     const out: Record<string, StoredSheet | null> = {};
     for (const n of names) { const r = this.rows.get(book + '\u0000' + n); out[n] = r ? { values: decodeGrid(r.grid), timeZone: r.tz, syncedAt: r.at, rows: r.n } : null; }
+    for (const n of names) if (this.corruptNext === n && out[n]) { this.corruptNext = ''; out[n]!.values = out[n]!.values.map((row, i) => (i === out[n]!.values.length - 1 ? row.map(() => 'CHANGED') : row)); }
     return out;
   }
+  log = new Map<string, SyncDayRow>();
+  corruptNext = ''; // tests: the next read-back of this sheet comes back changed
+  async logSync(day: string, book: string, sheet: string, rows: number, ok: boolean): Promise<void> {
+    const k = [day, book, sheet].join('\u0000'), r = this.log.get(k) || { day, book, sheet, copies: 0, mismatches: 0, rows: 0 };
+    r.copies++; if (!ok) r.mismatches++; r.rows = rows; this.log.set(k, r);
+  }
+  async syncReport(sinceDay: string): Promise<SyncDayRow[]> { return Array.from(this.log.values()).filter((r) => r.day >= sinceDay).map((r) => ({ ...r })); }
 }
 
 /** Azure SQL Database through `mssql` (tedious), signed in with the app's managed identity. Parameterised queries only. */
@@ -134,6 +146,28 @@ export class MssqlSheetStore implements SheetStore, OwnedStore {
           'WHERE book = @book AND sheet = @sheet AND version = @v;');
     if (!r.rowsAffected || r.rowsAffected[0] !== 1) throw new Error('CONFLICT');
     return expectedVersion + 1;
+  }
+
+  private logReady: Promise<void> | null = null;
+  private async logPool(): Promise<sqlTypes.ConnectionPool> {
+    const pool = await this.connect();
+    if (!this.logReady) {
+      this.logReady = pool.request().query("IF OBJECT_ID(N'dbo.sheet_sync_log', N'U') IS NULL CREATE TABLE dbo.sheet_sync_log (day DATE NOT NULL, book NVARCHAR(200) NOT NULL, sheet NVARCHAR(200) NOT NULL, copies INT NOT NULL, mismatches INT NOT NULL, row_count INT NOT NULL, CONSTRAINT PK_sheet_sync_log PRIMARY KEY (day, book, sheet));").then(() => undefined);
+      this.logReady.catch(() => { this.logReady = null; });
+    }
+    await this.logReady;
+    return pool;
+  }
+  async logSync(day: string, book: string, sheet: string, rows: number, ok: boolean): Promise<void> {
+    const pool = await this.logPool(), S = this.sql;
+    await pool.request().input('d', S.Date, day).input('b', S.NVarChar(200), book).input('s', S.NVarChar(200), sheet).input('n', S.Int, rows).input('m', S.Int, ok ? 0 : 1)
+      .query('MERGE dbo.sheet_sync_log WITH (HOLDLOCK) AS t USING (SELECT @d AS day, @b AS book, @s AS sheet) AS x ON t.day = x.day AND t.book = x.book AND t.sheet = x.sheet ' +
+        'WHEN MATCHED THEN UPDATE SET copies = copies + 1, mismatches = mismatches + @m, row_count = @n WHEN NOT MATCHED THEN INSERT (day, book, sheet, copies, mismatches, row_count) VALUES (@d, @b, @s, 1, @m, @n);');
+  }
+  async syncReport(sinceDay: string): Promise<SyncDayRow[]> {
+    const pool = await this.logPool();
+    const r = await pool.request().input('d', this.sql.Date, sinceDay).query('SELECT CONVERT(CHAR(10), day, 23) AS day, book, sheet, copies, mismatches, row_count FROM dbo.sheet_sync_log WHERE day >= @d;');
+    return ((r.recordset || []) as any[]).map((x) => ({ day: String(x.day), book: String(x.book), sheet: String(x.sheet), copies: Number(x.copies), mismatches: Number(x.mismatches), rows: Number(x.row_count) }));
   }
 
   async put(book: string, sheet: string, snap: { values: unknown[][]; timeZone: string }): Promise<number> {

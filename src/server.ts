@@ -23,7 +23,7 @@ import { JobScheduler, MssqlJobStore, bridgeJobRunner, parseJobList } from './jo
 import { MssqlChatStore } from './db/chatStore';
 import { DbBackedDataSource } from './db/dbData';
 import { MssqlSheetStore } from './db/sheetStore';
-import { startDatabase } from './db/start';
+import { startDatabase, startCopies } from './db/start';
 import type { FetchLike } from './live/liveSource';
 import { serviceAccountTokenProvider } from './google/serviceAccount';
 import { MemorySessionStore } from './auth/sessions';
@@ -196,6 +196,6 @@ if (require.main === module) {
         new JobScheduler(jobs.on, new MssqlJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), bridgeJobRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)).start();
       } else if (jobs.on.length) console.warn('[Jobs] AZURE_JOBS is set but Azure SQL or the Apps Script bridge is not — no job runs on Azure (Apps Script keeps running them).');
     }
-    if (ctx.data instanceof DbBackedDataSource) void startDatabase(ctx, ctx.data.storeRef(), ctx.data, cfg.dbSyncMinutes * 60_000);
+    if (ctx.data instanceof DbBackedDataSource) { const db = ctx.data; void startDatabase(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000).finally(() => startCopies(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000)); }
   });
 }

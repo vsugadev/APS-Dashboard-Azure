@@ -163,3 +163,8 @@ Restart.
 - `dbo.live_props`: one row holding the copy of Apps Script's allow-listed live settings (`docs/PHASE3.md` step 6).
 - `dbo.job_lease` and `dbo.job_run`: the job timetable's lease and run log (`docs/JOBS.md`). To see recent runs:
   `SELECT TOP 20 handler, started_at, finished_at, ok, summary FROM dbo.job_run ORDER BY id DESC;`
+
+## Phase 5 step 1 (v0.18.0): whole-spreadsheet copies
+
+`DB_COPY=main,attendance` copies every tab into `dbo.sheet_snapshot` and checks each copy. Results are counted per day in
+`dbo.sheet_sync_log`. `DB_READS` switches reads to the copy. See `docs/PHASE5.md`.

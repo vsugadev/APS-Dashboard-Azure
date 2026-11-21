@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 79ca972fc6fbd22fd806c6976be62b10
+#   Part B md5    : 1897aba51c4a6239dd52e9e39a0304b0
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1016,3 +1016,8 @@ header is longer, or Code.gs fails quietly in the mock.
   docs/FINAL_SETUP.md.
 - v0.17.1 (2026-11-20): /healthz + start-up line show the version; reverse-bridge refusals log a reason (never returned).
   Incident: an old 0.8.2 build was deployed over v0.17.0 at ~05:00 UTC (stale files left); deploy only via GitHub Actions.
+- v0.18.0 (2026-11-21): Phase 5 step 1 — DB_COPY (main/attendance) copies EVERY tab (discover; DB_COPY_EXCLUDE) into
+  sheet_snapshot every DB_SYNC_MINUTES, read-back content-hash check, per-day dbo.sheet_sync_log ("two clean weeks");
+  DB_READS switches reads per book; saves mark copies dirty (reads → Google until a copy started after the save finishes).
+  Live status fallback without classLive = Code.gs classMeetApplyLive_ copied as classMeetApplyLiveCopied_ (generator
+  ALIASES; runtime rt.__copied). AzureBridge.gs r138: classMeetEndedMarkMap exported. docs/PHASE5.md.

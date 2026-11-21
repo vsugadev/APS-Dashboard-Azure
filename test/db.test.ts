@@ -114,3 +114,25 @@ test('stage 3 reads: owned sheets from the owned store only (never Google); not 
   assert.ok(I.calls() - c0 <= 1, 'Google read at most for the sheet list, never for owned data');
   store.failNext = true; await assert.rejects(db.readSheets(BOOK as WorkbookKey, [LIVE]));
 });
+
+test('Phase 5 step 1: every tab discovered (new ones too, excluded ones skipped); a copy that reads back different is caught and counted; a save keeps reads on Google until a later copy finishes', async () => {
+  let now = 1_800_000_000_000;
+  const data: any = { courses: [], userRoles: {}, accessOverrides: {}, sheets: { main: { Courses: [['id'], ['1']], Tickets: [['T'], ['a'], ['b']], __cache: [['x']] } } };
+  const src = new FixtureDataSource(data); const store = new MemorySheetStore(() => now); const logs: string[] = [];
+  const sync = new SheetSync(src, store, 'main', [], (m) => logs.push(m), () => now, 'Spreadsheet "main"', { discover: true, exclude: /^__/ });
+  let r = await sync.runOnce(); assert.equal(r.ok, true, r.error); assert.deepEqual(Object.keys(r.rows).sort(), ['Courses', 'Tickets']);
+  data.sheets.main.Leave = [['L'], ['x']]; r = await sync.runOnce(); assert.ok('Leave' in r.rows, 'new tab picked up');
+  store.corruptNext = 'Tickets'; r = await sync.runOnce();
+  assert.equal(r.ok, false); assert.deepEqual(r.mismatches, ['Tickets']); assert.match(logs.join('\n'), /copy differs from the sheet after reading it back: Tickets/);
+  const rep = await store.syncReport('2000-01-01'); const t = rep.find((x) => x.sheet === 'Tickets')!;
+  assert.deepEqual([t.copies, t.mismatches, t.rows], [3, 1, 3]);
+  const db = new DbBackedDataSource(src, store, 15 * 60_000, () => now, () => {});
+  db.addCopy('main', () => new Set(sync.names), true);
+  await sync.runOnce(); let calls = 0; const orig = src.readSheets.bind(src); (src as any).readSheets = async (b: any, n: string[]) => { calls++; return orig(b, n); };
+  await db.readSheets('main' as WorkbookKey, ['Tickets']); assert.equal(calls, 0, 'from the copy');
+  now += 1000; db.invalidate(); await db.readSheets('main' as WorkbookKey, ['Tickets']); assert.equal(calls, 1, 'dirty → Google');
+  db.copyDone('main', now - 500, true); await db.readSheets('main' as WorkbookKey, ['Tickets']); assert.equal(calls, 2, 'a copy that started before the save does not count');
+  db.copyDone('main', now + 1, true); await db.readSheets('main' as WorkbookKey, ['Tickets']); assert.equal(calls, 2, 'clean again');
+  const none = await db.readSheets('main' as WorkbookKey, ['NoSuchTab']); assert.equal(none.sheets.NoSuchTab, null); assert.equal(calls, 2, 'a tab that does not exist: answered from the stored tab list');
+  await db.readSheets('main' as WorkbookKey, ['__cache']); assert.equal(calls, 3, 'an excluded tab → Google');
+});
