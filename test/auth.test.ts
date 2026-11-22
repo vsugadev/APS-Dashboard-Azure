@@ -87,7 +87,7 @@ test('sign-in state: signed, single-use, 10 minutes; survives an app restart; fo
   // restart: a new instance with the same key (same client secret) accepts a state issued before the restart
   const before = n.issue('APS-20261109-0042');
   const afterRestart = new StateNonces(600_000, () => now, StateNonces.keyFromSecret('client-secret-for-test'));
-  assert.deepEqual(afterRestart.take(before), { ok: true, ticket: 'APS-20261109-0042' }, 'ticket rides inside the state');
+  assert.deepEqual(afterRestart.take(before), { ok: true, ticket: 'APS-20261109-0042', again: false }, 'ticket rides inside the state');
   // a different key (another app) or any change to the state is refused
   const other = new StateNonces(600_000, () => now, StateNonces.keyFromSecret('another-secret'));
   assert.equal(other.consume(n.issue()), false);
@@ -130,4 +130,13 @@ test('v0.8.2: a failed sign-in code exchange is logged with Google\'s reason and
   assert.match(describeOAuthExchangeError(new Error('fetch failed'), r), /could not reach Google/);
   const line = describeOAuthExchangeError(Object.assign(new Error('4/0AbCdEfSecretCode client_secret=GOCSPX-abc'), { response: { data: { error: 'invalid_grant' } } }), r);
   assert.ok(!/4\/0AbCdEf|GOCSPX|client_secret/.test(line), 'nothing secret in the log line: ' + line);
+});
+test('v0.23.5: a stale sign-in link (page open > 10 min) is recognised as ours and expired → restarted once; the restart is never restarted', async () => {
+  const { StateNonces } = await import('../src/auth/google');
+  let now = 1_800_000_000_000; const n = new StateNonces(600_000, () => now, Buffer.alloc(32, 7));
+  const s1 = n.issue('APS-20261109-0042'); now += 11 * 60_000;
+  assert.deepEqual(n.take(s1), { ok: false, ticket: 'APS-20261109-0042', reason: 'expired', again: false });
+  const s2 = n.issue(null, true); now += 11 * 60_000;
+  assert.deepEqual(n.take(s2), { ok: false, ticket: null, reason: 'expired', again: true }, 'the automatic restart is marked, so no loop');
+  assert.equal(n.take('x.y').reason, 'bad');
 });

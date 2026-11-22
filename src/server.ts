@@ -142,6 +142,14 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
       try {
         const st = ctx.nonces.take(typeof req.query.state === 'string' ? req.query.state : '');
         if (st.ticket) ticket = st.ticket;
+        // v0.23.5: a genuine sign-in link that only went stale (the page stayed open > 10 min, a reload, the back button, a
+        // restart during a deploy) restarts the Google sign-in ONCE with a fresh link instead of showing a warning. Google
+        // usually completes it at once (already signed in). A second failure, or a link that is not ours, shows the message.
+        if (!st.ok && (st.reason === 'expired' || st.reason === 'used') && !st.again) {
+          let to = '#';
+          try { to = ctx.google.authUrl(ctx.nonces.issue(ticket, true)); } catch { to = '#'; }
+          if (to !== '#') { res.setHeader('Cache-Control', 'no-store'); res.redirect(302, to); return; }
+        }
         if (!st.ok) {
           result = { ok: false, code: 'invalid_token', message: 'This sign-in link has expired. Please sign in again.' };
         } else {

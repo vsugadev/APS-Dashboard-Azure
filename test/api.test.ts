@@ -35,8 +35,16 @@ test('Google callback: valid code + fresh state → page carries the session tok
     const ok = await (await fetch(s.base + '/?code=good&state=' + state)).text();
     const token = bootToken(ok); assert.ok(token);
     assert.match(ok, /"role":"admin"/); assert.match(ok, /var e = \(null\)/);
-    const replay = await (await fetch(s.base + '/?code=good&state=' + state)).text();
+    // v0.23.5: a used (or expired) state of ours restarts the Google sign-in ONCE with a fresh state — no warning page
+    const replayR = await fetch(s.base + '/?code=good&state=' + state, { redirect: 'manual' });
+    assert.equal(replayR.status, 302); const loc = String(replayR.headers.get('location'));
+    assert.match(loc, /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?state=/); assert.equal(replayR.headers.get('cache-control'), 'no-store');
+    const again = (loc.match(/state=([A-Za-z0-9_.-]+)/) || [])[1];
+    assert.ok(bootToken(await (await fetch(s.base + '/?code=good&state=' + again)).text()), 'the restarted sign-in completes');
+    const replay = await (await fetch(s.base + '/?code=good&state=' + again)).text(); // the restarted state reused → never a loop
     assert.equal(bootToken(replay), null); assert.match(replay, /"code":"invalid_token"/);
+    const forged = await (await fetch(s.base + '/?code=good&state=abc.def', { redirect: 'manual' })).text();
+    assert.match(forged, /"code":"invalid_token"/, 'a state that is not ours is refused, not restarted');
     const st2 = ((await (await fetch(s.base + '/')).text()).match(/state=([A-Za-z0-9_.-]+)/) || [])[1];
     const gm = await (await fetch(s.base + '/?code=gmail&state=' + st2)).text();
     assert.match(gm, /"code":"invalid_email"/);

@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : f71a178af57d8912b5d0be331d9385fe
+#   Part B md5    : e51cf525d7e4d497de05201eb54d6a13
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1073,4 +1073,7 @@ header is longer, or Code.gs fails quietly in the mock.
   else Google. LIVE_/TEST_QUESTION_PAPER_SPREADSHEET_ID read from app settings (scriptSettingsFrom; they are AZURE_SETTING_KEYS,
   never bridged) + config warning. AzureBridge.gs r142 export list + TAMIL_THADAM_SPREADSHEET_ID, EXAM_QUIZ_MATERIAL_SHEET_ID,
   DAILY_SUMMARY_SPREADSHEET_ID; TEST_QUESTION_PAPER_SPREADSHEET_ID added to the Azure-setting keys (both sides, tested equal).
+- v0.23.5 (2026-11-22): StateNonces.take returns reason ('expired' | 'used' | 'bad') + again; issue(ticket, again). Callback with a
+  genuine expired/used state and !again → 302 to a fresh Google auth URL (state a:1, Cache-Control no-store); otherwise the
+  invalid_token page as before. Tests: replay → restart → completes; restart reused → page; forged → page.
 

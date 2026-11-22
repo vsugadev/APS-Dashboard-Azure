@@ -28,27 +28,31 @@ export class StateNonces {
     return secret ? Buffer.from(hkdfSync('sha256', secret, 'aps-dashboard', 'oauth-state-v1', 32)) : undefined;
   }
   private sign(body: string): string { return createHmac('sha256', this.key).update(body).digest('base64url'); }
-  issue(ticket: string | null = null): string {
-    const body = Buffer.from(JSON.stringify({ n: randomBytes(12).toString('hex'), t: this.now(), ...(ticket ? { k: ticket } : {}) })).toString('base64url');
+  /** `again` (v0.23.5): this state was issued by the automatic restart of an expired sign-in — never restarted twice. */
+  issue(ticket: string | null = null, again = false): string {
+    const body = Buffer.from(JSON.stringify({ n: randomBytes(12).toString('hex'), t: this.now(), ...(ticket ? { k: ticket } : {}), ...(again ? { a: 1 } : {}) })).toString('base64url');
     return body + '.' + this.sign(body);
   }
-  take(s: string | undefined): { ok: boolean; ticket: string | null } {
-    const bad = { ok: false, ticket: null };
+  /** reason (v0.23.5): 'expired' / 'used' = a genuine state of ours that is too old or already used (safe to restart the
+   *  sign-in once); 'bad' = not ours. `again` = it came from that one automatic restart. */
+  take(s: string | undefined): { ok: boolean; ticket: string | null; reason?: 'expired' | 'used' | 'bad'; again?: boolean } {
+    const bad = { ok: false, ticket: null, reason: 'bad' as const };
     if (!s || s.length > 512) return bad;
     const dot = s.indexOf('.');
     if (dot < 1) return bad;
     const body = s.slice(0, dot);
     const a = Buffer.from(s.slice(dot + 1)); const b = Buffer.from(this.sign(body));
     if (a.length !== b.length || !timingSafeEqual(a, b)) return bad;
-    let p: { n?: unknown; t?: unknown; k?: unknown };
+    let p: { n?: unknown; t?: unknown; k?: unknown; a?: unknown };
     try { p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return bad; }
     const now = this.now();
-    if (typeof p.n !== 'string' || typeof p.t !== 'number' || p.t > now + 60_000 || now - p.t > this.ttlMs) return bad;
+    if (typeof p.n !== 'string' || typeof p.t !== 'number' || p.t > now + 60_000) return bad;
+    const ticket = typeof p.k === 'string' && /^APS-\d{8}-\d{4,6}$/.test(p.k) ? p.k : null, again = p.a === 1;
+    if (now - p.t > this.ttlMs) return { ok: false, ticket, reason: 'expired', again };
     for (const [n, exp] of this.used) if (exp <= now) this.used.delete(n);
-    if (this.used.has(p.n)) return bad; // single use
+    if (this.used.has(p.n)) return { ok: false, ticket, reason: 'used', again }; // single use
     this.used.set(p.n, p.t + this.ttlMs);
-    const ticket = typeof p.k === 'string' && /^APS-\d{8}-\d{4,6}$/.test(p.k) ? p.k : null;
-    return { ok: true, ticket };
+    return { ok: true, ticket, again };
   }
   /** true once for a fresh state, then never again (single use). */
   consume(s: string | undefined): boolean { return this.take(s).ok; }
