@@ -88,9 +88,9 @@ export async function startCopies(ctx: AppContext, store: SheetStore, db: DbBack
     log('[DB] Spreadsheet "' + book + '": copied to Azure SQL every ' + Math.round(everyMs / 60000) + ' min and checked; reads ' + (reads ? 'come from the copy (DB_READS)' : 'stay on Google Sheets until DB_READS includes it') + '.');
   }
   let pending: NodeJS.Timeout | null = null, lastKick = 0;
-  db.onDirty = () => { // after a save: one fresh copy of every book, at most every 20 s
+  db.onDirty = () => { // after a save: one fresh copy of every book, at most every 60 s (v0.23.3: was 20 s — Sheets API budget)
     if (pending) return;
-    const wait = Math.max(0, 20_000 - (Date.now() - lastKick));
+    const wait = Math.max(0, 60_000 - (Date.now() - lastKick));
     pending = setTimeout(() => { pending = null; lastKick = Date.now(); for (const s of syncs) void s.runOnce(); }, wait);
     pending.unref?.();
   };

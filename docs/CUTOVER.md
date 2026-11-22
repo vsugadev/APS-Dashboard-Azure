@@ -142,6 +142,8 @@ The readiness block was all OK (v0.23.0), with the test group set to admin, supe
 |---|---|---|---|---|
 | 1, 2 | Temp Teacher, Attendance (all tabs) | data loads slower than Apps Script | **HIGH** | v0.23.2: each sheet load fetched the WHOLE spreadsheet copy from Azure SQL; now only the requested tabs, served from memory after each copy |
 | 3 | Examination | tab and sub-tabs not visible | **BLOCKER** | v0.23.2: the Phase 1–2 placeholders (`examinationAccess`, `gradingAccess`, `assignMonAccess` …) are replaced by the copied Code.gs gates; also Save / Override / Access Control edit buttons shown as in Apps Script |
+| — | (log) | `copy FAILED: FREE_LIMIT_REACHED` + `Reconcile … GOOGLE_API_429` | **HIGH** | v0.23.3: really the Google Sheets API rate limit (71 calls per copy); batched reads + one API budget; correct error name |
+| — | Attendance (shadow) | `getAttendanceRecordsForViewer` 1275 vs 1428 rows | HIGH — re-check | taken during the 429 minute; re-check after v0.23.3 (if it persists it is a real difference) |
 
 ## 8. Duplicate and retry protection
 

@@ -8,7 +8,8 @@ import * as fs from 'fs';
 import type { AppConfig } from '../config';
 import { normalizeEmail } from '../lib/email';
 import { TtlCache } from '../lib/ttlCache';
-import { GOOGLE_SCOPES, googleFetchJson, type AccessTokenProvider } from '../google/serviceAccount';
+import { GOOGLE_SCOPES, googleFetchJson as rawFetchJson, type AccessTokenProvider } from '../google/serviceAccount';
+import { ApiGate } from '../google/apiGate';
 import type { AccessOverrides, Course, DataSource, SheetGrid, SheetSnapshot, ValuesRequest, WorkbookKey } from './types';
 import { serialToDate, dateToSerial } from '../gas/runtime';
 import { AC_ROLES, acItem } from '../auth/accessControl';
@@ -79,9 +80,14 @@ export function parseAccessRows(rows: string[][]): AccessOverrides {
   return out;
 }
 
+/** v0.23.3: tabs per spreadsheets.get when several uncached tabs are needed at once (was: one call per tab). */
+export const GRID_BATCH = 20;
+
 export class SheetsDataSource implements DataSource {
   private cache = new TtlCache();
-  constructor(private cfg: AppConfig, private token: AccessTokenProvider) {}
+  /** v0.23.3: every Sheets API call goes through one budget (src/google/apiGate.ts). */
+  readonly gate: ApiGate;
+  constructor(private cfg: AppConfig, private token: AccessTokenProvider, gate?: ApiGate) { this.gate = gate || new ApiGate(); }
 
   /** One batchGet for several ranges = one Sheets API call. */
   private async values(ranges: string[]): Promise<string[][][]> {
@@ -89,7 +95,7 @@ export class SheetsDataSource implements DataSource {
     const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
     const qs = ranges.map((r) => 'ranges=' + encodeURIComponent(r)).join('&');
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(this.cfg.targetSpreadsheetId)}/values:batchGet?${qs}&valueRenderOption=FORMATTED_VALUE`;
-    const res = await googleFetchJson<{ valueRanges?: { values?: string[][] }[] }>(url, t);
+    const res = await this.gate.run(() => rawFetchJson<{ valueRanges?: { values?: string[][] }[] }>(url, t));
     return (res.valueRanges || []).map((v) => v.values || []);
   }
   async readCourses(): Promise<Course[]> {
@@ -110,21 +116,27 @@ export class SheetsDataSource implements DataSource {
     const base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}`;
     const meta = await this.cache.get('titles:' + id, TITLES_TTL_MS, async () => {
       const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
-      const r = await googleFetchJson<{ properties?: { timeZone?: string }; sheets?: { properties?: { title?: string } }[] }>(base + '?fields=properties.timeZone,sheets.properties.title', t);
+      const r = await this.gate.run(() => rawFetchJson<{ properties?: { timeZone?: string }; sheets?: { properties?: { title?: string } }[] }>(base + '?fields=properties.timeZone,sheets.properties.title', t));
       return { tz: (r.properties && r.properties.timeZone) || 'America/New_York', titles: (r.sheets || []).map((x) => String(x.properties && x.properties.title)) };
     });
     const sheets: Record<string, SheetGrid | null> = {};
-    await Promise.all(names.map(async (name) => {
-      if (meta.titles.indexOf(name) < 0) { sheets[name] = null; return; }
-      sheets[name] = await this.cache.get('grid:' + id + ':' + name, SHEET_TTL_MS, async () => {
-        const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
-        const range = encodeURIComponent("'" + name.replace(/'/g, "''") + "'");
-        const fields = encodeURIComponent('sheets(data(rowData(values(effectiveValue,effectiveFormat.numberFormat.type))))');
-        const r = await googleFetchJson<{ sheets?: { data?: { rowData?: { values?: GridCell[] }[] }[] }[] }>(`${base}?ranges=${range}&includeGridData=true&fields=${fields}`, t);
-        const data = r.sheets && r.sheets[0] && r.sheets[0].data && r.sheets[0].data[0];
-        return { values: gridToValues(data && data.rowData, meta.tz) };
-      });
-    }));
+    const need: string[] = [];
+    for (const name of Array.from(new Set(names))) {
+      if (meta.titles.indexOf(name) < 0) { sheets[name] = null; continue; }
+      const hit = this.cache.peek<SheetGrid>('grid:' + id + ':' + name, SHEET_TTL_MS);
+      if (hit) sheets[name] = hit; else need.push(name);
+    }
+    // v0.23.3: the uncached tabs in batches of GRID_BATCH per spreadsheets.get (a whole-spreadsheet copy was 71 calls at once → 429)
+    const fields = encodeURIComponent('sheets(properties(title),data(rowData(values(effectiveValue,effectiveFormat.numberFormat.type))))');
+    for (let i = 0; i < need.length; i += GRID_BATCH) {
+      const part = need.slice(i, i + GRID_BATCH);
+      const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
+      const ranges = part.map((n) => 'ranges=' + encodeURIComponent("'" + n.replace(/'/g, "''") + "'")).join('&');
+      const r = await this.gate.run(() => rawFetchJson<{ sheets?: { properties?: { title?: string }; data?: { rowData?: { values?: GridCell[] }[] }[] }[] }>(`${base}?${ranges}&includeGridData=true&fields=${fields}`, t));
+      const byTitle: Record<string, { rowData?: { values?: GridCell[] }[] } | undefined> = {};
+      for (const sh of r.sheets || []) byTitle[String(sh.properties && sh.properties.title)] = sh.data && sh.data[0];
+      for (const n of part) { const g = { values: gridToValues(byTitle[n] && byTitle[n]!.rowData, meta.tz) }; this.cache.set('grid:' + id + ':' + n, g); sheets[n] = g; }
+    }
     return { timeZone: meta.tz, sheets, titles: meta.titles.slice() };
   }
   /** Sheets API values:batchGet with the caller's options (as the Apps Script advanced service), cached 60 s. */
@@ -135,17 +147,16 @@ export class SheetsDataSource implements DataSource {
       const t = await this.token([GOOGLE_SCOPES.sheetsRead]);
       const qs = req.ranges.map((r) => 'ranges=' + encodeURIComponent(r))
         .concat(['valueRenderOption', 'dateTimeRenderOption', 'majorDimension'].filter((k) => (req as any)[k]).map((k) => k + '=' + encodeURIComponent((req as any)[k]))).join('&');
-      const r = await googleFetchJson<{ valueRanges?: { range: string; values?: unknown[][] }[] }>(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values:batchGet?${qs}`, t);
+      const r = await this.gate.run(() => rawFetchJson<{ valueRanges?: { range: string; values?: unknown[][] }[] }>(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values:batchGet?${qs}`, t));
       return { valueRanges: r.valueRanges || [] };
     });
   }
   /** Write phase (v0.10.0): after a save through the bridge, every cached read is re-done once. */
   invalidate(): void { this.cache.clear(); }
   async readAccessOverrides(): Promise<AccessOverrides> {
-    return this.cache.get('access', ACCESS_TTL_MS, async () => {
-      try { return parseAccessRows((await this.values([`${AC_SHEET}!A2:F`]))[0]); }
-      catch (e) { console.warn('[AccessControl] read failed — defaults used'); return { __meta: { at: '', by: '' } } as AccessOverrides; }
-    });
+    // v0.23.3: a failed read is NOT cached (was: the defaults kept for a minute) — the next call tries again
+    try { return await this.cache.get('access', ACCESS_TTL_MS, async () => parseAccessRows((await this.values([`${AC_SHEET}!A2:F`]))[0])); }
+    catch (e) { console.warn('[AccessControl] read failed (' + String((e as Error).message).slice(0, 60) + ') — defaults used for this request'); return { __meta: { at: '', by: '' } } as AccessOverrides; }
   }
 }
 

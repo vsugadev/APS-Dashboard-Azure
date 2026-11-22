@@ -14,6 +14,9 @@ export class TtlCache {
     this.inflight.set(key, p);
     return p;
   }
+  /** v0.23.3: a fresh value, or undefined (no load). */
+  peek<T>(key: string, ttlMs: number): T | undefined { const hit = this.store.get(key); return hit && this.now() - hit.at < ttlMs ? hit.value as T : undefined; }
+  set(key: string, value: unknown): void { this.store.set(key, { at: this.now(), value }); }
   delete(key: string): void { this.store.delete(key); }
   clear(): void { this.store.clear(); }
 }

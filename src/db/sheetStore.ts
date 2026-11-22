@@ -212,6 +212,8 @@ export function describeDbError(err: unknown): string {
   if (/ENOTFOUND|getaddrinfo/i.test(m)) return 'SERVER_NOT_FOUND — check SQL_SERVER (e.g. aps-dashboard-sql.database.windows.net).';
   if (/Cannot open database|database .* does not exist/i.test(m)) return 'DATABASE_NOT_FOUND — check SQL_DATABASE.';
   if (/paused|resuming|not currently available|ETIMEOUT|timeout/i.test(m)) return 'WAKING_UP — the free serverless database was paused; it retries automatically.';
-  if (/free limit|exhausted/i.test(m)) return 'FREE_LIMIT_REACHED — the monthly free allowance is used up; the database is paused until next month (reads come from Google Sheets meanwhile).';
+  // v0.23.3: a Google error is never a database error (a Sheets 429 RESOURCE_EXHAUSTED was shown as FREE_LIMIT_REACHED)
+  if (/GOOGLE_API_\d{3}|GOOGLE_NOT_CONFIGURED|unauthorized_client|invalid_grant/.test(m)) return 'GOOGLE — reading the Google Sheet failed: ' + (m.match(/GOOGLE_API_\d{3}(?: [A-Z_]+)*|GOOGLE_NOT_CONFIGURED|unauthorized_client|invalid_grant/) || ['error'])[0] + (/429/.test(m) ? ' (Sheets API rate limit; it clears within a minute)' : '');
+  if (/free (amount|offer|limit)/i.test(m)) return 'FREE_LIMIT_REACHED — the monthly free allowance is used up; the database is paused until next month (reads come from Google Sheets meanwhile).';
   return 'ERROR — ' + m.replace(/[\w.+-]+@[\w.-]+/g, '<email>').replace(/(password|token|secret)=\S+/gi, '$1=[hidden]').slice(0, 120);
 }

@@ -321,4 +321,8 @@ header is longer, or Code.gs fails quietly in the mock.
   removed — examinationAccess / gradingAccess / assignMonAccess / apsRole / coverage / Temp Teacher from copied Code.gs (sign-in
   buildUserPayload via gasRun + getDashboardData); CTA canSubmit/canSendTest, attendance r.editable, Access Control canEdit now
   as Code.gs (their saves are WRITE_THROUGH since v0.14). Parity tests now compare these fields with Code.gs.
+- v0.23.3 (2026-11-22): Sheets API 429 fix — SheetsDataSource.readSheets batches uncached tabs (GRID_BATCH 20 per spreadsheets.get,
+  was 1 call per tab = 71 per copy); src/google/apiGate.ts ApiGate (≤45/min, 4 concurrent, 429 → pause all 30 s + one retry)
+  wraps every Sheets call; onDirty copy ≥60 s apart; describeDbError names Google errors (GOOGLE_API_429 was mis-shown as
+  FREE_LIMIT_REACHED via /exhausted/); failed Access Control read not cached. TtlCache.peek/set.
 
