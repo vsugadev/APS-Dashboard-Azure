@@ -67,7 +67,7 @@ export class SheetSync {
     if (!res.ok || !prev || !prev.ok) {
       const n = Object.keys(res.rows);
       this.log(res.ok
-        ? `[DB] ${this.label} copied to Azure SQL — ` + (n.length > 6 ? n.length + ' sheets, ' + n.reduce((a, k) => a + res.rows[k], 0) + ' rows' : n.map((k) => k + ' ' + res.rows[k] + ' rows').join(', ') || 'no sheet yet') + '; checked identical.'
+        ? `[DB] ${this.label} copied to Azure SQL — ` + (n.length > 6 ? n.length + ' sheets, ' + n.reduce((a, k) => a + res.rows[k], 0) + ' rows' : n.map((k) => k + ' ' + res.rows[k] + ' rows').join(', ') || 'nothing to copy yet (' + (this.names.join(', ') || 'no tab') + ' not in the spreadsheet)') + (n.length ? '; checked identical.' : '.')
         : `[DB] ${this.label} copy FAILED: ${res.error} — reads stay on Google Sheets.`);
     }
     try { this.opts.onDone?.(startedAt, res.ok); } catch { /* reader bookkeeping only */ }

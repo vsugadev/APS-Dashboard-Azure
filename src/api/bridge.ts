@@ -1,3 +1,4 @@
+
 /**
  * Reverse bridge (v0.13.0, database stage 3) — Apps Script → Azure. POST /api/bridge
  *

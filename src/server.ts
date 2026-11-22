@@ -172,7 +172,13 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
     res.json(out);
   });
 
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    // v0.23.1: the browser closed / left the page while sending (body parser 'request.aborted') — nothing failed on the server
+    if ((err as { type?: string }).type === 'request.aborted' || /request aborted/i.test(String(err && err.message))) {
+      console.log('[Server] the browser stopped sending a request before it finished (page closed or reloaded) — ' + String(req.path).slice(0, 60) + '; nothing was run.');
+      if (!res.headersSent) res.status(400).end();
+      return;
+    }
     console.error('[Server] ' + String(err && err.message).slice(0, 200));
     res.status(400).json({ err: 'Bad request.' });
   });

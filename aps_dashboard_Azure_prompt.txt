@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : daeaae7a1bd8910719d34c4195b29e12
+#   Part B md5    : 72be9b81ed99a992e4efb7f2cfd6448d
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1056,4 +1056,6 @@ header is longer, or Code.gs fails quietly in the mock.
   Gate r141: timed trigger skips while Azure alive (any APS_AZURE_JOB_LAST_* < 30 min), else runs + APS_AZURE_JOB_TAKEOVER_<h>,
   and Azure's job action returns RAN_BY_TRIGGER (20 h daily / 6 d weekly). Code.gs r141: ON_AZURE return in the 12 handlers.
   Zoho daily sync excluded (self-continuing batches). Email bodies keep their own per-slot guards.
+- v0.23.1 (2026-11-22): log clean-up (body-parser request.aborted = info line; empty SC enrollments copy wording). Day 1:
+  reconciliation IDENTICAL main 71 tabs 42,786 rows, attendance 17 tabs 17,239 rows; readiness all OK; feedback #1 Temp Teacher, #2 Attendance.
 

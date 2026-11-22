@@ -129,6 +129,16 @@ parity tests, and the test group compares them by eye and reports differences. T
 | **2: parallel run** | `PARALLEL_RUN=on` + test group; HM/VP/admin use both dashboards for real work; triage `dbo.parallel_feedback` twice a day; keep reconciling; fix P0/P1 | no open BLOCKER/HIGH; `dbo.job_run` all ok; email preview matches |
 | **3: readiness** | final reconciliation; error / retry / duplicate checks (§8); security checks (§9); rollback rehearsal (move the link back and forth once) | GO / GO WITH KNOWN DIFFERENCES / NO-GO recorded |
 
+### Day 1 result (2026-11-22, 17:12 UTC)
+
+| Spreadsheet | Tabs | SOURCE | TARGET | MATCH | MISSING | EXTRA | DIFFERENT | DUPLICATE KEYS | ERRORS | Result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| main | 71 | 42,786 | 42,786 | 42,786 | 0 | 0 | 0 | 0 / 0 | 0 | IDENTICAL |
+| attendance | 17 | 17,239 | 17,239 | 17,239 | 0 | 0 | 0 | 0 / 0 | 0 | IDENTICAL |
+
+The readiness block was all OK (v0.23.0), with the test group set to admin, superadmin and headmaster. Two difference reports
+(#1 Temp Teacher, #2 Attendance) are being triaged.
+
 ## 8. Duplicate and retry protection
 
 All of these are covered by automated tests (`npm test`).
