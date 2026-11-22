@@ -333,4 +333,7 @@ header is longer, or Code.gs fails quietly in the mock.
 - v0.23.5 (2026-11-22): StateNonces.take returns reason ('expired' | 'used' | 'bad') + again; issue(ticket, again). Callback with a
   genuine expired/used state and !again → 302 to a fresh Google auth URL (state a:1, Cache-Control no-store); otherwise the
   invalid_token page as before. Tests: replay → restart → completes; restart reused → page; forged → page.
+- v0.23.6 (2026-11-22): run.ts EXTRA_BOOK_ID_PROPS (LIVE_/TEST_QUESTION_PAPER_SPREADSHEET_ID from app settings; TAMIL_THADAM_SPREADSHEET_ID,
+  EXAM_QUIZ_MATERIAL_SHEET_ID, DAILY_SUMMARY_SPREADSHEET_ID from settings or the bridge snapshot) added to extraIds (read-only
+  snapshots; ID format checked) — fixes Exam Question Paper "openById only opens the APS spreadsheets".
 

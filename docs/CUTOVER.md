@@ -143,7 +143,7 @@ The readiness block was all OK (v0.23.0), with the test group set to admin, supe
 | 1, 2 | Temp Teacher, Attendance (all tabs) | data loads slower than Apps Script | **HIGH** | v0.23.2: each sheet load fetched the WHOLE spreadsheet copy from Azure SQL; now only the requested tabs, served from memory after each copy |
 | 3 | Examination | tab and sub-tabs not visible | **BLOCKER** | v0.23.2: the Phase 1–2 placeholders (`examinationAccess`, `gradingAccess`, `assignMonAccess` …) are replaced by the copied Code.gs gates; also Save / Override / Access Control edit buttons shown as in Apps Script |
 | — | (log) | `copy FAILED: FREE_LIMIT_REACHED` + `Reconcile … GOOGLE_API_429` | **HIGH** | v0.23.3: really the Google Sheets API rate limit (71 calls per copy); batched reads + one API budget; correct error name |
-| 4 | Exam Question Paper | "not configured: set LIVE_QUESTION_PAPER_SPREADSHEET_ID" | **HIGH** | v0.23.4 reads the app setting `LIVE_QUESTION_PAPER_SPREADSHEET_ID` (add it in Azure, same value as Apps Script) |
+| 4 | Exam Question Paper | "not configured: set LIVE_QUESTION_PAPER_SPREADSHEET_ID" | **HIGH** | v0.23.4 reads the app setting `LIVE_QUESTION_PAPER_SPREADSHEET_ID` (add it in Azure, same value as Apps Script); v0.23.6 lets the screen open that spreadsheet ("openById only opens the APS spreadsheets") |
 | 5 | Attendance Override | `GOOGLE_API_429` after Override (the override itself was saved — audit row 17:38:54) | **HIGH** | v0.23.3 API budget + v0.23.4 week sheets from the copy |
 | — | Attendance (shadow) | `getAttendanceRecordsForViewer` 1275 vs 1428 rows | HIGH — re-check | taken during the 429 minute; re-check after v0.23.3 (if it persists it is a real difference) |
 

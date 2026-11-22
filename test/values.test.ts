@@ -54,3 +54,16 @@ test('Exam Question Paper: the LIVE / TEST spreadsheet IDs are read from the app
   const w = configWarnings(loadConfig({ NODE_ENV: 'development', APS_DATA_MODE: 'sheets' } as any));
   assert.ok(w.some((x) => /LIVE_QUESTION_PAPER_SPREADSHEET_ID is not set/.test(x)));
 });
+
+test('Exam Question Paper on Azure: the question paper spreadsheet (LIVE app setting) can be opened read-only; other IDs still refused (report #4b)', async () => {
+  const { testContext, testConfig } = await import('./helpers');
+  const { gasRun } = await import('../src/api/endpoints/classes');
+  const QP = 'QPspreadsheet_0123456789abcdef';
+  const cfg = testConfig(); cfg.scriptSettings = { ...cfg.scriptSettings, LIVE_QUESTION_PAPER_SPREADSHEET_ID: QP };
+  const ctx: any = testContext({ cfg });
+  const inner = ctx.data.readSheets.bind(ctx.data); const opened: string[] = [];
+  ctx.data.readSheets = async (book: string, names: string[]) => { if (book === 'id:' + QP) { opened.push(book); return { timeZone: 'America/New_York', titles: ['Papers'], sheets: { Papers: { values: [['Paper_ID'], ['P1']] } } }; } return inner(book, names); };
+  const id = await gasRun(ctx, { email: 'admin@avvaiyarpadasalai.org', role: 'admin' }, (S) => S.examQpSpreadsheet_().getId());
+  assert.equal(id, QP); assert.ok(opened.length >= 1);
+  await assert.rejects(gasRun(ctx, null, (S) => S.SpreadsheetApp ? null : S.openSpreadsheetByIdWithRetry_('Other_0123456789abcdefghij', 'x')), /only opens the APS spreadsheets|Other_/);
+});

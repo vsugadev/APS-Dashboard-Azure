@@ -13,6 +13,9 @@ export const MAX_LOADS = 30;
 /** Copied Code.gs functions that give the ID of another spreadsheet a reader opens (Script Property or Code.gs default).
  *  Only these IDs can be opened — read-only, on demand. */
 export const EXTRA_BOOK_ID_FNS = ['scSpreadsheetId_', 'zhSheetId_'];
+/** v0.23.6: other spreadsheets the copied screens open by a Script Property ID (Exam Question Paper — LIVE / TEST app setting —,
+ *  Tamil Thadam, quiz material, daily summary). Read-only snapshots, like the two above; any other ID is still refused. */
+export const EXTRA_BOOK_ID_PROPS = ['LIVE_QUESTION_PAPER_SPREADSHEET_ID', 'TEST_QUESTION_PAPER_SPREADSHEET_ID', 'TAMIL_THADAM_SPREADSHEET_ID', 'EXAM_QUIZ_MATERIAL_SHEET_ID', 'DAILY_SUMMARY_SPREADSHEET_ID'];
 
 export interface GasRunOptions {
   preload: Record<WorkbookKey, string[]>;
@@ -56,7 +59,13 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
       }
     }
     const S = makeGasScope(makeRuntime({ ...opts.deps, main: new SnapWorkbook(idOf('main'), m.sheets, m.timeZone, m.titles, 'main', need), attendance: att, values, bookIds, need, extra, extraIds }));
-    if (!idsDone) { idsDone = true; for (const f of EXTRA_BOOK_ID_FNS) { const v = typeof S[f] === 'function' ? String(S[f]() || '').trim() : ''; if (v && !bookIds[v] && extraIds.indexOf(v) < 0 && !blocked.has(v)) extraIds.push(v); } }
+    if (!idsDone) {
+      idsDone = true;
+      const add = (v: string) => { if (v && /^[A-Za-z0-9_-]{20,100}$/.test(v) && !bookIds[v] && extraIds.indexOf(v) < 0 && !blocked.has(v)) extraIds.push(v); };
+      for (const f of EXTRA_BOOK_ID_FNS) add(typeof S[f] === 'function' ? String(S[f]() || '').trim() : '');
+      const live = (opts.deps.liveProps && opts.deps.liveProps.script) || {};
+      for (const k of EXTRA_BOOK_ID_PROPS) add(String(opts.deps.settings[k] || live[k] || '').trim());
+    }
     let result: T | undefined, error: unknown = null;
     try { result = await fn(S); } catch (e) { error = e; }
     if (!pending.length) { if (error) throw error; if (opts.capture) opts.capture(extra); return result as T; }
