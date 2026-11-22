@@ -6,6 +6,11 @@
  *   GET  /dev/login   LOCAL DEVELOPMENT ONLY (DEV_LOGIN=1, refused in Azure)
  */
 import express, { type Request, type Response, type NextFunction } from 'express';
+import compression from 'compression';
+import { responseCache } from './api/responseCache';
+import { PerfMonitor } from './api/perf';
+import { READS2 } from './api/endpoints/reads';
+import { ATTENDANCE_READS } from './api/endpoints/classes';
 import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
@@ -40,6 +45,12 @@ import { registerParallelRun, MssqlFeedbackStore, readinessLines, type Readiness
 import { ShadowComparer, MssqlShadowStore, bridgeAppsScriptRunner } from './parallel/shadow';
 import { TimedJobScheduler, bridgeScheduleSource, parseTimedList } from './jobs/timed';
 import { MailJobRunner, MssqlMailJobStore, liveMailJobDeps, parseMailJobList } from './mail/mailJobs';
+
+/** v0.24.0 (performance #2): read screens Azure answers itself whose answers may be reused for PERF_CACHE_SECONDS.
+ *  Not: the class cards (they also record "online now"), the realtime check, chat, anything passed through to Apps Script. */
+export function cacheableNames(): string[] {
+  return Array.from(new Set((Object.values(READS2).flat() as string[]).concat(ATTENDANCE_READS, ['getDirectoryIndex', 'getClassTeacherAvailabilityView', 'getAccessControl', 'getMyCountryPreference'])));
+}
 
 export function buildRegistry(fetchImpl?: FetchLike): Registry {
   const reg = new Registry();
@@ -107,6 +118,7 @@ export async function checkGoogleAccess(ctx: AppContext, log: (m: string) => voi
 export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Registry = buildRegistry()): express.Express {
   const app = express();
   app.disable('x-powered-by');
+  app.use(compression({ threshold: 1024 })); // v0.24.0 (performance #3): gzip / brotli — the page 1.4 MB → ~250 KB
   app.set('trust proxy', 1); // App Service front end
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -118,7 +130,7 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
 
   // v0.17.1: the running version, so a wrong deployment is seen at once (https://<app>/healthz)
   app.get('/healthz', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ ok: true, phase: 1, version: APP_VERSION }); });
-  app.use(express.static(path.join(__dirname, '..', '..', 'public'), { index: false, maxAge: '10m' }));
+  app.use(express.static(path.join(__dirname, '..', '..', 'public'), { index: false, maxAge: '1h', etag: true })); // v0.24.0 (performance #4)
 
   const TICKET_RE = /^APS-\d{8}-\d{4,6}$/;
   const sendPage = (res: Response, result: SignInResult | null, ticket: string | null = null) => {
@@ -204,12 +216,19 @@ if (require.main === module) {
   const page = new DashboardPage(path.resolve(cfg.dashboardHtmlPath));
   const ctx = createContext(cfg);
   const reg = buildRegistry();
+  { // v0.24.0: performance — reused answers (#2) + measurement (#7)
+    responseCache.ttlMs = cfg.perfCacheSeconds * 1000;
+    if (cfg.perfCacheSeconds > 0) { reg.cache = responseCache; for (const n of cacheableNames()) reg.cacheable.add(n); }
+    const perf = new PerfMonitor(); perf.start();
+    reg.addObserver((_c, name, _a, out, ms, cached) => perf.record(name, ms, !('err' in out), !!cached));
+    console.log('[Perf] measuring every screen ([Perf] hourly summary); answers reused ' + (cfg.perfCacheSeconds > 0 ? cfg.perfCacheSeconds + ' s for ' + reg.cacheable.size + ' read screens' : 'OFF (PERF_CACHE_SECONDS=0)') + '; responses compressed.');
+  }
   if (cfg.shadowSample > 0 && bridgeUsable(cfg) && ctx.data instanceof DbBackedDataSource) { // v0.22.0: shadow comparison (parallel run)
     const db = ctx.data; let ignore: RegExp | null = null;
     try { ignore = cfg.shadowIgnore ? new RegExp(cfg.shadowIgnore) : null; } catch { console.warn('[Shadow] SHADOW_IGNORE is not a valid pattern — nothing ignored.'); }
     const sc = new ShadowComparer(reg, bridgeAppsScriptRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret), new MssqlShadowStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()),
       { samplePct: cfg.shadowSample, dailyCap: cfg.shadowDailyCap, ignore });
-    reg.observer = sc.observe; sc.start();
+    reg.addObserver(sc.observe); sc.start();
   } else if (cfg.shadowSample > 0) console.warn('[Shadow] SHADOW_SAMPLE is set but the Apps Script bridge or Azure SQL is not — no comparison.');
   const app = createApp(ctx, page, reg);
   app.listen(cfg.port, () => {

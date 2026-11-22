@@ -11,6 +11,7 @@
  *  - After a successful save, Azure's cached reads (live snapshot, Sheets) are refreshed, so the page shows the change.
  *  - App setting AZURE_WRITE_THROUGH=off (or no bridge) → the old "not on Azure yet" answer.
  */
+import { responseCache } from '../responseCache';
 import type { Registry } from '../registry';
 import { NOT_ON_AZURE } from '../registry';
 import { requireSession } from '../../app/context';
@@ -103,7 +104,7 @@ function registerThrough(reg: Registry, name: string, isWrite: boolean, fetchImp
       r = q;
     }
     if (r && typeof r.error === 'string') throw new Error(r.error);
-    if (isWrite) { ctx.live.invalidate?.(); if (LIGHT_FNS.indexOf(name) < 0) ctx.data.invalidate?.(); }
+    if (isWrite) { ctx.live.invalidate?.(); if (LIGHT_FNS.indexOf(name) < 0) ctx.data.invalidate?.(); responseCache.clear(); } // v0.24.0: reused answers cleared at once
     return r ? r.value : null;
   });
 }

@@ -104,7 +104,7 @@ export function registerReads2(reg: Registry): void {
   for (const name of Object.values(READS2).flat()) {
     reg.register(name, async (ctx, [token, ...args]) => {
       const s = await requireSession(ctx, token);
-      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args));
+      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args), { key: name });
     });
   }
 }

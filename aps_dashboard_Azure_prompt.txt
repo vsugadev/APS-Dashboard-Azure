@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 851f76e0604c4732ec10db295864ff28
+#   Part B md5    : 709577a8f13e5cf506b2591018e73a35
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -749,6 +749,35 @@ wins only for the Azure code in this project; Apps Script production rules stay 
 
 ---
 
+## B0. TOP PRIORITY — cost saving and performance (non-profit; applies to EVERY change)
+
+APS is a volunteer-run non-profit. For every design, release and recommendation, in this order:
+1. **Free first.** Use free resources and free tiers as much as possible (built-in App Service features, the in-process memory
+   cache, Azure SQL free offer, Application Insights free tier, Google APIs within quota, existing code and data). A paid
+   service or a bigger tier is proposed ONLY when a measurement shows the free option cannot meet the need — with the measured
+   number, the monthly cost and the free alternative tried.
+2. **Never trade performance away to save money, and never add cost for speed that free changes can give.** Fix how requests
+   run (fewer reruns, fewer API calls, reuse, compression, caching) before any hardware or service upgrade.
+3. Every release states its cost impact ("no new cost" or the exact monthly amount) and its performance effect.
+4. Do not add unnecessary API calls, database calls, services, dependencies or background jobs (each costs quota or money).
+
+### Free performance changes (biggest effect first) — agreed 2026-11-22
+| # | Change | Status |
+|---|---|---|
+| 1 | Learned preload per screen: load what each screen needed last time up front; load ALL needs found in a run at once (was one need per re-run) — 1 run instead of 3–6; workbooks read in parallel | v0.24.0 |
+| 2 | Reuse recent answers 30 s (`PERF_CACHE_SECONDS`) for read screens Azure answers itself, per session + arguments; any save clears all; session and test group re-checked on every hit. Not cached: class cards (heartbeat), realtime check, Apps Script pass-through | v0.24.0 |
+| 3 | Compress responses (gzip / brotli, `compression`): page 1.4 MB → ~250 KB | v0.24.0 |
+| 4 | Browser caching of fixed files (public *.js 1 h + ETag); the dashboard page stays no-store (boot token) | v0.24.0 |
+| 5 | Portal (no code): Always On, HTTP/2, ARR affinity off | user |
+| 6 | Move the busiest Apps Script pass-through screens onto Azure, chosen from the measurements in 7 | after measuring |
+| 7 | Measure every screen: `[Perf]` hourly summary (calls, average, p95, max per function) + a line for any request over 5 s | v0.24.0 |
+| 8 | Same Azure region for the web app and the database | user check |
+
+Paid — only if measured: B1 → B2 (+$12/month) at go-live if CPU stays above ~70% at class start; Redis only with 2+ instances;
+no bigger database (CPU 4%); no Premium plans or CDN at this size.
+
+---
+
 ## B1. Projects and folders
 
 Azure project (this repository):
@@ -1079,4 +1108,11 @@ header is longer, or Code.gs fails quietly in the mock.
 - v0.23.6 (2026-11-22): run.ts EXTRA_BOOK_ID_PROPS (LIVE_/TEST_QUESTION_PAPER_SPREADSHEET_ID from app settings; TAMIL_THADAM_SPREADSHEET_ID,
   EXAM_QUIZ_MATERIAL_SHEET_ID, DAILY_SUMMARY_SPREADSHEET_ID from settings or the bridge snapshot) added to extraIds (read-only
   snapshots; ID format checked) — fixes Exam Question Paper "openById only opens the APS spreadsheets".
+- v0.24.0 (2026-11-22): PERFORMANCE release (rule B0): run.ts learned preload (LEARNED per key, union of sheets ≤60/book, books,
+  last ≤6 batchGet requests), ALL pending needs loaded per pass (was first only; "requested again" only when nothing progressed),
+  main/attendance/extra workbooks read in parallel; gasRun extra.key = screen name at every call site. Registry: observers list,
+  ResponseCache (src/api/responseCache.ts; key fn+token+args; TTL PERF_CACHE_SECONDS 30; 600 entries; requireSession on every
+  hit; cleared by writes.ts isWrite + scOwner save); cacheableNames() = READS2 + ATTENDANCE_READS + directory, CTA view, access
+  control, country preference (NOT getDashboardData / realtime / chat / pass-through). compression 1.8.1 (threshold 1 KB);
+  public static maxAge 1h + ETag. src/api/perf.ts PerfMonitor ([Perf] hourly top-10 by p95, slow > 5 s once / 10 min). No new cost.
 

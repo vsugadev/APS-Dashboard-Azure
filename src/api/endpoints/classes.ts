@@ -74,12 +74,12 @@ export function gasSettings(cfg: AppConfig): Record<string, string> {
 /** Runs copied Code.gs code for one request (src/gas/run.ts): read-only snapshot, sheets loaded on demand.
  *  `session` = the session Azure already checked (for copied endpoints that call requireValidSession_ / apsRequireTabForToken_). */
 export async function gasRun<T>(ctx: AppContext, session: { email: string; role: string } | null, fn: (S: any) => T | Promise<T>,
-  extra: { writable?: string[]; capture?: (books: Record<string, any>) => void } = {}): Promise<T> {
+  extra: { writable?: string[]; capture?: (books: Record<string, any>) => void; key?: string } = {}): Promise<T> {
   const [ov, courses] = await Promise.all([ctx.data.readAccessOverrides(), ctx.data.readCourses()]);
   const hidden = hiddenStaffSet(ctx.cfg);
   const json = JSON.stringify(courses);
   return runGas(ctx, {
-    preload: { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS }, writable: extra.writable, capture: extra.capture,
+    preload: { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS }, writable: extra.writable, capture: extra.capture, key: extra.key,
     deps: {
       settings: gasSettings(ctx.cfg), session, courses: () => JSON.parse(json), liveProps: await ctx.live.get(),
       tabAllowedForSession: (key: string) => !!session && apsTabAllowed(session.role, key, ov),
@@ -140,7 +140,7 @@ export function apsRoleFor(viewer: { email: string; role: string }, courses: C[]
 
 /** Same payload as Code.gs getDashboardDataInner_ + apsSlimDashboardPayload_ (live / not-yet parts empty, see header). */
 export async function buildClassesView(ctx: AppContext, viewer: { email: string; role: string }, allCourses: C[], now: Date, S?: any): Promise<Record<string, unknown>> {
-  if (!S) { const json = JSON.stringify(allCourses); return gasRun(ctx, null, (S2) => buildClassesView(ctx, viewer, JSON.parse(json), now, S2)); } // fresh copy per run
+  if (!S) { const json = JSON.stringify(allCourses); return gasRun(ctx, null, (S2) => buildClassesView(ctx, viewer, JSON.parse(json), now, S2), { key: 'getDashboardData' }); } // fresh copy per run
   const scope = S;
   const courses = decorateCourses(ctx.cfg, allCourses, now, scope);
   let visible: C[];
@@ -204,20 +204,20 @@ export function registerClasses(reg: Registry): void {
   /** getMyCountryPreference — the sign-in "Continue" step asks this; without it the page waits for a country pick. */
   reg.register('getMyCountryPreference', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
-    return gasRun(ctx, null, (S) => countryPreference(S, s.email));
+    return gasRun(ctx, null, (S) => countryPreference(S, s.email), { key: 'getMyCountryPreference' });
   });
   /** getClassTeacherAvailabilityView — Classes → Teacher Availability (Phase 2 step 3): a teacher's own week + the
    *  Admin / HM / BOD weekly report, exactly as Code.gs builds it (copied code, read-only). Saving stays in Apps Script. */
   reg.register('getClassTeacherAvailabilityView', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
-    const out = await gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getClassTeacherAvailabilityView(token));
+    const out = await gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getClassTeacherAvailabilityView(token), { key: 'getClassTeacherAvailabilityView' });
     return out; // v0.23.2: Save / test email go through the bridge (Code.gs) since v0.14 — same buttons as Apps Script
   });
   /** getDirectoryIndex — Active Directory → Directory Search (Phase 2 step 4): every class's people, role-tiered on the
    *  server exactly as Code.gs (copied code). Online / last login / onboarded follow the Classes view (Phase 3 for stored data). */
   reg.register('getDirectoryIndex', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
-    return gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getDirectoryIndex(token));
+    return gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getDirectoryIndex(token), { key: 'getDirectoryIndex' });
   });
   /** Attendance tab (Phase 2 step 5): the seven read calls, each the copied Code.gs function with its own role checks.
    *  Weekly sheets / Sheets.batchGet ranges are loaded on demand. Editing / sync stay in Apps Script (not registered).
@@ -225,13 +225,13 @@ export function registerClasses(reg: Registry): void {
   for (const name of LIVE_READS) {
     reg.register(name, async (ctx, [token, ...args]) => {
       const s = await requireSession(ctx, token);
-      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args));
+      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args), { key: name });
     });
   }
   for (const name of ATTENDANCE_READS) {
     reg.register(name, async (ctx, [token, ...args]) => {
       const s = await requireSession(ctx, token);
-      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args)); // v0.23.2: Override goes through the bridge (editAttendanceRecordStatus) — same as Apps Script
+      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args), { key: name }); // v0.23.2: Override goes through the bridge (editAttendanceRecordStatus) — same as Apps Script
     });
   }
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */

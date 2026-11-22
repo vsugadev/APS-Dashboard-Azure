@@ -8,17 +8,25 @@
  * A name not moved to Azure yet answers {"err":"NOT_ON_AZURE_YET: <name>"}.
  */
 import type { AppContext } from '../app/context';
+import { requireSession } from '../app/context';
+import type { ResponseCache } from './responseCache';
 
 export type Handler = (ctx: AppContext, args: unknown[]) => Promise<unknown> | unknown;
 export const NOT_ON_AZURE = 'NOT_ON_AZURE_YET: ';
 const NAME_RE = /^[A-Za-z][A-Za-z0-9]{0,79}$/; // public Code.gs names: no underscore suffix (private helpers are never callable)
 
 /** v0.22.0: told about every answered call (shadow comparison in the parallel run). Must never throw or block. */
-export type CallObserver = (ctx: AppContext, name: string, args: unknown[], out: { ok: unknown } | { err: string }, ms: number) => void;
+export type CallObserver = (ctx: AppContext, name: string, args: unknown[], out: { ok: unknown } | { err: string }, ms: number, cached?: boolean) => void;
 
 export class Registry {
   private handlers = new Map<string, Handler>();
-  observer: CallObserver | null = null;
+  /** v0.24.0: several observers (shadow comparison, performance); setting `observer` adds one (as before). */
+  private observers: CallObserver[] = [];
+  set observer(o: CallObserver | null) { if (o) this.observers.push(o); }
+  addObserver(o: CallObserver): void { this.observers.push(o); }
+  /** v0.24.0 (performance #2): answers of these functions are reused for a short time (same session + arguments). */
+  cache: ResponseCache | null = null;
+  cacheable = new Set<string>();
   register(name: string, h: Handler): this {
     if (!NAME_RE.test(name)) throw new Error('Invalid endpoint name: ' + name);
     if (this.handlers.has(name)) throw new Error('Duplicate endpoint: ' + name);
@@ -34,14 +42,25 @@ export class Registry {
     if (!Array.isArray(args) || args.length > 20) return { err: 'Bad request.' };
     const t0 = Date.now();
     let out: { ok: unknown } | { err: string };
+    const ck = this.cache && this.cacheable.has(name) ? this.cache.key(name, args) : null;
+    if (ck) {
+      const hit = this.cache!.get(ck);
+      if (hit) {
+        try { await requireSession(ctx, args[0]); } // the session (and the test group) is checked on EVERY answer, cached or not
+        catch (e) { return { err: safeErrorMessage(String((e as Error)?.message || e)) }; }
+        for (const o of this.observers) { try { o(ctx, name, args, hit, Date.now() - t0, true); } catch { /* never affects the answer */ } }
+        return hit;
+      }
+    }
     try {
       const v = await h(ctx, args);
       out = { ok: v === undefined ? null : v };
+      if (ck) this.cache!.set(ck, out as { ok: unknown });
     } catch (e) {
       const msg = String((e as Error)?.message || e);
       out = { err: safeErrorMessage(msg) };
     }
-    if (this.observer) { try { this.observer(ctx, name, args, out, Date.now() - t0); } catch { /* never affects the answer */ } }
+    for (const o of this.observers) { try { o(ctx, name, args, out, Date.now() - t0, false); } catch { /* never affects the answer */ } }
     return out;
   }
 }

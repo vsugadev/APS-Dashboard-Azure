@@ -171,6 +171,11 @@ Needs §5.7 working. Apps Script: deploy `AzureBridge.gs` r139 (New version).
 Apps Script r141 first. Then add the names to both `APS_JOBS_ON_AZURE` (Apps Script) and `AZURE_TIMED_JOBS` (Azure), starting with the
 4 daily syncs. Details and order: `docs/JOBS.md`.
 
+### 5.11 Performance (v0.24.0, free)
+
+App Service → Configuration → General settings: **Always On = On**, **HTTP version = 2.0**, **ARR affinity = Off** → Save.
+Check that the web app and the database are in the same region. Read the hourly `[Perf]` line. Details: `docs/PERFORMANCE.md`.
+
 ### 5.9 Parallel run and cut-over (v0.21.0)
 
 Follow `docs/CUTOVER.md`: Day 1 reconciliation (`RECONCILE_HOURS`), Day 2 test group (`PARALLEL_RUN=on`, `PARALLEL_RUN_USERS`),

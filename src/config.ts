@@ -58,6 +58,7 @@ export interface AppConfig {
   mailFrom: string;                    // MAIL_FROM (default donotreply@avvaiyarpadasalai.org = Code.gs TICKET_MAIL_FROM default)
   mailDisplayName: string;             // MAIL_DISPLAY_NAME (default 'APS Dashboard Tickets', as Code.gs mail profile TICKETS)
   mailTestTo: string;
+  perfCacheSeconds: number;            // PERF_CACHE_SECONDS — v0.24.0: reuse read-screen answers this long (default 30; 0 = off)
   shadowSample: number;                // SHADOW_SAMPLE — v0.22.0: percent of read-screen calls also run in Apps Script and compared (0 = off)
   shadowDailyCap: number;              // SHADOW_DAILY_CAP — at most this many comparisons per day (default 400)
   shadowIgnore: string;                // SHADOW_IGNORE — regular expression of result paths not compared (expected differences)
@@ -187,6 +188,7 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     mailFrom: String(env.MAIL_FROM || 'donotreply@avvaiyarpadasalai.org').trim().toLowerCase(),
     mailDisplayName: String(env.MAIL_DISPLAY_NAME || 'APS Dashboard Tickets').trim(),
     mailTestTo: String(env.MAIL_TEST_TO || '').trim().toLowerCase(),
+    perfCacheSeconds: env.PERF_CACHE_SECONDS === undefined || String(env.PERF_CACHE_SECONDS).trim() === '' ? 30 : Math.min(300, Math.max(0, Math.floor(Number(env.PERF_CACHE_SECONDS) || 0))),
     shadowSample: Math.min(100, Math.max(0, Math.floor(Number(env.SHADOW_SAMPLE) || 0))),
     shadowDailyCap: Math.min(5000, Math.max(1, Math.floor(Number(env.SHADOW_DAILY_CAP) || 400))),
     shadowIgnore: String(env.SHADOW_IGNORE || '').trim(),

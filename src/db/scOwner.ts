@@ -9,6 +9,7 @@
  * Apps Script reaches the same functions through the reverse bridge (src/api/bridge.ts), so both dashboards show and
  * change the same records. SC_OWNER unset → these two names are forwarded to Apps Script exactly as before (writes.ts).
  */
+import { responseCache } from '../api/responseCache';
 import type { AppContext } from '../app/context';
 import { gasRun, gasScopeFor } from '../api/endpoints/classes';
 import { DbBackedDataSource } from './dbData';
@@ -50,6 +51,7 @@ export async function runOwnedSave(ctx: AppContext, session: { email: string; ro
       for (const n of order) {
         const cur = before[n];
         await db.ownedStore().putOwned(db.book, n, dirty[n], cur ? cur.timeZone : (tz || 'America/New_York'), cur ? cur.version : 0, session.email);
+        responseCache.clear(); // v0.24.0: Special Classes screens show the change at once
       }
     } catch (e) {
       if (String((e as Error).message) === 'CONFLICT') throw new Error(SC_CONFLICT_MSG);
