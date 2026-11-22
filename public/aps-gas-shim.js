@@ -7,8 +7,10 @@
  */
 (function () {
   'use strict';
+  var lastToken = null; // v0.21.0: the session token the page sends first in every call (used by "Report a difference")
   function call(name, args, onOk, onErr, userObject, hasUser) {
     var done = false;
+    if (args && typeof args[0] === 'string' && args[0].length >= 20 && name !== 'azureReportDifference') lastToken = args[0];
     function fail(msg) { if (done) return; done = true; if (typeof onErr === 'function') onErr(new Error(msg), hasUser ? userObject : undefined); }
     fetch('/api/run/' + encodeURIComponent(name), {
       method: 'POST',
@@ -52,6 +54,11 @@
       history.replaceState(history.state, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
     }
   } catch (e) { /* older browser: leave the address as it is */ }
+  /** v0.21.0 parallel run: public/aps-parallel.js reports a difference with the page's own session. */
+  window.apsAzureReport = function (payload, onOk, onErr) {
+    if (!lastToken) { onErr(new Error('Please sign in first, then report the difference.')); return; }
+    call('azureReportDifference', [lastToken, payload], onOk, onErr, undefined, false);
+  };
   window.google = window.google || {};
   window.google.script = {
     run: runner(null, null, undefined, false),

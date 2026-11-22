@@ -166,6 +166,11 @@ Needs §5.7 working. Apps Script: deploy `AzureBridge.gs` r139 (New version).
 2. After one or two matching Mondays: Apps Script run `removeMultipleClassroomReportTrigger`; Azure delete `MAIL_JOBS_PREVIEW_TO`.
 3. Back: Apps Script `createMultipleClassroomReportTrigger` (Azure stops by itself). Details: `docs/MAIL.md`.
 
+### 5.9 Parallel run and cut-over (v0.21.0)
+
+Follow `docs/CUTOVER.md`: Day 1 reconciliation (`RECONCILE_HOURS`), Day 2 test group (`PARALLEL_RUN=on`, `PARALLEL_RUN_USERS`),
+Day 3 GO / NO-GO, rollback by area.
+
 ### 5.5 Settings copy: automatic
 
 The `dbo.live_props` row refreshes every minute. To check:

@@ -36,6 +36,7 @@ import { DashboardPage } from './web/render';
 import { signInWithClaims, type AppContext, type SignInResult } from './app/context';
 import { describeGoogleError } from './google/diagnose';
 import { createMailSender, checkMail } from './mail/gmailSender';
+import { registerParallelRun, MssqlFeedbackStore, readinessLines, type ReadinessFacts } from './parallel/parallelRun';
 import { MailJobRunner, MssqlMailJobStore, liveMailJobDeps, parseMailJobList } from './mail/mailJobs';
 
 export function buildRegistry(fetchImpl?: FetchLike): Registry {
@@ -44,6 +45,7 @@ export function buildRegistry(fetchImpl?: FetchLike): Registry {
   registerClasses(reg);
   registerReads2(reg);
   registerWrites(reg, fetchImpl); // write phase step 1: Admin settings saves → Apps Script (signed bridge)
+  registerParallelRun(reg); // v0.21.0: azureReportDifference (parallel run)
   return reg;
 }
 
@@ -69,7 +71,8 @@ export function createContext(cfg: AppConfig): AppContext {
         async () => { if (bridgeUsable(cfg)) await bridgeCall(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret, { action: 'chatChanged', v: 1 }, fetch as unknown as FetchLike, Date.now, 15_000).catch((e: unknown) => console.warn('[Chat] Apps Script not told about the new message: ' + String((e as Error).message).slice(0, 40))); })
     : undefined;
   const classLive = cfg.dataMode !== 'fixture' && cfg.classLiveEnabled && bridgeUsable(cfg) ? new BridgeClassLive(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret) : undefined;
-  return { cfg, data, live, heartbeat, sessions, chat, classLive, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
+  const feedback = data instanceof DbBackedDataSource ? new MssqlFeedbackStore(() => (data.storeRef() as unknown as MssqlSheetStore).connectPool()) : undefined;
+  return { cfg, data, live, heartbeat, sessions, chat, classLive, feedback, google: googleAuth(cfg), nonces: new StateNonces(600_000, Date.now, StateNonces.keyFromSecret(cfg.oauthClientSecret)) };
 }
 
 /** Start-up self-check of the Apps Script live-data bridge (Phase 3): key counts only, never names' values. */
@@ -123,7 +126,8 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
     const boot = result && result.ok ? { token: result.token, user: result.user, error: null }
       : { token: null, user: null, error: result ? { code: result.code, ...(result.message ? { message: result.message } : {}) } : null };
     res.setHeader('Cache-Control', 'no-store');
-    res.type('html').send(page.render({ authUrl, ...boot, ticket }));
+    const parallel = ctx.cfg.parallelRunOn ? { officialUrl: ctx.cfg.parallelRunOfficialUrl || ctx.cfg.appsScriptBridgeUrl } : null;
+    res.type('html').send(page.render({ authUrl, ...boot, ticket, parallel }));
   };
 
   app.get('/', async (req, res) => {
@@ -186,17 +190,28 @@ if (require.main === module) {
   const app = createApp(ctx, page);
   app.listen(cfg.port, () => {
     console.log(`[Server] APS Dashboard (Azure) v${APP_VERSION} listening on ${cfg.port} — data: ${cfg.dataMode}`);
-    void checkGoogleAccess(ctx);
-    void checkLiveBridge(ctx);
+    const facts: ReadinessFacts = { googleOk: null, bridgeOk: false, sessionsSql: ctx.sessions instanceof DurableSessionStore, chatReady: null, classLiveError: null,
+      jobs: [], mailOk: null, mailJobs: [], mailJobsPreview: !!cfg.mailJobsPreviewTo, dbCopy: cfg.dbCopyBooks, dbReads: cfg.dbReadBooks, feedbackReady: !!ctx.feedback };
+    void checkGoogleAccess(ctx).then((ok) => { facts.googleOk = ok; });
+    void checkLiveBridge(ctx).then((ok) => { facts.bridgeOk = ok; });
+    { // v0.21.0: parallel-run readiness — one block ~90 s after start, then daily
+      const report = () => {
+        facts.chatReady = ctx.chat ? ctx.chat.ready : null;
+        facts.classLiveError = ctx.classLive ? ((ctx.classLive as unknown as { error?: string }).error || null) : 'not configured';
+        console.log('[ParallelRun] readiness (v' + APP_VERSION + '):\n  ' + readinessLines(cfg, facts).join('\n  '));
+      };
+      setTimeout(report, 90_000).unref?.(); setInterval(report, 86_400_000).unref?.();
+    }
     { // Phase 4 step 3 (v0.19.0): email From donotreply@ sent by Azure (AZURE_MAIL=on) — sign-in check + optional test email
       const mail = createMailSender(cfg);
-      if (mail) void checkMail(mail, cfg, APP_VERSION);
+      if (mail) void checkMail(mail, cfg, APP_VERSION).then((ok) => { facts.mailOk = ok; });
       // Phase 4 step 4 (v0.20.0): email jobs built and sent by Azure (AZURE_MAIL_JOBS; preview with MAIL_JOBS_PREVIEW_TO)
       const mj = parseMailJobList(cfg.mailJobs);
       if (mj.unknown.length) console.warn('[MailJobs] AZURE_MAIL_JOBS names not known (ignored): ' + mj.unknown.join(', '));
       const previewOk = !cfg.mailJobsPreviewTo || cfg.allowedDomains.includes(cfg.mailJobsPreviewTo.split('@')[1] || '');
       if (mj.on.length && mail && previewOk && ctx.data instanceof DbBackedDataSource && bridgeUsable(cfg)) {
         const db = ctx.data;
+        facts.mailJobs = mj.on;
         new MailJobRunner(mj.on, new MssqlMailJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), mail, liveMailJobDeps(ctx), cfg.mailJobsPreviewTo).start();
       } else if (mj.on.length) console.warn('[MailJobs] AZURE_MAIL_JOBS is set but ' + (!mail ? 'AZURE_MAIL is not on' : !previewOk ? 'MAIL_JOBS_PREVIEW_TO is not an APS address' : 'Azure SQL or the Apps Script bridge is not set') + ' — Apps Script keeps sending.');
     }
@@ -207,6 +222,7 @@ if (require.main === module) {
       if (jobs.unknown.length) console.warn('[Jobs] AZURE_JOBS names not known (ignored): ' + jobs.unknown.join(', '));
       if (jobs.on.length && ctx.data instanceof DbBackedDataSource && bridgeUsable(cfg)) {
         const db = ctx.data;
+        facts.jobs = jobs.on;
         new JobScheduler(jobs.on, new MssqlJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), bridgeJobRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)).start();
       } else if (jobs.on.length) console.warn('[Jobs] AZURE_JOBS is set but Azure SQL or the Apps Script bridge is not — no job runs on Azure (Apps Script keeps running them).');
     }

@@ -57,6 +57,10 @@ export interface AppConfig {
   mailFrom: string;                    // MAIL_FROM (default donotreply@avvaiyarpadasalai.org = Code.gs TICKET_MAIL_FROM default)
   mailDisplayName: string;             // MAIL_DISPLAY_NAME (default 'APS Dashboard Tickets', as Code.gs mail profile TICKETS)
   mailTestTo: string;
+  reconcileHours: number;              // RECONCILE_HOURS — v0.21.0: record-level reconciliation of the DB_COPY copies every N hours (default 6; 0 = off)
+  parallelRunOn: boolean;              // PARALLEL_RUN — v0.21.0: 'on' = test-run bar + "Report a difference" on every Azure page
+  parallelRunUsers: string;            // PARALLEL_RUN_USERS — e-mails and/or role names allowed on Azure during the test run (empty = everyone)
+  parallelRunOfficialUrl: string;      // PARALLEL_RUN_OFFICIAL_URL — the official dashboard linked from the bar (default: APPS_SCRIPT_BRIDGE_URL)
   mailJobs: string;                    // AZURE_MAIL_JOBS — v0.20.0: email jobs built and sent by Azure (src/mail/mailJobs.ts): MULTIPLE_CLASSROOM_REPORT
   mailJobsPreviewTo: string;           // MAIL_JOBS_PREVIEW_TO — one APS address: PREVIEW mode (Apps Script keeps sending; Azure sends a copy there weekly)                  // MAIL_TEST_TO — one APS address: a test email is sent at start-up (remove after the test)
   testEmail: { mode: string; redirectTo: string; dailyCap: string }; // TEST_EMAIL_MODE / TEST_EMAIL_REDIRECT_TO / TEST_EMAIL_DAILY_CAP (only with APS_ENVIRONMENT=TESTING)
@@ -177,6 +181,10 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     mailFrom: String(env.MAIL_FROM || 'donotreply@avvaiyarpadasalai.org').trim().toLowerCase(),
     mailDisplayName: String(env.MAIL_DISPLAY_NAME || 'APS Dashboard Tickets').trim(),
     mailTestTo: String(env.MAIL_TEST_TO || '').trim().toLowerCase(),
+    reconcileHours: env.RECONCILE_HOURS === undefined || String(env.RECONCILE_HOURS).trim() === '' ? 6 : Math.min(168, Math.max(0, Math.floor(Number(env.RECONCILE_HOURS) || 0))),
+    parallelRunOn: String(env.PARALLEL_RUN || '').trim().toLowerCase() === 'on',
+    parallelRunUsers: String(env.PARALLEL_RUN_USERS || '').trim(),
+    parallelRunOfficialUrl: String(env.PARALLEL_RUN_OFFICIAL_URL || '').trim(),
     mailJobs: String(env.AZURE_MAIL_JOBS || '').trim(),
     mailJobsPreviewTo: String(env.MAIL_JOBS_PREVIEW_TO || '').trim().toLowerCase(),
     testEmail: { mode: String(env.TEST_EMAIL_MODE || ''), redirectTo: String(env.TEST_EMAIL_REDIRECT_TO || ''), dailyCap: String(env.TEST_EMAIL_DAILY_CAP || '') },

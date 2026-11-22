@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 35baa2b7b74b51027ba3359285427b0d
+#   Part B md5    : f3bd9e7d88bc818cbb92e39617f6c48a
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1035,4 +1035,12 @@ header is longer, or Code.gs fails quietly in the mock.
   never re-sent); result recorded in Apps Script (AzureBridge.gs r139 mailJob record: MULTI_CLASSROOM_REPORT_LAST_WEEK +
   adsFinish_ row "Azure weekly job", admin@ from Apps Script; repeat-safe). r139 also exports SPECIAL_CLASS_COURSE_IDS,
   CLASSROOM_TYPE_OVERRIDES. gasSettings: APS_DASHBOARD_URL defaults to APPS_SCRIPT_BRIDGE_URL (= ScriptApp getUrl).
+- v0.21.0 (2026-11-22): MIGRATION / PARALLEL RUN / CUT-OVER kit (scope freeze — no new features). Decision (docs/CUTOVER.md §1):
+  Azure becomes the primary SYSTEM while Google stays the one data store (saves = real Code.gs via bridge; verified SQL
+  copies); per-table ownership moves later. src/db/reconcile.ts: per tab SOURCE/TARGET/MATCH/MISSING/EXTRA/DIFFERENT (by
+  unique id-like key)/DUPLICATES/ERRORS, copy read first, persisting differences confirmed after a fresh copy; dbo.reconcile_run
+  (row numbers only); RECONCILE_HOURS (6). Test group PARALLEL_RUN_USERS (emails/roles) enforced in signInWithClaims AND
+  requireSession (src/parallel/group.ts). PARALLEL_RUN=on → public/aps-parallel.js bar (official link, Report a difference →
+  azureReportDifference, session role/email, 2000 chars, 30/day → dbo.parallel_feedback with status). [ParallelRun] readiness
+  block 90 s after start + daily. Progression EXISTING_ONLY → PARALLEL_RUN → AZURE_PRIMARY → fallback = existing settings only.
 

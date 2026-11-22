@@ -15,6 +15,7 @@ import { getViewerRoleForEmail, roleFromLists, isAdminOrHm, rolePermission, canV
 import { acEffectiveForRole, apsTabAllowed, AC_OFF_MSG } from '../auth/accessControl';
 import type { Course } from '../data/types';
 import { describeGoogleError } from '../google/diagnose';
+import { inParallelGroup, PR_NOT_IN_GROUP_MSG } from '../parallel/group';
 
 export interface AppContext {
   cfg: AppConfig;
@@ -30,6 +31,8 @@ export interface AppContext {
   classLive?: import('../live/classLive').ClassLiveSource;
   google: GoogleAuth;
   nonces: StateNonces;
+  /** v0.21.0: parallel-run difference reports (Azure SQL); absent without a database. */
+  feedback?: import('../parallel/parallelRun').FeedbackStore;
 }
 
 export type SignInResult = { ok: true; token: string; user: UserPayload } | { ok: false; code: string; email?: string; message?: string };
@@ -90,6 +93,7 @@ export async function signInWithClaims(ctx: AppContext, claims: VerifiedClaims):
     viewer = getViewerRoleForEmail(ctx.cfg, email, courses, configured);
   }
   if (viewer.role === 'none') return { ok: false, code: 'not_authorized', email };
+  if (!inParallelGroup(ctx.cfg, viewer.email, viewer.role)) { console.log('[ParallelRun] sign-in refused (not in PARALLEL_RUN_USERS): ' + viewer.role); return { ok: false, code: 'invalid_token', message: PR_NOT_IN_GROUP_MSG }; }
   const token = await ctx.sessions.create({ email: viewer.email, role: viewer.role });
   return { ok: true, token, user: await buildUserPayload(ctx, viewer, courses) };
 }
@@ -98,6 +102,7 @@ export async function signInWithClaims(ctx: AppContext, claims: VerifiedClaims):
 export async function requireSession(ctx: AppContext, token: unknown): Promise<Session> {
   const s = typeof token === 'string' ? await ctx.sessions.get(token) : null;
   if (!s) throw new Error(SESSION_EXPIRED_MSG);
+  if (!inParallelGroup(ctx.cfg, s.email, s.role)) throw new Error(PR_NOT_IN_GROUP_MSG); // v0.21.0: the test group, checked on every call
   return s;
 }
 /** apsRequireTabForToken_ — every tab-specific endpoint starts with this (server-side; never trusts the browser). */

@@ -1,3 +1,4 @@
+import { Reconciler, MssqlReconStore } from './reconcile';
 /**
  * Database pilot start-up: when SQL_SERVER + SQL_DATABASE are set, create the table (once), work out the Special
  * Classes spreadsheet and sheet names with the copied Code.gs code itself (scSpreadsheetId_ / scSheetName_ — the same
@@ -93,5 +94,12 @@ export async function startCopies(ctx: AppContext, store: SheetStore, db: DbBack
     pending = setTimeout(() => { pending = null; lastKick = Date.now(); for (const s of syncs) void s.runOnce(); }, wait);
     pending.unref?.();
   };
+  // v0.21.0: record-level reconciliation (sheet = source of truth vs the Azure SQL copy), RECONCILE_HOURS (0 = off)
+  if (ctx.cfg.reconcileHours > 0) {
+    const save = typeof (store as any).connectPool === 'function' ? new MssqlReconStore(() => (store as any).connectPool()) : null;
+    new Reconciler(db.innerSource(), store, syncs.map((s) => ({ book: s.book, tabs: () => s.names.slice(), copyAgain: () => s.runOnce() })), save, log)
+      .start(ctx.cfg.reconcileHours * 3_600_000);
+    log('[Reconcile] record-level check of the copies every ' + ctx.cfg.reconcileHours + ' h (first in 5 min) → dbo.reconcile_run.');
+  }
   return syncs;
 }
