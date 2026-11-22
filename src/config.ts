@@ -57,6 +57,9 @@ export interface AppConfig {
   mailFrom: string;                    // MAIL_FROM (default donotreply@avvaiyarpadasalai.org = Code.gs TICKET_MAIL_FROM default)
   mailDisplayName: string;             // MAIL_DISPLAY_NAME (default 'APS Dashboard Tickets', as Code.gs mail profile TICKETS)
   mailTestTo: string;
+  shadowSample: number;                // SHADOW_SAMPLE — v0.22.0: percent of read-screen calls also run in Apps Script and compared (0 = off)
+  shadowDailyCap: number;              // SHADOW_DAILY_CAP — at most this many comparisons per day (default 400)
+  shadowIgnore: string;                // SHADOW_IGNORE — regular expression of result paths not compared (expected differences)
   reconcileHours: number;              // RECONCILE_HOURS — v0.21.0: record-level reconciliation of the DB_COPY copies every N hours (default 6; 0 = off)
   parallelRunOn: boolean;              // PARALLEL_RUN — v0.21.0: 'on' = test-run bar + "Report a difference" on every Azure page
   parallelRunUsers: string;            // PARALLEL_RUN_USERS — e-mails and/or role names allowed on Azure during the test run (empty = everyone)
@@ -181,6 +184,9 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     mailFrom: String(env.MAIL_FROM || 'donotreply@avvaiyarpadasalai.org').trim().toLowerCase(),
     mailDisplayName: String(env.MAIL_DISPLAY_NAME || 'APS Dashboard Tickets').trim(),
     mailTestTo: String(env.MAIL_TEST_TO || '').trim().toLowerCase(),
+    shadowSample: Math.min(100, Math.max(0, Math.floor(Number(env.SHADOW_SAMPLE) || 0))),
+    shadowDailyCap: Math.min(5000, Math.max(1, Math.floor(Number(env.SHADOW_DAILY_CAP) || 400))),
+    shadowIgnore: String(env.SHADOW_IGNORE || '').trim(),
     reconcileHours: env.RECONCILE_HOURS === undefined || String(env.RECONCILE_HOURS).trim() === '' ? 6 : Math.min(168, Math.max(0, Math.floor(Number(env.RECONCILE_HOURS) || 0))),
     parallelRunOn: String(env.PARALLEL_RUN || '').trim().toLowerCase() === 'on',
     parallelRunUsers: String(env.PARALLEL_RUN_USERS || '').trim(),

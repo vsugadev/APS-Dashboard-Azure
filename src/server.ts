@@ -37,6 +37,7 @@ import { signInWithClaims, type AppContext, type SignInResult } from './app/cont
 import { describeGoogleError } from './google/diagnose';
 import { createMailSender, checkMail } from './mail/gmailSender';
 import { registerParallelRun, MssqlFeedbackStore, readinessLines, type ReadinessFacts } from './parallel/parallelRun';
+import { ShadowComparer, MssqlShadowStore, bridgeAppsScriptRunner } from './parallel/shadow';
 import { MailJobRunner, MssqlMailJobStore, liveMailJobDeps, parseMailJobList } from './mail/mailJobs';
 
 export function buildRegistry(fetchImpl?: FetchLike): Registry {
@@ -187,7 +188,15 @@ if (require.main === module) {
   for (const w of configWarnings(cfg)) console.warn('[Config] ' + w);
   const page = new DashboardPage(path.resolve(cfg.dashboardHtmlPath));
   const ctx = createContext(cfg);
-  const app = createApp(ctx, page);
+  const reg = buildRegistry();
+  if (cfg.shadowSample > 0 && bridgeUsable(cfg) && ctx.data instanceof DbBackedDataSource) { // v0.22.0: shadow comparison (parallel run)
+    const db = ctx.data; let ignore: RegExp | null = null;
+    try { ignore = cfg.shadowIgnore ? new RegExp(cfg.shadowIgnore) : null; } catch { console.warn('[Shadow] SHADOW_IGNORE is not a valid pattern — nothing ignored.'); }
+    const sc = new ShadowComparer(reg, bridgeAppsScriptRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret), new MssqlShadowStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()),
+      { samplePct: cfg.shadowSample, dailyCap: cfg.shadowDailyCap, ignore });
+    reg.observer = sc.observe; sc.start();
+  } else if (cfg.shadowSample > 0) console.warn('[Shadow] SHADOW_SAMPLE is set but the Apps Script bridge or Azure SQL is not — no comparison.');
+  const app = createApp(ctx, page, reg);
   app.listen(cfg.port, () => {
     console.log(`[Server] APS Dashboard (Azure) v${APP_VERSION} listening on ${cfg.port} — data: ${cfg.dataMode}`);
     const facts: ReadinessFacts = { googleOk: null, bridgeOk: false, sessionsSql: ctx.sessions instanceof DurableSessionStore, chatReady: null, classLiveError: null,

@@ -13,8 +13,12 @@ export type Handler = (ctx: AppContext, args: unknown[]) => Promise<unknown> | u
 export const NOT_ON_AZURE = 'NOT_ON_AZURE_YET: ';
 const NAME_RE = /^[A-Za-z][A-Za-z0-9]{0,79}$/; // public Code.gs names: no underscore suffix (private helpers are never callable)
 
+/** v0.22.0: told about every answered call (shadow comparison in the parallel run). Must never throw or block. */
+export type CallObserver = (ctx: AppContext, name: string, args: unknown[], out: { ok: unknown } | { err: string }, ms: number) => void;
+
 export class Registry {
   private handlers = new Map<string, Handler>();
+  observer: CallObserver | null = null;
   register(name: string, h: Handler): this {
     if (!NAME_RE.test(name)) throw new Error('Invalid endpoint name: ' + name);
     if (this.handlers.has(name)) throw new Error('Duplicate endpoint: ' + name);
@@ -28,13 +32,17 @@ export class Registry {
     const h = this.handlers.get(name);
     if (!h) return { err: NOT_ON_AZURE + name };
     if (!Array.isArray(args) || args.length > 20) return { err: 'Bad request.' };
+    const t0 = Date.now();
+    let out: { ok: unknown } | { err: string };
     try {
       const v = await h(ctx, args);
-      return { ok: v === undefined ? null : v };
+      out = { ok: v === undefined ? null : v };
     } catch (e) {
       const msg = String((e as Error)?.message || e);
-      return { err: safeErrorMessage(msg) };
+      out = { err: safeErrorMessage(msg) };
     }
+    if (this.observer) { try { this.observer(ctx, name, args, out, Date.now() - t0); } catch { /* never affects the answer */ } }
+    return out;
   }
 }
 

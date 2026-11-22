@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : f3bd9e7d88bc818cbb92e39617f6c48a
+#   Part B md5    : 3f4ba65611561e8a2b8c3391e8ce2d08
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1043,4 +1043,10 @@ header is longer, or Code.gs fails quietly in the mock.
   requireSession (src/parallel/group.ts). PARALLEL_RUN=on → public/aps-parallel.js bar (official link, Report a difference →
   azureReportDifference, session role/email, 2000 chars, 30/day → dbo.parallel_feedback with status). [ParallelRun] readiness
   block 90 s after start + daily. Progression EXISTING_ONLY → PARALLEL_RUN → AZURE_PRIMARY → fallback = existing settings only.
+- v0.22.0 (2026-11-22): SHADOW COMPARISON (parallel run, brief §11): Registry.observer (after the answer; never throws) →
+  src/parallel/shadow.ts ShadowComparer: SHADOW_SAMPLE %, 1/fn/2 min, 2 concurrent, SHADOW_DAILY_CAP; Apps Script via bridge
+  call {shadow:true} (AzureBridge.gs r140 AZURE_BRIDGE_SHADOW_ = SHADOW_FNS, 63 read screens; test guard: no transitive Code.gs
+  writer except idempotent getOrCreate*Sheet_/getWorkbook_/logAttendanceSyncDiagnostic_; excluded getDashboardData, realtime,
+  directory, CTA view, profile-name screens, exam monitoring, role permissions). diffJson paths only (volatile keys skipped,
+  SHADOW_IGNORE); persisting differences confirmed after 90 s; dbo.shadow_compare (+status); hourly [Shadow] summary with times.
 

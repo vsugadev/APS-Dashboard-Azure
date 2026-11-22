@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -226,10 +226,30 @@ function azureBridgeHeartbeats_(req) {
  * r132 — runs one allow-listed Code.gs function for the person Azure signed in (write phase step 1). Returns
  * { value } or { error: <the function's own message> } (one line, no stack). The temporary session is removed after.
  */
+/* r140 — parallel run: SHADOW COMPARISON. Azure answers these read screens itself; for a sample of real requests it also asks
+ * this project for the same person and input ({ action:'call', shadow:true }) and compares the two answers. Only these
+ * functions, only with shadow:true; the role is decided here as for every call. They have no side effects beyond what a
+ * normal visit does (idempotent sheet creation, the attendance diagnostic). Mirrored in Azure src/parallel/shadow.ts (tested). */
+var AZURE_BRIDGE_SHADOW_ = [
+  'getAccessControl', 'getAccessControlHistory', 'getAdminAssignmentAuditLog', 'getAdminClassroomAssignments', 'getAppreciationLetterAudit',
+  'getAssignmentHealthCard', 'getAssignmentMonitoring', 'getAssignmentMonitoringClass', 'getAssignmentMonitoringHistory', 'getAttendanceAuditLog',
+  'getAttendanceCourseAwkMap', 'getAttendanceLastSyncInfo', 'getAttendanceRecordsForViewer', 'getAttendanceSyncDiagnostics', 'getAttendanceWeekOptions',
+  'getAuthorizedEmailsForGroupSync', 'getCacheSheetUrl', 'getClassChangeContext', 'getClassChangeRequestsForApprover', 'getClassCoverageHistory',
+  'getClassCoverageTracking', 'getCourseMeetLinkMappings', 'getCourseNameSuffix', 'getCoverageBootstrap', 'getCoveragePlan',
+  'getDashboardUserRoles', 'getExamQuestionPaperAuditLog', 'getExamQuestionPaperPublishPreview', 'getExaminationHistory', 'getGradeChangeApproverInfo',
+  'getGradeChangeTimingOptions', 'getKnowledgeBaseVideos', 'getLastSyncError', 'getLastSyncInfo', 'getMyClassChangeRequests',
+  'getMyCountryPreference', 'getMyReferenceLetterRequests', 'getOnCallTeacherAttendance', 'getReferenceLetterAccessInfo', 'getReferenceLetterRequestsForApprover',
+  'getRemovalContext', 'getSchoolLeaveAdminData', 'getSchoolLeaveHistory', 'getShowContactPhone', 'getSpecialClassEnrollments',
+  'getSpecialClasses', 'getSpecialClassesAdmin', 'getStudentLoginNoticeStatus', 'getTeacherAppreciationAdminReport', 'getTeacherAppreciationEmailPreview',
+  'getTeacherAppreciationHistory', 'getTicket', 'getTicketBootstrap', 'getTicketReports', 'getTicketSettings',
+  'getUserCountryAdmin', 'getZohoSyncHistory', 'getZohoSyncJob', 'listTickets', 'previewMissingGrading',
+  'previewTeacherAppreciation', 'searchTamilThadamStudents', 'searchTicketStudents'
+];
 function azureBridgeCall_(req) {
   var fn = String(req.fn || '');
   var g = globalThis;
-  if ((AZURE_BRIDGE_CALLS_.indexOf(fn) === -1 && AZURE_BRIDGE_READS_.indexOf(fn) === -1) || typeof g[fn] !== 'function') throw portalErr_('BAD_REQUEST', 'This function cannot be called from Azure.');
+  var shadowOk = req.shadow === true && AZURE_BRIDGE_SHADOW_.indexOf(fn) > -1; // r140
+  if ((AZURE_BRIDGE_CALLS_.indexOf(fn) === -1 && AZURE_BRIDGE_READS_.indexOf(fn) === -1 && !shadowOk) || typeof g[fn] !== 'function') throw portalErr_('BAD_REQUEST', 'This function cannot be called from Azure.');
   var email = normalizeEmail_(String(req.email || ''));
   if (!email || !isApsEmailAllowed_(email)) throw portalErr_('BAD_REQUEST', 'Not an APS account.');
   var args = Array.isArray(req.args) ? req.args : [];

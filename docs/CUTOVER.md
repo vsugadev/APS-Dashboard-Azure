@@ -63,7 +63,7 @@ FROM x WHERE n = 1 ORDER BY (missing_in_target + extra_in_target + different_val
 | Stage | Azure app settings | Apps Script | Who uses what |
 |---|---|---|---|
 | EXISTING_ONLY | `PARALLEL_RUN` off; no job/mail switches | as today | everyone → Apps Script |
-| **PARALLEL_RUN** | `PARALLEL_RUN=on`, `PARALLEL_RUN_USERS=admin,superadmin,headmaster,<named testers>`, `DB_COPY=main,attendance`, `DB_SYNC_MINUTES=5`, `RECONCILE_HOURS=6`, `AZURE_MAIL=on`, `AZURE_MAIL_JOBS=MULTIPLE_CLASSROOM_REPORT` + `MAIL_JOBS_PREVIEW_TO` | unchanged (official) | test group uses both; differences reported with the bar's button |
+| **PARALLEL_RUN** | `PARALLEL_RUN=on`, `SHADOW_SAMPLE=20`, `PARALLEL_RUN_USERS=admin,superadmin,headmaster,<named testers>`, `DB_COPY=main,attendance`, `DB_SYNC_MINUTES=5`, `RECONCILE_HOURS=6`, `AZURE_MAIL=on`, `AZURE_MAIL_JOBS=MULTIPLE_CLASSROOM_REPORT` + `MAIL_JOBS_PREVIEW_TO` | unchanged (official) | test group uses both; differences reported with the bar's button |
 | AZURE_PRIMARY | clear `PARALLEL_RUN_USERS` and `PARALLEL_RUN`; `MAIL_JOBS_PREVIEW_TO` removed (Azure sends) | `removeMultipleClassroomReportTrigger`; Apps Script web app stays deployed | namaps.org/dashboard and the APS Gate → Azure URL |
 | AZURE_PRIMARY + FALLBACK | as above | kept deployed and working for 30 days (plan) | if needed, the link points back (§6) |
 
@@ -73,6 +73,7 @@ A session made before `PARALLEL_RUN_USERS` changes is re-checked on every call. 
 
 | Area | Method | Where to look |
 |---|---|---|
+| **Real requests (automatic)** | **Shadow comparison (v0.22.0):** with `SHADOW_SAMPLE=20`, 1 in 5 read-screen calls by the people using Azure is also run in Apps Script for the same person and input (`AzureBridge.gs` r140) and compared: MATCH / DIFFERENT (paths) / ERROR, plus both sides' time. A difference is re-checked after 90 s and reported only if it persists. 63 read screens without side effects (checked by a test over Code.gs); at most 1 per screen per 2 min and `SHADOW_DAILY_CAP` (400) a day. Expected differences can be excluded with `SHADOW_IGNORE` (a pattern of result paths) | `[Shadow]` lines (each difference + an hourly summary with average times), `dbo.shadow_compare` |
 | Data | §3 reconciliation; read screens on Azure use the copied Code.gs readers over the same data | `[Reconcile]` lines, `dbo.reconcile_run` |
 | Screens / behaviour | the test group uses both dashboards and presses **Report a difference** (screen + text; who and role come from the session) | `SELECT * FROM dbo.parallel_feedback ORDER BY id DESC;` (set `status`: NEW / EXPECTED / FIXED / BLOCKER) |
 | Saves | one implementation (the real Code.gs function runs in Apps Script for the person), so a save cannot differ in data; compare the toast and the screen afterwards | feedback + Apps Script audit sheets |
@@ -80,6 +81,21 @@ A session made before `PARALLEL_RUN_USERS` changes is re-checked on every call. 
 | Jobs | jobs on Azure's timetable run the real Code.gs job; check every run's result | `dbo.job_run` (ok = 1), Apps Script audit sheets |
 | Errors | every failure has a log line with what / when / which job or tab, never secrets | App Service log stream; Apps Script Executions |
 | Performance | page open and refresh times on Azure vs Apps Script, from the test group's reports; plus App Service metrics (CPU, response time) and the database's compute use | Azure portal |
+
+```sql
+-- shadow comparison: per screen, last 24 h
+SELECT fn, COUNT(*) compared, SUM(CASE WHEN result='MATCH' THEN 1 ELSE 0 END) match_count, SUM(CASE WHEN result='DIFFERENT' THEN 1 ELSE 0 END) different,
+       SUM(CASE WHEN result='ERROR' THEN 1 ELSE 0 END) errors, AVG(azure_ms) azure_ms, AVG(apps_script_ms) apps_script_ms
+FROM dbo.shadow_compare WHERE compared_at > DATEADD(day, -1, SYSUTCDATETIME()) GROUP BY fn ORDER BY different + errors DESC;
+-- the differences themselves (paths, never values)
+SELECT TOP 50 compared_at, fn, role, result, diffs, paths, note FROM dbo.shadow_compare WHERE result <> 'MATCH' ORDER BY id DESC;
+```
+
+**Not shadow-compared, and why:** the class cards (`getDashboardData`) and the realtime check write caches and triggers in
+Apps Script. Running them twice would change Apps Script's own state. Their logic is the copied Code.gs, compared by the
+parity tests, and the test group compares them by eye and reports differences. The other screens left out are
+`getDirectoryIndex`, `getClassTeacherAvailabilityView` (it writes an audit), the three screens that use Google profile names,
+`getExamQuestionPaperMonitoring`, and `getDashboardRolePermissions` (Azure's comes from Key Vault on purpose).
 
 **Email checklist** (compare the Monday preview with Apps Script's email):
 
