@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run; r141: the fixed-time daily / weekly jobs on Azure's timetable). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run; r141: the fixed-time daily / weekly jobs on Azure's timetable; r142: + the Tamil Thadam / quiz material / daily summary spreadsheet IDs in the export list). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -53,6 +53,7 @@ var AZURE_BRIDGE_LIVE_KEYS_ = [
   'TCC_CLEANUP_GRACE_MINUTES', 'TEMP_TEACHER_REMOVAL_HOUR', 'TICKET_MAIL_ALLOW_MAILAPP_FALLBACK', 'TICKET_MAIL_FROM',
   'ZOHO_SYNC_JOB', 'attendanceLastSyncSummary_v1', 'attendanceSyncDiagnostic_v1', 'classStartedMarkMap', 'classMeetEndedMarkMap',
   'SPECIAL_CLASS_COURSE_IDS', 'CLASSROOM_TYPE_OVERRIDES', // r139: classroom types for the weekly Multiple Classrooms report built on Azure
+  'TAMIL_THADAM_SPREADSHEET_ID', 'EXAM_QUIZ_MATERIAL_SHEET_ID', 'DAILY_SUMMARY_SPREADSHEET_ID', // r142: spreadsheet IDs (not secrets) read by screens Azure answers itself; the question paper IDs are Azure app settings (AZURE_BRIDGE_AZURE_SETTING_KEYS_)
   'classStatusMap', 'lastLoginMap', 'lastSync', 'lastSyncError', 'onCallTeachers_v1', 'onboardedStudents',
   'presenceMap', 'rosterHiddenStaffVisible_v1', 'liveMap', 'teacherNotInClassMap', 'needsTechSupportMap',
   'teacherAvailabilityRealtimeMap', 'externalActivityRealtimeMap'
@@ -62,7 +63,7 @@ var AZURE_BRIDGE_AZURE_SETTING_KEYS_ = [
   'SUPERADMIN_EMAILS', 'ADMIN_EMAILS', 'HEADMASTER_EMAILS', 'VCFO_AMCHATS_BOD_EMAILS', 'ON_CALL_COORDINATOR_EMAILS',
   'ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS', 'APS_GRADING_TEAM_EMAILS', 'dashboardRolePermissions_v1',
   'APS_ENVIRONMENT', 'TARGET_SPREADSHEET_ID', 'ATTENDANCE_SPREADSHEET_ID', 'SPECIAL_CLASSES_SPREADSHEET_ID',
-  'ZOHO_SYNC_SPREADSHEET_ID', 'LIVE_QUESTION_PAPER_SPREADSHEET_ID'
+  'ZOHO_SYNC_SPREADSHEET_ID', 'LIVE_QUESTION_PAPER_SPREADSHEET_ID', 'TEST_QUESTION_PAPER_SPREADSHEET_ID' // r142: TEST id is Azure's own too (environment separation)
 ];
 var AZURE_BRIDGE_NEVER_KEYS_ = [
   'ATTENDANCE_OAUTH_CLIENT_ID', 'ATTENDANCE_OAUTH_CLIENT_SECRET', 'ATTENDANCE_REFRESH_TOKEN',

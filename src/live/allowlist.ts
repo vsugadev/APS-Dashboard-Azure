@@ -28,6 +28,7 @@ export const LIVE_KEYS: string[] = [
   'TCC_CLEANUP_GRACE_MINUTES', 'TEMP_TEACHER_REMOVAL_HOUR', 'TICKET_MAIL_ALLOW_MAILAPP_FALLBACK', 'TICKET_MAIL_FROM',
   'ZOHO_SYNC_JOB', 'attendanceLastSyncSummary_v1', 'attendanceSyncDiagnostic_v1', 'classStartedMarkMap', 'classMeetEndedMarkMap',
   'SPECIAL_CLASS_COURSE_IDS', 'CLASSROOM_TYPE_OVERRIDES', // v0.20.0 (r139): classroom types for the weekly Multiple Classrooms report
+  'TAMIL_THADAM_SPREADSHEET_ID', 'EXAM_QUIZ_MATERIAL_SHEET_ID', 'DAILY_SUMMARY_SPREADSHEET_ID', // v0.23.4 (r142): spreadsheet IDs read by screens Azure answers itself
   'classStatusMap', 'lastLoginMap', 'lastSync', 'lastSyncError', 'onCallTeachers_v1', 'onboardedStudents',
   'presenceMap', 'rosterHiddenStaffVisible_v1', 'liveMap', 'teacherNotInClassMap', 'needsTechSupportMap',
   'teacherAvailabilityRealtimeMap', 'externalActivityRealtimeMap',
@@ -39,7 +40,7 @@ export const AZURE_SETTING_KEYS: string[] = [
   'SUPERADMIN_EMAILS', 'ADMIN_EMAILS', 'HEADMASTER_EMAILS', 'VCFO_AMCHATS_BOD_EMAILS', 'ON_CALL_COORDINATOR_EMAILS',
   'ROSTER_HIDDEN_STAFF_ADDITIONAL_EMAILS', 'APS_GRADING_TEAM_EMAILS', 'dashboardRolePermissions_v1',
   'APS_ENVIRONMENT', 'TARGET_SPREADSHEET_ID', 'ATTENDANCE_SPREADSHEET_ID', 'SPECIAL_CLASSES_SPREADSHEET_ID',
-  'ZOHO_SYNC_SPREADSHEET_ID', 'LIVE_QUESTION_PAPER_SPREADSHEET_ID',
+  'ZOHO_SYNC_SPREADSHEET_ID', 'LIVE_QUESTION_PAPER_SPREADSHEET_ID', 'TEST_QUESTION_PAPER_SPREADSHEET_ID', // v0.23.4: TEST id too (environment separation)
 ];
 /** Credentials (most are also caught by NEVER_RE). */
 export const NEVER_KEYS: string[] = [

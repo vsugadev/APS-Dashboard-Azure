@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 55792f07d08bd71b70b6e8d1ea42f59e
+#   Part B md5    : f71a178af57d8912b5d0be331d9385fe
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1068,4 +1068,9 @@ header is longer, or Code.gs fails quietly in the mock.
   was 1 call per tab = 71 per copy); src/google/apiGate.ts ApiGate (≤45/min, 4 concurrent, 429 → pause all 30 s + one retry)
   wraps every Sheets call; onDirty copy ≥60 s apart; describeDbError names Google errors (GOOGLE_API_429 was mis-shown as
   FREE_LIMIT_REACHED via /exhausted/); failed Access Control read not cached. TtlCache.peek/set.
+- v0.23.4 (2026-11-22): DbBackedDataSource.readValues answers Code.gs Sheets.Values.batchGet (UNFORMATTED_VALUE + SERIAL_NUMBER,
+  ROWS) from the verified copy (parseA1 / sliceUnformatted: Date→serial in the sheet tz, trailing empty cells/rows dropped);
+  else Google. LIVE_/TEST_QUESTION_PAPER_SPREADSHEET_ID read from app settings (scriptSettingsFrom; they are AZURE_SETTING_KEYS,
+  never bridged) + config warning. AzureBridge.gs r142 export list + TAMIL_THADAM_SPREADSHEET_ID, EXAM_QUIZ_MATERIAL_SHEET_ID,
+  DAILY_SUMMARY_SPREADSHEET_ID; TEST_QUESTION_PAPER_SPREADSHEET_ID added to the Azure-setting keys (both sides, tested equal).
 

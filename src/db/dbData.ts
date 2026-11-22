@@ -5,6 +5,7 @@
  */
 import type { DataSource, SheetGrid, SheetSnapshot, WorkbookKey, ValuesRequest, AccessOverrides, Course } from '../data/types';
 import { TITLES_ROW, describeDbError, type SheetStore, type OwnedStore, type OwnedSheet } from './sheetStore';
+import { dateToSerial } from '../gas/runtime';
 
 export class DbBackedDataSource implements DataSource {
   book = '';                       // 'id:<spreadsheet id>' — set once the copied code's own ID function is known
@@ -30,7 +31,25 @@ export class DbBackedDataSource implements DataSource {
   readCourses(): Promise<Course[]> { return this.inner.readCourses(); }
   readConfiguredUserRoles(): Promise<Record<string, string>> { return this.inner.readConfiguredUserRoles(); }
   readAccessOverrides(): Promise<AccessOverrides> { return this.inner.readAccessOverrides(); }
-  readValues(book: WorkbookKey, req: ValuesRequest) { return this.inner.readValues(book, req); }
+  /** v0.23.4: Sheets.Values.batchGet (UNFORMATTED_VALUE + SERIAL_NUMBER, the only form Code.gs uses — attendance week sheets)
+   *  answered from the verified copy when its reads are on and clean; anything else, or any doubt, goes to Google as before. */
+  async readValues(book: WorkbookKey, req: ValuesRequest) {
+    const c = this.copies.get(book);
+    if (c && c.reads && !c.dirtySince && valuesFromCopyOk(req)) {
+      const parsed = req.ranges.map(parseA1);
+      const names = Array.from(new Set(parsed.map((p) => (p ? p.sheet : ''))));
+      const have = c.names();
+      if (parsed.every(Boolean) && names.every((n) => have.has(n))) {
+        try {
+          const snap = await this.readStored(book, names, book, have, true);
+          this.valuesFromCopy++;
+          return { valueRanges: parsed.map((p) => ({ range: p!.raw, values: sliceUnformatted(snap.sheets[p!.sheet] ? snap.sheets[p!.sheet]!.values : [], p!, snap.timeZone) })) };
+        } catch { /* fall through to Google */ }
+      }
+    }
+    return this.inner.readValues(book, req);
+  }
+  valuesFromCopy = 0;
   invalidate(): void {
     this.inner.invalidate?.();
     if (this.copies.size) { const t = this.now(); for (const c of this.copies.values()) c.dirtySince = t; this.onDirty?.(); }
@@ -111,3 +130,36 @@ export class DbBackedDataSource implements DataSource {
     }
   }
 }
+
+/* ---- v0.23.4: values:batchGet from a stored grid ---- */
+export function valuesFromCopyOk(req: ValuesRequest): boolean {
+  return req.valueRenderOption === 'UNFORMATTED_VALUE' && req.dateTimeRenderOption === 'SERIAL_NUMBER' && (!req.majorDimension || req.majorDimension === 'ROWS');
+}
+export interface A1 { raw: string; sheet: string; r1: number; c1: number; r2: number | null; c2: number | null }
+const colNum = (s: string) => s.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+/** "'Week 3'!A2:Z", "Sheet!B5:C10", "Sheet" → parts (1-based); null when not understood. */
+export function parseA1(raw: string): A1 | null {
+  const m = /^(?:'((?:[^']|'')+)'|([^!']+))(?:!([A-Z]{1,3})(\d+)?(?::([A-Z]{1,3})(\d+)?)?)?$/.exec(String(raw).trim());
+  if (!m) return null;
+  const sheet = m[1] !== undefined ? m[1].replace(/''/g, "'") : m[2];
+  if (!m[3]) return { raw, sheet, r1: 1, c1: 1, r2: null, c2: null };
+  const c1 = colNum(m[3]), r1 = m[4] ? Number(m[4]) : 1;
+  if (m[5] === undefined && m[6] === undefined) return { raw, sheet, c1, r1, c2: c1, r2: m[4] ? r1 : null }; // one cell, or one whole column
+  return { raw, sheet, c1, r1, c2: m[5] ? colNum(m[5]) : null, r2: m[6] ? Number(m[6]) : null };
+}
+/** As the Sheets API answers UNFORMATTED_VALUE + SERIAL_NUMBER: dates as serial numbers, trailing empty cells and rows left out. */
+export function sliceUnformatted(grid: unknown[][], a: A1, tz: string): unknown[][] {
+  const last = a.r2 === null ? grid.length : Math.min(a.r2, grid.length);
+  const out: unknown[][] = [];
+  for (let r = a.r1; r <= last; r++) {
+    const src = grid[r - 1] || [];
+    const end = a.c2 === null ? src.length : Math.min(a.c2, src.length);
+    const row: unknown[] = [];
+    for (let c = a.c1; c <= end; c++) { const v = src[c - 1]; row.push(v instanceof Date ? dateToSerial(v, tz) : v === null || v === undefined ? '' : v); }
+    while (row.length && row[row.length - 1] === '') row.pop();
+    out.push(row);
+  }
+  while (out.length && !out[out.length - 1].length) out.pop();
+  return out;
+}
+

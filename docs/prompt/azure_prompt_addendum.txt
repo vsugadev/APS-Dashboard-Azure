@@ -325,4 +325,9 @@ header is longer, or Code.gs fails quietly in the mock.
   was 1 call per tab = 71 per copy); src/google/apiGate.ts ApiGate (≤45/min, 4 concurrent, 429 → pause all 30 s + one retry)
   wraps every Sheets call; onDirty copy ≥60 s apart; describeDbError names Google errors (GOOGLE_API_429 was mis-shown as
   FREE_LIMIT_REACHED via /exhausted/); failed Access Control read not cached. TtlCache.peek/set.
+- v0.23.4 (2026-11-22): DbBackedDataSource.readValues answers Code.gs Sheets.Values.batchGet (UNFORMATTED_VALUE + SERIAL_NUMBER,
+  ROWS) from the verified copy (parseA1 / sliceUnformatted: Date→serial in the sheet tz, trailing empty cells/rows dropped);
+  else Google. LIVE_/TEST_QUESTION_PAPER_SPREADSHEET_ID read from app settings (scriptSettingsFrom; they are AZURE_SETTING_KEYS,
+  never bridged) + config warning. AzureBridge.gs r142 export list + TAMIL_THADAM_SPREADSHEET_ID, EXAM_QUIZ_MATERIAL_SHEET_ID,
+  DAILY_SUMMARY_SPREADSHEET_ID; TEST_QUESTION_PAPER_SPREADSHEET_ID added to the Azure-setting keys (both sides, tested equal).
 

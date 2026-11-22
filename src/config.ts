@@ -127,7 +127,8 @@ function resolved(env: NodeJS.ProcessEnv, name: string): string | undefined {
 export function scriptSettingsFrom(env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
-    if (v === undefined || !(/^(APS_|TCC_|TTM_|CTA_|ROSTER_|ATTENDANCE_|SPECIAL_CLASSES_)/.test(k) || k === 'ZOHO_SYNC_SPREADSHEET_ID') || /SECRET|TOKEN|PASSWORD|KEY|JSON|CREDENTIAL/i.test(k)) continue;
+    // v0.23.4: + the Exam Question Paper spreadsheet IDs (Azure's own app settings — AZURE_SETTING_KEYS — so a TEST app reads the TEST sheet)
+    if (v === undefined || !(/^(APS_|TCC_|TTM_|CTA_|ROSTER_|ATTENDANCE_|SPECIAL_CLASSES_)/.test(k) || k === 'ZOHO_SYNC_SPREADSHEET_ID' || k === 'LIVE_QUESTION_PAPER_SPREADSHEET_ID' || k === 'TEST_QUESTION_PAPER_SPREADSHEET_ID') || /SECRET|TOKEN|PASSWORD|KEY|JSON|CREDENTIAL/i.test(k)) continue;
     out[k] = String(v);
   }
   return out;
@@ -229,6 +230,7 @@ export function configWarnings(cfg: AppConfig): string[] {
     if (cfg.mailJobs && !cfg.mailEnabled) w.push('AZURE_MAIL_JOBS is set but AZURE_MAIL is not "on" — no email job runs on Azure (Apps Script keeps sending).');
     if (cfg.mailJobsPreviewTo && !cfg.allowedDomains.includes(cfg.mailJobsPreviewTo.split('@')[1] || '')) w.push('MAIL_JOBS_PREVIEW_TO must be one APS address — no email job runs on Azure until it is fixed or removed.');
     if (!cfg.mailEnabled && cfg.mailTestTo) w.push('MAIL_TEST_TO is set but AZURE_MAIL is not "on" — no test email is sent.');
+    if (!cfg.scriptSettings.LIVE_QUESTION_PAPER_SPREADSHEET_ID) w.push('LIVE_QUESTION_PAPER_SPREADSHEET_ID is not set — Examination → Exam Question Paper shows "not configured" on Azure (same value as the Apps Script Script Property).');
     if (!cfg.appsScriptBridgeUrl || !cfg.appsScriptBridgeSecret) w.push('APPS_SCRIPT_BRIDGE_URL / APPS_SCRIPT_BRIDGE_SECRET not set — live data (online now, last login, class status, on-call banner) stays empty (Phase 3).');
     else if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(cfg.appsScriptBridgeUrl)) w.push('APPS_SCRIPT_BRIDGE_URL must be the Apps Script web app address (https://script.google.com/macros/s/…/exec).');
     else if (cfg.appsScriptBridgeSecret.length < 32) w.push('APPS_SCRIPT_BRIDGE_SECRET is shorter than 32 characters — the bridge is not used.');
