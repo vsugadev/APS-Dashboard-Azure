@@ -48,6 +48,7 @@ export interface AppConfig {
   scOwner: 'azure' | 'apps-script';
   chatOwner: 'azure' | 'apps-script';
   classLiveEnabled: boolean;
+  timedJobsOnAzure: string;           // AZURE_TIMED_JOBS — v0.23.0: fixed-time daily / weekly jobs on Azure's timetable (src/jobs/timed.ts)
   jobsOnAzure: string;                // AZURE_JOBS — v0.17.0: comma list of Apps Script job handlers run on Azure's timetable (src/jobs/scheduler.ts)          // AZURE_CLASS_LIVE (default on) — v0.17.0: live Google Meet class status from Apps Script // CHAT_OWNER — v0.16.0: 'azure' = Azure SQL OWNS the chat (dbo.chat_message); default apps-script   // SC_OWNER — v0.13.0 database stage 3: 'azure' = Azure SQL OWNS Special Classes (programs + audit); default apps-script
   dbSyncMinutes: number;
   dbCopyBooks: string[];               // DB_COPY — v0.18.0 (Phase 5): spreadsheets copied whole into Azure SQL and checked ('main', 'attendance')
@@ -177,6 +178,7 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     dbCopyExclude: String(env.DB_COPY_EXCLUDE || '').trim(), // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
     sessionStore: String(env.AZURE_SESSION_STORE || '').trim().toLowerCase() === 'memory' ? 'memory' : 'sql',
     jobsOnAzure: String(env.AZURE_JOBS || '').trim(),
+    timedJobsOnAzure: String(env.AZURE_TIMED_JOBS || '').trim(),
     classLiveEnabled: String(env.AZURE_CLASS_LIVE || 'on').trim().toLowerCase() !== 'off',
     chatOwner: String(env.CHAT_OWNER || '').trim().toLowerCase() === 'azure' ? 'azure' : 'apps-script',
     scOwner: String(env.SC_OWNER || '').trim().toLowerCase() === 'azure' ? 'azure' : 'apps-script',

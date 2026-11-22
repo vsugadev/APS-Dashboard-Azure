@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 3f4ba65611561e8a2b8c3391e8ce2d08
+#   Part B md5    : daeaae7a1bd8910719d34c4195b29e12
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1049,4 +1049,11 @@ header is longer, or Code.gs fails quietly in the mock.
   writer except idempotent getOrCreate*Sheet_/getWorkbook_/logAttendanceSyncDiagnostic_; excluded getDashboardData, realtime,
   directory, CTA view, profile-name screens, exam monitoring, role permissions). diffJson paths only (volatile keys skipped,
   SHADOW_IGNORE); persisting differences confirmed after 90 s; dbo.shadow_compare (+status); hourly [Shadow] summary with times.
+- v0.23.0 (2026-11-22): Phase 4 step 2 — 12 FIXED-TIME jobs on Azure's timetable (src/jobs/timed.ts, AZURE_TIMED_JOBS): 4 daily
+  syncs (APS_DAILY_SYNC_HOUR), CTA report (own hour + tz), Mark-Complete, daily/monthly summaries (6/7/8), PTA Fri/Sat/Sun windows.
+  Schedule from Apps Script action jobSchedule (r141; same config as the triggers; installed flag; hourly refresh); slotStart =
+  zoned wall time (DST-exact); run once per slot within 6 h (daily) / 12 h (weekly), lease + dbo.job_run; one attempt per slot.
+  Gate r141: timed trigger skips while Azure alive (any APS_AZURE_JOB_LAST_* < 30 min), else runs + APS_AZURE_JOB_TAKEOVER_<h>,
+  and Azure's job action returns RAN_BY_TRIGGER (20 h daily / 6 d weekly). Code.gs r141: ON_AZURE return in the 12 handlers.
+  Zoho daily sync excluded (self-continuing batches). Email bodies keep their own per-slot guards.
 

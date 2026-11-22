@@ -166,6 +166,11 @@ Needs §5.7 working. Apps Script: deploy `AzureBridge.gs` r139 (New version).
 2. After one or two matching Mondays: Apps Script run `removeMultipleClassroomReportTrigger`; Azure delete `MAIL_JOBS_PREVIEW_TO`.
 3. Back: Apps Script `createMultipleClassroomReportTrigger` (Azure stops by itself). Details: `docs/MAIL.md`.
 
+### 5.10 Fixed-time jobs on Azure (Phase 4 step 2, v0.23.0)
+
+Apps Script r141 first. Then add the names to both `APS_JOBS_ON_AZURE` (Apps Script) and `AZURE_TIMED_JOBS` (Azure), starting with the
+4 daily syncs. Details and order: `docs/JOBS.md`.
+
 ### 5.9 Parallel run and cut-over (v0.21.0)
 
 Follow `docs/CUTOVER.md`: Day 1 reconciliation (`RECONCILE_HOURS`), Day 2 test group (`PARALLEL_RUN=on`, `PARALLEL_RUN_USERS`),
@@ -203,7 +208,7 @@ scope widens what the service account can do.
 
 | Module | Steps |
 |---|---|
-| Jobs | Remove the name from `APS_JOBS_ON_AZURE` first (Apps Script runs it at once), then from `AZURE_JOBS` → Restart |
+| Jobs (interval and fixed-time) | Remove the name from `APS_JOBS_ON_AZURE` first (Apps Script runs it at once), then from `AZURE_JOBS` → Restart |
 | Chat | Run `ONE_TIME_chatCopyAzureToSheet` → delete `CHAT_OWNER` (Apps Script) → clear `CHAT_OWNER` (Azure) → Restart |
 | Special Classes | Run `ONE_TIME_scCopyAzureToSheet` → delete `SPECIAL_CLASSES_OWNER` → clear `SC_OWNER` → Restart |
 | Live class status | `AZURE_CLASS_LIVE=off` → Restart |

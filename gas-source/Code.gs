@@ -14552,7 +14552,7 @@ function apsRequireOwnerOrTrigger_(e, handler) {
   if (!active || !owner || active !== owner) throw new Error('Access denied. Run this from the Apps Script editor as the script owner.');
 }
 function apsDailyForceSync(e) {
-  apsRequireTriggerCall_(e, 'apsDailyForceSync');
+  if (apsRequireTriggerCall_(e, 'apsDailyForceSync') === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   try { apsPropHealth_(true); } catch (eH) { console.warn('[Storage] health check: ' + (eH && eH.message)); } // r103: runs even when the daily sync is switched off
   if (!apsDailySyncEnabled_()) return { skipped: true };
   console.log('[DailySync] Classroom force sync start');
@@ -14560,18 +14560,18 @@ function apsDailyForceSync(e) {
 }
 /** Daily (5 PM EST): auto-fill Course ↔ Meet Link Mapping from Google Classroom — new / unmapped classes only (see classMeetAutoMap_). */
 function apsDailyMeetLinkAutoMap(e) {
-  apsRequireTriggerCall_(e, 'apsDailyMeetLinkAutoMap');
+  if (apsRequireTriggerCall_(e, 'apsDailyMeetLinkAutoMap') === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   if (!apsDailySyncEnabled_()) return { skipped: true };
   return classMeetAutoMap_({ budgetMs: 270000 });
 }
 function apsDailyAttendanceSync(e) {
-  apsRequireTriggerCall_(e, 'apsDailyAttendanceSync');
+  if (apsRequireTriggerCall_(e, 'apsDailyAttendanceSync') === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   if (!apsDailySyncEnabled_()) return { skipped: true };
   console.log('[DailySync] attendance sync start (full, same as Sync Attendance Now)');
   return syncAttendanceForAllCourses_({ full: true });
 }
 function classroomRosterAutoSync(e) {
-  apsRequireTriggerCall_(e, 'classroomRosterAutoSync');
+  if (apsRequireTriggerCall_(e, 'classroomRosterAutoSync') === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   if (!apsDailySyncEnabled_() || !rosterEnabled_()) return { skipped: true };
   return gradingRunSync_('SCHEDULED', 'trigger', false); // roster (only when stale) + grades
 }
@@ -15512,7 +15512,7 @@ function ctaRunScheduled_(now, runBy) {
 
 /** Time-driven trigger handler (daily at APS_CLASS_TEACHER_AVAILABILITY_HOUR; Mon/Sat/Sun exit at once). Refused unless called by its own installed trigger. */
 function sendWeeklyClassTeacherAvailabilityReport(e) {
-  apsRequireTriggerCall_(e, CTA_HANDLER_);
+  if (apsRequireTriggerCall_(e, CTA_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   return ctaRunScheduled_(new Date(), 'trigger');
 }
 
@@ -21741,9 +21741,9 @@ function ptaRunWindow_(windowKey, now, opts) {
 }
 
 /* Trigger handlers — each refuses anything but its own installed trigger. */
-function apsPtaCoverageNotifyFriday(e) { apsRequireTriggerCall_(e, PTA_WINDOWS_.FRIDAY.handler); return ptaRunWindow_('FRIDAY', new Date(), { runBy: 'trigger' }); }
-function apsPtaCoverageNotifySaturday(e) { apsRequireTriggerCall_(e, PTA_WINDOWS_.SATURDAY.handler); return ptaRunWindow_('SATURDAY', new Date(), { runBy: 'trigger' }); }
-function apsPtaCoverageNotifySunday(e) { apsRequireTriggerCall_(e, PTA_WINDOWS_.SUNDAY.handler); return ptaRunWindow_('SUNDAY', new Date(), { runBy: 'trigger' }); }
+function apsPtaCoverageNotifyFriday(e) { if (apsRequireTriggerCall_(e, PTA_WINDOWS_.FRIDAY.handler) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; /* r141 */ return ptaRunWindow_('FRIDAY', new Date(), { runBy: 'trigger' }); }
+function apsPtaCoverageNotifySaturday(e) { if (apsRequireTriggerCall_(e, PTA_WINDOWS_.SATURDAY.handler) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; /* r141 */ return ptaRunWindow_('SATURDAY', new Date(), { runBy: 'trigger' }); }
+function apsPtaCoverageNotifySunday(e) { if (apsRequireTriggerCall_(e, PTA_WINDOWS_.SUNDAY.handler) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; /* r141 */ return ptaRunWindow_('SUNDAY', new Date(), { runBy: 'trigger' }); }
 
 /**
  * SETUP — run ONCE from the Apps Script editor (script owner). Removes any existing Parent-Teacher Arranged triggers
@@ -23611,7 +23611,7 @@ function mcPrune_(now, days) {
 }
 /** Daily trigger (ATTQUZ_COMPLETE_HOUR, default 11 PM America/New_York). */
 function apsAttQuzMarkCompleteDaily(e) {
-  apsRequireTriggerCall_(e, MC_HANDLER_);
+  if (apsRequireTriggerCall_(e, MC_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   if (apsLeaveSkip_('MARK_COMPLETE_REMINDER', new Date())) return { skipped: 'SKIPPED_SCHOOL_LEAVE' }; // r110
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) { console.warn('[MarkComplete] busy — skipped this run (the next run picks everything up)'); return { skipped: 'busy' }; }
@@ -25499,17 +25499,17 @@ function dsMigrateIfEvening_(now) {
   return true;
 }
 function apsDailySummaryPrep(e) {
-  apsRequireTriggerCall_(e, DS_PREP_HANDLER_);
+  if (apsRequireTriggerCall_(e, DS_PREP_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   var now = new Date(); if (dsMigrateIfEvening_(now)) return { migrated: true };
   return dsPrep_(now);
 }
 function apsDailySummaryReport(e) {
-  apsRequireTriggerCall_(e, DS_REPORT_HANDLER_);
+  if (apsRequireTriggerCall_(e, DS_REPORT_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   var now = new Date(); if (dsMigrateIfEvening_(now)) return { migrated: true };
   return dsMorning_(now);
 }
 function apsMonthlySummaryReport(e) {
-  apsRequireTriggerCall_(e, DS_MONTHLY_HANDLER_);
+  if (apsRequireTriggerCall_(e, DS_MONTHLY_HANDLER_) === 'ON_AZURE') return { skipped: 'ON_AZURE' }; // r141
   var now = new Date(); if (dsMigrateIfEvening_(now)) return { migrated: true };
   return dsMonthlyMorning_(now);
 }

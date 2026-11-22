@@ -70,3 +70,39 @@ Admin console; see `docs/FINAL_SETUP.md` §6.
   running job isn't started again; runs are recorded; SQL lease and tables; the real Apps Script gate (Azure run,
   `NOT_ON_AZURE`, the trigger skips, take-over after a missed run, fakes refused, the Promise job collected).
 - Apps Script `test/azurejobs.js` (4 checks).
+
+## Fixed-time jobs (Phase 4 step 2, v0.23.0)
+
+The 12 daily / weekly jobs that run at a configured time can now run on Azure's timetable too:
+
+| Job (handler) | When (from the Apps Script settings) |
+|---|---|
+| `apsDailyForceSync`, `apsDailyAttendanceSync`, `classroomRosterAutoSync`, `apsDailyMeetLinkAutoMap` | daily at `APS_DAILY_SYNC_HOUR` (default 5 PM New York) |
+| `sendWeeklyClassTeacherAvailabilityReport` | daily at the CTA hour, in its own time zone (sends Tue–Fri only, its own rule) |
+| `apsAttQuzMarkCompleteDaily` | daily at the Mark-Complete hour |
+| `apsDailySummaryPrep` / `apsDailySummaryReport` / `apsMonthlySummaryReport` | 6 / 7 / 8 AM |
+| `apsPtaCoverageNotifyFriday` / `…Saturday` / `…Sunday` | Fri 5:30 PM, Sat 11:30 AM, Sun 6:30 PM |
+
+**How it works:**
+
+- **Times come from Apps Script.** Azure asks for the schedule (bridge action `jobSchedule`, `AzureBridge.gs` r141) every hour. It's computed from the same settings that create the triggers, so a time an Admin changes applies on Azure too.
+- **Only jobs that are switched on run.** A job runs on Azure only while its trigger is installed in Apps Script, so a job switched off there stays off.
+- **The job itself is unchanged.** It runs in Apps Script exactly as its trigger would. One run per slot (the slot is the configured time today, or this week's weekday), from that minute, within 6 hours (daily) or 12 hours (weekly). One attempt per slot, like a trigger.
+- **A start inside the window catches up once.** That is safe: each email job guards its own slot (the CTA "already sent today" check, the daily summary's "Email Sent" column, PTA's already-sent check, Mark-Complete's sent log).
+- **The Apps Script trigger stays as a safety net.** It skips while Azure's timetable is alive, meaning Azure ran any job in the last 30 minutes (the 5-minute exam job keeps this fresh). Otherwise it runs the job itself and leaves a "taken over" mark, and Azure's run of that slot is then refused (`RAN_BY_TRIGGER`). Never twice.
+- **Zoho's daily sync is not included,** because it continues itself in batches with its own triggers.
+
+**Switch on (per job, both sides):**
+
+1. **Apps Script:** add the names to `APS_JOBS_ON_AZURE` (keep the 5 already there).
+2. **Azure:** set `AZURE_TIMED_JOBS` to the same names → Apply.
+3. **Log:** look for `[Jobs] fixed-time jobs on Azure's timetable: …`, then at each slot `[Jobs] <job> (fixed time) ran on Azure's timetable: ok`.
+
+**Switch back:** remove the names from `APS_JOBS_ON_AZURE` first (the triggers run them again at once), then from `AZURE_TIMED_JOBS`.
+
+**Recommended order:**
+
+1. The 4 daily syncs (no emails).
+2. After one good day, the daily summaries and the CTA report.
+3. Then Mark-Complete and PTA.
+

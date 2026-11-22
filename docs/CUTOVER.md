@@ -64,7 +64,7 @@ FROM x WHERE n = 1 ORDER BY (missing_in_target + extra_in_target + different_val
 |---|---|---|---|
 | EXISTING_ONLY | `PARALLEL_RUN` off; no job/mail switches | as today | everyone → Apps Script |
 | **PARALLEL_RUN** | `PARALLEL_RUN=on`, `SHADOW_SAMPLE=20`, `PARALLEL_RUN_USERS=admin,superadmin,headmaster,<named testers>`, `DB_COPY=main,attendance`, `DB_SYNC_MINUTES=5`, `RECONCILE_HOURS=6`, `AZURE_MAIL=on`, `AZURE_MAIL_JOBS=MULTIPLE_CLASSROOM_REPORT` + `MAIL_JOBS_PREVIEW_TO` | unchanged (official) | test group uses both; differences reported with the bar's button |
-| AZURE_PRIMARY | clear `PARALLEL_RUN_USERS` and `PARALLEL_RUN`; `MAIL_JOBS_PREVIEW_TO` removed (Azure sends) | `removeMultipleClassroomReportTrigger`; Apps Script web app stays deployed | namaps.org/dashboard and the APS Gate → Azure URL |
+| AZURE_PRIMARY | clear `PARALLEL_RUN_USERS` and `PARALLEL_RUN`; `AZURE_TIMED_JOBS` = the 12 fixed-time jobs (+ `APS_JOBS_ON_AZURE`); `MAIL_JOBS_PREVIEW_TO` removed (Azure sends) | `removeMultipleClassroomReportTrigger`; Apps Script web app stays deployed | namaps.org/dashboard and the APS Gate → Azure URL |
 | AZURE_PRIMARY + FALLBACK | as above | kept deployed and working for 30 days (plan) | if needed, the link points back (§6) |
 
 A session made before `PARALLEL_RUN_USERS` changes is re-checked on every call. Narrowing the group takes effect at once.

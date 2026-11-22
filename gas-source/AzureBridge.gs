@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run; r141: the fixed-time daily / weekly jobs on Azure's timetable). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -138,6 +138,7 @@ function azureBridgeDoPost_(body) {
     else if (req.action === 'result') out = { ok: true, result: azureBridgeJobResult_(req) }; // r135
     else if (req.action === 'job') out = { ok: true, result: azureBridgeRunJob_(req) }; // r137
     else if (req.action === 'classLive') out = { ok: true, result: azureBridgeClassLive_() }; // r137
+    else if (req.action === 'jobSchedule') out = { ok: true, result: azureBridgeJobSchedule_() }; // r141
     else if (req.action === 'mailJob') out = { ok: true, result: azureBridgeMailJob_(req) }; // r139: email jobs sent by Azure
     else if (req.action === 'chatChanged') { chatChanged_(); out = { ok: true, result: { changed: true } }; } // r136: a message was posted on Azure
     else throw portalErr_('BAD_REQUEST', 'Unknown action.');
@@ -510,27 +511,70 @@ function azureBridgeClassLive_() {
 var AZURE_JOB_HANDLERS_ = { apsWeeklyJobs: 180, amScheduler: 180, processTemporaryTeacherAssignments: 180, apsCoverageCleanup: 90, processExamQuestionPaperAutoEmail: 30 }; // fallback minutes
 var AZURE_JOB_LAST_PREFIX_ = 'APS_AZURE_JOB_LAST_';
 var AZURE_JOB_RUN_ = null; // { handler, runId } — set ONLY while azureBridgeRunJob_ runs a job (after the signature check)
+/* r141 — Phase 4 step 2: the FIXED-TIME jobs (daily at a configured hour / weekly windows) on Azure's timetable.
+ * Azure asks for their schedule (action "jobSchedule": hour, minute, weekday, time zone — from the SAME settings that create
+ * their triggers here — and whether the trigger is installed) and runs each one once per slot at that time (action "job").
+ * The trigger here still fires as a safety net:
+ *  - while Azure's timetable is alive (Azure ran any job in the last 30 minutes) it skips (ON_AZURE);
+ *  - otherwise it runs the job itself and leaves a "taken over" mark, so Azure does not run the same slot again.
+ * Listed in APS_JOBS_ON_AZURE like the interval jobs. Zoho's daily sync is not included (it continues itself in batches). */
+var AZURE_TIMED_JOBS_ = {
+  apsDailyForceSync: 'daily', apsDailyAttendanceSync: 'daily', classroomRosterAutoSync: 'daily', apsDailyMeetLinkAutoMap: 'daily',
+  sendWeeklyClassTeacherAvailabilityReport: 'daily', apsAttQuzMarkCompleteDaily: 'daily',
+  apsDailySummaryPrep: 'daily', apsDailySummaryReport: 'daily', apsMonthlySummaryReport: 'daily',
+  apsPtaCoverageNotifyFriday: 'weekly', apsPtaCoverageNotifySaturday: 'weekly', apsPtaCoverageNotifySunday: 'weekly'
+};
+var AZURE_JOB_TAKEOVER_PREFIX_ = 'APS_AZURE_JOB_TAKEOVER_', AZURE_TIMETABLE_ALIVE_MS_ = 30 * 60000;
+function azureJobKnown_(h) { return !!(AZURE_JOB_HANDLERS_[h] || AZURE_TIMED_JOBS_[h]); }
 function azureJobsOnAzure_() {
   var o = {};
-  try { String(PropertiesService.getScriptProperties().getProperty('APS_JOBS_ON_AZURE') || '').split(/[\s,]+/).forEach(function (h) { if (h && AZURE_JOB_HANDLERS_[h]) o[h] = true; }); } catch (e) { o = {}; }
+  try { String(PropertiesService.getScriptProperties().getProperty('APS_JOBS_ON_AZURE') || '').split(/[\s,]+/).forEach(function (h) { if (h && azureJobKnown_(h)) o[h] = true; }); } catch (e) { o = {}; }
   return o;
+}
+/** Azure's timetable is alive when it ran any job here in the last 30 minutes (the 5-minute exam job keeps this fresh). */
+function azureTimetableAlive_() {
+  var p = PropertiesService.getScriptProperties().getProperties(), now = Date.now();
+  return Object.keys(p).some(function (k) { return k.indexOf(AZURE_JOB_LAST_PREFIX_) === 0 && now - Number(p[k] || 0) <= AZURE_TIMETABLE_ALIVE_MS_; });
 }
 /** Called first by apsRequireTriggerCall_: 'AZURE_RUN' = this is Azure's run; 'ON_AZURE' = the trigger should skip; '' = as before. */
 function azureJobGate_(e, handler) {
   if (e && e.azureJob && AZURE_JOB_RUN_ && AZURE_JOB_RUN_.handler === handler && AZURE_JOB_RUN_.runId === e.azureJob) return 'AZURE_RUN';
-  if (!AZURE_JOB_HANDLERS_[handler] || !(e && e.triggerUid) || !azureJobsOnAzure_()[handler]) return '';
+  if (!azureJobKnown_(handler) || !(e && e.triggerUid) || !azureJobsOnAzure_()[handler]) return '';
   var uid = String(e.triggerUid), real = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === handler && String(t.getUniqueId()) === uid; });
   if (!real) return ''; // not its own trigger → the usual check refuses it
-  var last = Number(PropertiesService.getScriptProperties().getProperty(AZURE_JOB_LAST_PREFIX_ + handler) || 0);
+  var props = PropertiesService.getScriptProperties();
+  if (AZURE_TIMED_JOBS_[handler]) { // r141
+    if (azureTimetableAlive_()) return 'ON_AZURE';
+    props.setProperty(AZURE_JOB_TAKEOVER_PREFIX_ + handler, String(Date.now()));
+    console.warn('[AzureJobs] ' + handler + ' is set to run on Azure, but Azure\'s timetable has not run any job for 30 minutes — running it here (check the Azure log).');
+    return '';
+  }
+  var last = Number(props.getProperty(AZURE_JOB_LAST_PREFIX_ + handler) || 0);
   if (Date.now() - last <= AZURE_JOB_HANDLERS_[handler] * 60000) return 'ON_AZURE';
   console.warn('[AzureJobs] ' + handler + ' is set to run on Azure, but Azure has not run it for ' + AZURE_JOB_HANDLERS_[handler] + ' minutes — running it here (check the Azure log / AZURE_JOBS).');
   return '';
 }
+/** r141: action "jobSchedule" — when each fixed-time job runs, from the same settings that create its trigger here. */
+function azureBridgeJobSchedule_() {
+  var installed = {}; ScriptApp.getProjectTriggers().forEach(function (t) { installed[t.getHandlerFunction()] = true; });
+  var out = [], add = function (h, hour, minute, weekday, tz) { out.push({ handler: h, kind: AZURE_TIMED_JOBS_[h], hour: hour, minute: minute, weekday: weekday, tz: tz, installed: !!installed[h] }); };
+  var dh = apsDailySyncHour_();
+  APS_DAILY_SYNC_HANDLERS_.forEach(function (h) { if (AZURE_TIMED_JOBS_[h]) add(h, dh, 0, null, APS_TZ); });
+  var cta = ctaConfig_(); add(CTA_HANDLER_, cta.hour, 0, null, cta.tz);
+  add(MC_HANDLER_, mcConfig_().hour, 0, null, APS_TZ);
+  add(DS_PREP_HANDLER_, DS_HOURS_.prep, 0, null, APS_TZ); add(DS_REPORT_HANDLER_, DS_HOURS_.report, 0, null, APS_TZ); add(DS_MONTHLY_HANDLER_, DS_HOURS_.monthly, 0, null, APS_TZ);
+  Object.keys(PTA_WINDOWS_).forEach(function (k) { var w = PTA_WINDOWS_[k]; add(w.handler, w.hour, w.minute, w.dow, APS_TZ); });
+  return { jobs: out, onAzure: Object.keys(azureJobsOnAzure_()) };
+}
 /** Signed action "job" { handler, runId }: runs one listed job exactly as its trigger would. */
 function azureBridgeRunJob_(req) {
   var handler = String(req.handler || ''), runId = String(req.runId || ''), g = globalThis;
-  if (!AZURE_JOB_HANDLERS_[handler] || typeof g[handler] !== 'function' || !/^[0-9a-f-]{8,64}$/i.test(runId)) throw portalErr_('BAD_REQUEST', 'This job cannot be run from Azure.');
+  if (!azureJobKnown_(handler) || typeof g[handler] !== 'function' || !/^[0-9a-f-]{8,64}$/i.test(runId)) throw portalErr_('BAD_REQUEST', 'This job cannot be run from Azure.');
   if (!azureJobsOnAzure_()[handler]) throw portalErr_('NOT_ON_AZURE', handler + ' still runs on its Apps Script trigger (add it to Script Property APS_JOBS_ON_AZURE).');
+  if (AZURE_TIMED_JOBS_[handler]) { // r141: the trigger here already ran this slot (Azure's timetable was not alive) → never twice
+    var took = Number(PropertiesService.getScriptProperties().getProperty(AZURE_JOB_TAKEOVER_PREFIX_ + handler) || 0);
+    if (Date.now() - took <= (AZURE_TIMED_JOBS_[handler] === 'weekly' ? 6 * 1440 : 20 * 60) * 60000) return { value: JSON.stringify({ skipped: 'RAN_BY_TRIGGER' }) };
+  }
   PropertiesService.getScriptProperties().setProperty(AZURE_JOB_LAST_PREFIX_ + handler, String(Date.now()));
   AZURE_JOB_RUN_ = { handler: handler, runId: runId };
   var started = Date.now();

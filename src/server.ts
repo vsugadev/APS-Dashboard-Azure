@@ -38,6 +38,7 @@ import { describeGoogleError } from './google/diagnose';
 import { createMailSender, checkMail } from './mail/gmailSender';
 import { registerParallelRun, MssqlFeedbackStore, readinessLines, type ReadinessFacts } from './parallel/parallelRun';
 import { ShadowComparer, MssqlShadowStore, bridgeAppsScriptRunner } from './parallel/shadow';
+import { TimedJobScheduler, bridgeScheduleSource, parseTimedList } from './jobs/timed';
 import { MailJobRunner, MssqlMailJobStore, liveMailJobDeps, parseMailJobList } from './mail/mailJobs';
 
 export function buildRegistry(fetchImpl?: FetchLike): Registry {
@@ -200,7 +201,7 @@ if (require.main === module) {
   app.listen(cfg.port, () => {
     console.log(`[Server] APS Dashboard (Azure) v${APP_VERSION} listening on ${cfg.port} — data: ${cfg.dataMode}`);
     const facts: ReadinessFacts = { googleOk: null, bridgeOk: false, sessionsSql: ctx.sessions instanceof DurableSessionStore, chatReady: null, classLiveError: null,
-      jobs: [], mailOk: null, mailJobs: [], mailJobsPreview: !!cfg.mailJobsPreviewTo, dbCopy: cfg.dbCopyBooks, dbReads: cfg.dbReadBooks, feedbackReady: !!ctx.feedback };
+      jobs: [], timedJobs: [], mailOk: null, mailJobs: [], mailJobsPreview: !!cfg.mailJobsPreviewTo, dbCopy: cfg.dbCopyBooks, dbReads: cfg.dbReadBooks, feedbackReady: !!ctx.feedback };
     void checkGoogleAccess(ctx).then((ok) => { facts.googleOk = ok; });
     void checkLiveBridge(ctx).then((ok) => { facts.bridgeOk = ok; });
     { // v0.21.0: parallel-run readiness — one block ~90 s after start, then daily
@@ -234,6 +235,15 @@ if (require.main === module) {
         facts.jobs = jobs.on;
         new JobScheduler(jobs.on, new MssqlJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), bridgeJobRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)).start();
       } else if (jobs.on.length) console.warn('[Jobs] AZURE_JOBS is set but Azure SQL or the Apps Script bridge is not — no job runs on Azure (Apps Script keeps running them).');
+      // Phase 4 step 2 (v0.23.0): fixed-time daily / weekly jobs (AZURE_TIMED_JOBS + Apps Script APS_JOBS_ON_AZURE; times from Apps Script)
+      const timed = parseTimedList(cfg.timedJobsOnAzure);
+      if (timed.unknown.length) console.warn('[Jobs] AZURE_TIMED_JOBS names not known (ignored): ' + timed.unknown.join(', '));
+      if (timed.on.length && ctx.data instanceof DbBackedDataSource && bridgeUsable(cfg)) {
+        const db = ctx.data;
+        facts.timedJobs = timed.on;
+        new TimedJobScheduler(timed.on, new MssqlJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), bridgeJobRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret),
+          bridgeScheduleSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)).start();
+      } else if (timed.on.length) console.warn('[Jobs] AZURE_TIMED_JOBS is set but Azure SQL or the Apps Script bridge is not — Apps Script keeps running them.');
     }
     if (ctx.data instanceof DbBackedDataSource) { const db = ctx.data; void startDatabase(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000).finally(() => startCopies(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000)); }
   });

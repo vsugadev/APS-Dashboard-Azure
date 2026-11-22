@@ -67,7 +67,7 @@ export function registerParallelRun(reg: Registry, now: () => number = Date.now,
 /* ---- readiness ---- */
 export interface ReadinessFacts {
   googleOk: boolean | null; bridgeOk: boolean; sessionsSql: boolean; chatReady: boolean | null; classLiveError: string | null;
-  jobs: string[]; mailOk: boolean | null; mailJobs: string[]; mailJobsPreview: boolean; dbCopy: string[]; dbReads: string[]; feedbackReady: boolean;
+  jobs: string[]; timedJobs?: string[]; mailOk: boolean | null; mailJobs: string[]; mailJobsPreview: boolean; dbCopy: string[]; dbReads: string[]; feedbackReady: boolean;
 }
 export function readinessLines(cfg: AppConfig, f: ReadinessFacts): string[] {
   const L: string[] = [], ok = (b: boolean, what: string, fix = '') => L.push((b ? 'OK     ' : 'CHECK  ') + what + (b || !fix ? '' : ' — ' + fix));
@@ -78,6 +78,7 @@ export function readinessLines(cfg: AppConfig, f: ReadinessFacts): string[] {
   ok(cfg.chatOwner === 'azure' && f.chatReady === true, 'Chat owned by Azure SQL', cfg.chatOwner === 'azure' ? 'chat table not ready — see the [Chat] line' : 'optional: CHAT_OWNER=azure on both sides');
   ok(cfg.classLiveEnabled && !f.classLiveError, 'Live Google Meet class status', f.classLiveError ? 'Apps Script answered ' + f.classLiveError : 'AZURE_CLASS_LIVE is off');
   ok(f.jobs.length > 0, 'Jobs on Azure\'s timetable: ' + (f.jobs.join(', ') || 'none'), 'optional: AZURE_JOBS (+ APS_JOBS_ON_AZURE)');
+  ok((f.timedJobs || []).length > 0, 'Fixed-time jobs on Azure\'s timetable: ' + ((f.timedJobs || []).join(', ') || 'none'), 'optional: AZURE_TIMED_JOBS (+ APS_JOBS_ON_AZURE)');
   ok(f.mailOk === true, 'Email From donotreply@ by Azure', cfg.mailEnabled ? 'see the [Mail] line' : 'AZURE_MAIL is not on');
   ok(f.mailJobs.length > 0, 'Email jobs on Azure: ' + (f.mailJobs.join(', ') || 'none') + (f.mailJobsPreview ? ' (PREVIEW)' : ''), 'optional: AZURE_MAIL_JOBS');
   ok(f.dbCopy.length > 0, 'Spreadsheet copies in Azure SQL: ' + (f.dbCopy.join(', ') || 'none') + (f.dbReads.length ? '; reads from the copy: ' + f.dbReads.join(', ') : ''), 'optional: DB_COPY');

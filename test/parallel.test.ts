@@ -61,7 +61,7 @@ test('page: the test-run bar is added only with PARALLEL_RUN=on; only an https o
 });
 
 test('readiness: every module listed OK / CHECK with the fix; the test group and reporting are part of it', () => {
-  const f: ReadinessFacts = { googleOk: true, bridgeOk: true, sessionsSql: true, chatReady: true, classLiveError: null, jobs: ['amScheduler'], mailOk: true, mailJobs: ['MULTIPLE_CLASSROOM_REPORT'], mailJobsPreview: true, dbCopy: ['main'], dbReads: [], feedbackReady: true };
+  const f: ReadinessFacts = { googleOk: true, bridgeOk: true, sessionsSql: true, chatReady: true, classLiveError: null, jobs: ['amScheduler'], timedJobs: ['apsDailyForceSync'], mailOk: true, mailJobs: ['MULTIPLE_CLASSROOM_REPORT'], mailJobsPreview: true, dbCopy: ['main'], dbReads: [], feedbackReady: true };
   const ready = readinessLines(testConfig({ scOwner: 'azure', chatOwner: 'azure', mailEnabled: true, parallelRunOn: true, parallelRunUsers: 'admin,headmaster,a' + D }), f);
   assert.ok(ready.every((l) => l.startsWith('OK')), ready.join('\n'));
   assert.ok(ready.some((l) => /Test group: admin, headmaster, 1 named person/.test(l)));
