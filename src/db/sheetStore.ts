@@ -185,8 +185,12 @@ export class MssqlSheetStore implements SheetStore, OwnedStore {
 
   async get(book: string, names: string[]): Promise<Record<string, StoredSheet | null>> {
     const pool = await this.connect();
-    const r = await pool.request().input('book', this.sql.NVarChar(200), book)
-      .query('SELECT sheet, time_zone, grid, row_count, synced_at FROM dbo.sheet_snapshot WHERE book = @book;');
+    // v0.23.2: only the requested tabs (was: every tab of the spreadsheet on every read — tens of MB for "main")
+    const want = Array.from(new Set(names)).slice(0, 250);
+    const req = pool.request().input('book', this.sql.NVarChar(200), book);
+    want.forEach((n, i) => req.input('n' + i, this.sql.NVarChar(200), n));
+    const r = await req.query('SELECT sheet, time_zone, grid, row_count, synced_at FROM dbo.sheet_snapshot WHERE book = @book' +
+      (want.length && want.length === new Set(names).size ? ' AND sheet IN (' + want.map((_n, i) => '@n' + i).join(', ') + ')' : '') + ';');
     const by: Record<string, any> = {};
     for (const row of (r.recordset || []) as any[]) by[String(row.sheet)] = row;
     const out: Record<string, StoredSheet | null> = {};

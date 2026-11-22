@@ -61,7 +61,7 @@ test('API: same names and arguments as google.script.run; checks on the server; 
     const sup = await sign('super' + D), adm = await sign('admin' + D), tea = await sign('priya_aps8001' + D);
     const me = await s.run('getCurrentUser', [tea]); assert.equal(me.ok.role, 'teacher'); assert.equal(me.ok.name, 'Priya');
     const ac = await s.run('getAccessControl', [sup]);
-    assert.equal(ac.ok.rows.length, 44); assert.equal(ac.ok.roles.length, 7); assert.equal(ac.ok.canEdit, false, 'read-only in Phase 1');
+    assert.equal(ac.ok.rows.length, 44); assert.equal(ac.ok.roles.length, 7); assert.equal(ac.ok.canEdit, true, 'as Code.gs acTableData_ (v0.23.2: saveAccessControl runs Code.gs through the bridge)');
     assert.deepEqual(await s.run('getAccessControl', [adm]), { err: 'ACCESS_OFF: This section has been turned off for your role by the APS administrator.' }, 'Super Admin switched it off for Admin');
     assert.deepEqual(await s.run('getAccessControl', [tea]), { err: 'Only Admin / Super Admin can use Admin Control.' });
     assert.deepEqual(await s.run('getAccessControl', ['forged-token']), { err: 'SESSION_EXPIRED: please sign in again.' });

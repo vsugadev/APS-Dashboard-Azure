@@ -59,10 +59,10 @@ const { DashboardPage } = require('../dist/src/web/render');
       const txt = await page.evaluate(() => document.body.innerText);
       assert.ok(/NILAI 3 - EF/.test(txt) && /NILAI 1 - EA/.test(txt), 'both sample classes shown');
     });
-    await t('Phase 2 step 3: Teacher Availability report served by Azure, read-only (Save / test email off)', async () => {
+    await t('Phase 2 step 3: Teacher Availability report served by Azure; v0.23.2 buttons as Code.gs (Admin: test email on, no own form)', async () => {
       const tok = await page.evaluate(() => apsSessionToken);
       const v = await page.evaluate((tk) => new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e.message)).getClassTeacherAvailabilityView(tk)), tok);
-      assert.ok(v && v.report && v.weekId, 'weekly report returned'); assert.strictEqual(v.canSubmit, false); assert.strictEqual(v.canSendTest, false);
+      assert.ok(v && v.report && v.weekId, 'weekly report returned'); assert.strictEqual(v.canSubmit, false, 'Admin has no own availability form'); assert.strictEqual(v.canSendTest, true, 'Admin can send the test email (through the bridge)'); assert.strictEqual(v.azureReadOnly, undefined);
     });
     await t('Phase 2 step 4: Active Directory index served by Azure (full tier for Admin)', async () => {
       const tok = await page.evaluate(() => apsSessionToken);

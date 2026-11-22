@@ -136,8 +136,12 @@ parity tests, and the test group compares them by eye and reports differences. T
 | main | 71 | 42,786 | 42,786 | 42,786 | 0 | 0 | 0 | 0 / 0 | 0 | IDENTICAL |
 | attendance | 17 | 17,239 | 17,239 | 17,239 | 0 | 0 | 0 | 0 / 0 | 0 | IDENTICAL |
 
-The readiness block was all OK (v0.23.0), with the test group set to admin, superadmin and headmaster. Two difference reports
-(#1 Temp Teacher, #2 Attendance) are being triaged.
+The readiness block was all OK (v0.23.0), with the test group set to admin, superadmin and headmaster. Difference reports, triaged:
+
+| # | Screen | Report | Class | Fix |
+|---|---|---|---|---|
+| 1, 2 | Temp Teacher, Attendance (all tabs) | data loads slower than Apps Script | **HIGH** | v0.23.2: each sheet load fetched the WHOLE spreadsheet copy from Azure SQL; now only the requested tabs, served from memory after each copy |
+| 3 | Examination | tab and sub-tabs not visible | **BLOCKER** | v0.23.2: the Phase 1–2 placeholders (`examinationAccess`, `gradingAccess`, `assignMonAccess` …) are replaced by the copied Code.gs gates; also Save / Override / Access Control edit buttons shown as in Apps Script |
 
 ## 8. Duplicate and retry protection
 

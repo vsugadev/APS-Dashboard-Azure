@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 72be9b81ed99a992e4efb7f2cfd6448d
+#   Part B md5    : ddab0b6f719640ee0f90eb5451b1b87f
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -1058,4 +1058,10 @@ header is longer, or Code.gs fails quietly in the mock.
   Zoho daily sync excluded (self-continuing batches). Email bodies keep their own per-slot guards.
 - v0.23.1 (2026-11-22): log clean-up (body-parser request.aborted = info line; empty SC enrollments copy wording). Day 1:
   reconciliation IDENTICAL main 71 tabs 42,786 rows, attendance 17 tabs 17,239 rows; readiness all OK; feedback #1 Temp Teacher, #2 Attendance.
+- v0.23.2 (2026-11-22): parallel-run fixes. SPEED: MssqlSheetStore.get fetched every tab of the book per read (WHERE book only) —
+  now WHERE sheet IN (requested); DbBackedDataSource keeps decoded copies in memory (filled by this instance's SheetSync onStored
+  after the read-back check, and by DB reads), same freshness rules (≤15 min, dirty after a save). GATES: Phase 1–2 placeholders
+  removed — examinationAccess / gradingAccess / assignMonAccess / apsRole / coverage / Temp Teacher from copied Code.gs (sign-in
+  buildUserPayload via gasRun + getDashboardData); CTA canSubmit/canSendTest, attendance r.editable, Access Control canEdit now
+  as Code.gs (their saves are WRITE_THROUGH since v0.14). Parity tests now compare these fields with Code.gs.
 

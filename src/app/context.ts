@@ -60,16 +60,32 @@ export async function buildUserPayload(ctx: AppContext, viewer: Viewer, courses:
     permissions: rolePermission(ctx.cfg, viewer.role),
     canViewMonitoringFilters: filters,
     canViewMonitoringTotals: filters,
-    examinationAccess: '',            // Phase 2 (Examination module)
-    gradingAccess: '',                // Phase 2 (Grading module)
-    apsRole: '',                      // Phase 2 (Class Support labels)
+    examinationAccess: '',            // filled below from the copied Code.gs (v0.23.2)
+    gradingAccess: '',
+    apsRole: '',
     roleLabel: ctx.cfg.onCallCoordinatorEmails.map(normalizeEmail).indexOf(viewer.email) > -1 ? 'On-Call Coordinator' : '',
     tabAccess: acEffectiveForRole(viewer.role, ov),
-    coverageAccess: false,            // Phase 2 (Temporary Class Coverage)
-    coverageTrackingAccess: false,    // Phase 2
-    tempTeacherAccess: false,         // Phase 2 (Temp Teacher)
+    coverageAccess: false,
+    coverageTrackingAccess: false,
+    tempTeacherAccess: false,
     azurePhase: 1,
+    ...(await moduleAccess(ctx, viewer, courses)),
   };
+}
+
+/** v0.23.2: the module gates of Code.gs buildAuthenticatedUserPayload_, from the copied Code.gs functions (the same answer
+ *  getDashboardData gives). Without them the Examination tab (and the class sub-tabs) stayed hidden on Azure until the first
+ *  Classes load. A failure keeps the closed defaults (never more access than Code.gs would give). */
+async function moduleAccess(ctx: AppContext, viewer: Viewer, courses: Course[]): Promise<Partial<UserPayload>> {
+  try {
+    const { gasRun, apsRoleFor } = await import('../api/endpoints/classes');
+    return await gasRun(ctx, null, (S) => {
+      const cs = JSON.parse(JSON.stringify(courses || []));
+      const cov = !!S.tccCanUse_(viewer.role, viewer.email, cs);
+      return { examinationAccess: String(S.examinationAccessForRole_(viewer.role) || ''), gradingAccess: String(S.rosterAccessForRole_(viewer.role) || ''),
+        apsRole: apsRoleFor({ email: viewer.email, role: viewer.role }, cs as any), coverageAccess: cov, coverageTrackingAccess: cov, tempTeacherAccess: !!S.ttmCanUse_(viewer.role, viewer.email) };
+    });
+  } catch (e) { console.warn('[SignIn] module access not worked out (' + String((e as Error).message).slice(0, 80) + ') — tabs follow the first Classes load.'); return {}; }
 }
 
 /** Port of establishSessionForVerifiedClaims_: domain check → role → session → payload. */

@@ -42,7 +42,7 @@ export function registerCore(reg: Registry): void {
         return { key: item.key, parent: item.parent || '', label: item.label, cells, values, editable };
       }),
       lastSaved: ov.__meta && ov.__meta.at ? { at: fmtEst(ov.__meta.at), by: ov.__meta.by } : null,
-      canEdit: false,                 // Phase 1 is read-only: saving stays in Apps Script until Phase 3
+      canEdit: true,                  // v0.23.2: as Code.gs acTableData_ (saveAccessControl runs Code.gs through the bridge; it re-checks)
       viewerRole: s.role,
       superAll: s.role === 'superadmin',
       openRoles: AC_OPEN_ROLES.slice(),

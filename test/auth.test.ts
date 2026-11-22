@@ -38,7 +38,8 @@ test('user payload: name, APSID, permissions, tab access from saved Access Contr
   const a = await signInWithClaims(ctx, { email: 'admin' + D, email_verified: true });
   assert.ok(a.ok); if (!a.ok) return;
   assert.equal(a.user.name, 'Admin · admin'); assert.equal(a.user.canViewMonitoringFilters, true);
-  assert.equal(a.user.coverageAccess, false); assert.equal(a.user.azurePhase, 1);
+  assert.equal(a.user.coverageAccess, true, 'Code.gs tccCanUse_: Admin'); assert.equal(a.user.examinationAccess, 'READ_WRITE', 'v0.23.2: Examination tab gate as Code.gs'); assert.equal(a.user.azurePhase, 1);
+  assert.equal(t.user.examinationAccess, '', 'a teacher: no Examination tab unless EXAM_QUESTION_PAPER_STUDENT_TEACHER_ACCESS');
   const c = await signInWithClaims(ctx, { email: 'tcs_coord_aps8112' + D, email_verified: true });
   assert.ok(c.ok); if (c.ok) assert.equal(c.user.roleLabel, 'On-Call Coordinator');
 });

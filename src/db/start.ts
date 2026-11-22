@@ -80,7 +80,7 @@ export async function startCopies(ctx: AppContext, store: SheetStore, db: DbBack
   const syncs: SheetSync[] = [];
   for (const book of books) {
     const reads = ctx.cfg.dbReadBooks.indexOf(book) > -1;
-    const sync = new SheetSync(db.innerSource(), store, book, [], log, Date.now, 'Spreadsheet "' + book + '"', { discover: true, exclude, onDone: (t, ok) => db.copyDone(book, t, ok) });
+    const sync = new SheetSync(db.innerSource(), store, book, [], log, Date.now, 'Spreadsheet "' + book + '"', { discover: true, exclude, onDone: (t, ok) => db.copyDone(book, t, ok), onStored: (b, n, v, tz, at) => db.cacheStored(b, n, v, tz, at) });
     db.addCopy(book, () => new Set(sync.names), reads);
     syncs.push(sync);
     await sync.runOnce();

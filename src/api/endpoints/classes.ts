@@ -161,7 +161,7 @@ export async function buildClassesView(ctx: AppContext, viewer: { email: string;
   out.tabAccess = acEffectiveForRole(role, ov);
   out.coverageAccess = scope.tccCanUse_(role, viewer.email, courses);
   out.coverageTrackingAccess = out.coverageAccess;
-  out.assignMonAccess = false; // Assignment Monitoring module (later)
+  out.assignMonAccess = !!scope.amAccessFlag_(role, viewer.email, courses); // v0.23.2: as Code.gs (Assignment Monitoring answered on Azure since v0.14)
   try { scope.tccStampToday_(visible); } catch (e) { console.warn('[Coverage] banner: ' + String((e as Error).message).slice(0, 120)); }
   try { scope.ttmStampCards_(visible); } catch (e) { console.warn('[TempTeacher] card note: ' + String((e as Error).message).slice(0, 120)); }
   out.tempTeacherAccess = scope.ttmCanUse_(role, viewer.email);
@@ -169,7 +169,7 @@ export async function buildClassesView(ctx: AppContext, viewer: { email: string;
   out.canViewMonitoringFilters = canViewAllDashboardFilters(ctx.cfg, role);
   out.canViewMonitoringTotals = out.canViewMonitoringFilters;
   out.permissions = rolePermission(ctx.cfg, role);
-  out.examinationAccess = ''; out.gradingAccess = ''; // Examination / Grading modules (later phase)
+  out.examinationAccess = String(scope.examinationAccessForRole_(role) || ''); out.gradingAccess = String(scope.rosterAccessForRole_(role) || ''); // v0.23.2: as Code.gs (Examination / Grading answered on Azure since v0.14)
   const env = String(ctx.cfg.dashboardEnvironment || '').trim().toUpperCase();
   out.environment = env === 'TESTING' || env === 'TEST' ? { key: 'TESTING', label: 'TESTING' } : { key: 'LIVE', label: 'LIVE' };
   out.rosterHiddenStaffVisible = scope.getRosterHiddenStaffVisible_();
@@ -211,8 +211,7 @@ export function registerClasses(reg: Registry): void {
   reg.register('getClassTeacherAvailabilityView', async (ctx, [token]) => {
     const s = await requireSession(ctx, token);
     const out = await gasRun(ctx, { email: s.email, role: s.role }, (S) => S.getClassTeacherAvailabilityView(token));
-    if (out) { out.canSubmit = false; out.canSendTest = false; out.azureReadOnly = true; } // save / test email: still in Apps Script
-    return out;
+    return out; // v0.23.2: Save / test email go through the bridge (Code.gs) since v0.14 — same buttons as Apps Script
   });
   /** getDirectoryIndex — Active Directory → Directory Search (Phase 2 step 4): every class's people, role-tiered on the
    *  server exactly as Code.gs (copied code). Online / last login / onboarded follow the Classes view (Phase 3 for stored data). */
@@ -232,11 +231,7 @@ export function registerClasses(reg: Registry): void {
   for (const name of ATTENDANCE_READS) {
     reg.register(name, async (ctx, [token, ...args]) => {
       const s = await requireSession(ctx, token);
-      return gasRun(ctx, { email: s.email, role: s.role }, (S) => {
-        const out = S[name](token, ...args);
-        if (name === 'getAttendanceRecordsForViewer' && Array.isArray(out)) for (const r of out) r.editable = false; // edits stay in Apps Script
-        return out;
-      });
+      return gasRun(ctx, { email: s.email, role: s.role }, (S) => S[name](token, ...args)); // v0.23.2: Override goes through the bridge (editAttendanceRecordStatus) — same as Apps Script
     });
   }
   /** getDashboardData — the Classes view (cards, rosters, filters) for the signed-in viewer. Read-only. */

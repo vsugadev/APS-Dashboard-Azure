@@ -19,7 +19,7 @@ const have = fs.existsSync(path.join(GAS, 'test', 'coveragefixture.js'));
 const J = (x: unknown) => JSON.parse(JSON.stringify(x));
 
 // Top-level fields that come in later Phase 2 steps / Phase 3 (see CLASSES_NOT_YET and the header of classes.ts).
-const SKIP_TOP = ['assignMonAccess', 'examinationAccess', 'gradingAccess', 'name'];
+const SKIP_TOP = ['name']; // v0.23.2: assignMonAccess / examinationAccess / gradingAccess are compared with Code.gs too
 const SKIP_COURSE = /^$/; // every card field is compared since step 2
 
 /** Rows for the Sheets the copied Code.gs readers read, so every step-2 part has real data (dates as Date cells). */
@@ -193,8 +193,7 @@ test('Teacher Availability view (getClassTeacherAvailabilityView) matches Code.g
     if (gas.err) { assert.deepEqual(az, { err: gas.err }, role + ': same refusal'); continue; }
     assert.ok(az.ok, role + ': Azure answered ' + JSON.stringify(az));
     const a = az.ok;
-    assert.equal(a.canSubmit, false, role + ': Save is not on Azure yet'); assert.equal(a.canSendTest, false); assert.equal(a.azureReadOnly, true);
-    for (const k of ['canSubmit', 'canSendTest', 'azureReadOnly']) { delete a[k]; delete gas[k]; }
+    assert.equal(a.azureReadOnly, undefined, role + ': v0.23.2 — Save / test email buttons as Code.gs (they go through the bridge)');
     if (a.report) { delete a.report.generatedAt; delete gas.report.generatedAt; reports++; }
     const d = diffs(a, gas);
     assert.deepEqual(d, [], role + ' differences:\n' + d.slice(0, 15).join('\n'));
@@ -288,7 +287,7 @@ test('Attendance tab reads (7 functions) match Code.gs for every role — weekly
       if (gas && gas.err) { assert.deepEqual(az, { err: gas.err }, role + ' ' + fn + ': same refusal'); refusals++; continue; }
       assert.ok('ok' in az, role + ' ' + fn + ': Azure answered ' + JSON.stringify(az).slice(0, 300));
       let a = az.ok;
-      if (fn === 'getAttendanceRecordsForViewer') { for (const r of gas) { if (r.editable) editableOnGas++; r.editable = false; } rows += a.length; }
+      if (fn === 'getAttendanceRecordsForViewer') { for (const r of gas) { if (r.editable) editableOnGas++; } rows += a.length; } // v0.23.2: Override button as Code.gs
       if (fn === 'getAttendanceCourseAwkMap') awk += a.length;
     const d = diffs(a, gas);
       assert.deepEqual(d, [], role + ' ' + fn + ' ' + JSON.stringify(args) + ' differences:\n' + d.slice(0, 15).join('\n'));

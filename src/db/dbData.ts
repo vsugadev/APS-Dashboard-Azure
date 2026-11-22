@@ -19,6 +19,11 @@ export class DbBackedDataSource implements DataSource {
   copies = new Map<string, { names: () => Set<string>; reads: boolean; dirtySince: number }>();
   onDirty: (() => void) | null = null;
   private lastLogged = 0;
+  /** v0.23.2: decoded copies kept in memory (filled by this instance's own copy job, and by database reads). A read then
+   *  needs no database round trip; the freshness rules are unchanged (≤ maxAgeMs, and not after a save until a new copy). */
+  private mem = new Map<string, { values: unknown[][]; timeZone: string; syncedAt: number }>();
+  cacheStored(key: string, sheet: string, values: unknown[][], timeZone: string, syncedAt: number): void { this.mem.set(key + '\u0000' + sheet, { values, timeZone, syncedAt }); }
+  memHits = 0;
   constructor(private inner: DataSource, private store: SheetStore, private maxAgeMs = 15 * 60_000,
     private now: () => number = Date.now, private log: (m: string) => void = console.warn) {}
 
@@ -76,7 +81,13 @@ export class DbBackedDataSource implements DataSource {
   private async readStored(book: WorkbookKey, names: string[], key: string, have: Set<string>, missingOk = false): Promise<SheetSnapshot> {
     if (!missingOk && !names.every((n) => have.has(n))) return this.inner.readSheets(book, names);
     try {
-      const got = await this.store.get(key, [TITLES_ROW].concat(names));
+      const tNow = this.now(), all = [TITLES_ROW].concat(names);
+      const got: Record<string, { values: unknown[][]; timeZone: string; syncedAt: number } | null> = {};
+      const missing = all.filter((n) => { const m = this.mem.get(key + '\u0000' + n); if (m && tNow - m.syncedAt <= this.maxAgeMs) { got[n] = m; return false; } return true; });
+      if (missing.length) {
+        const fromDb = await this.store.get(key, missing);
+        for (const n of missing) { const g = fromDb[n]; got[n] = g; if (g) this.mem.set(key + '\u0000' + n, { values: g.values, timeZone: g.timeZone, syncedAt: g.syncedAt }); }
+      } else this.memHits++;
       const t = this.now(), fresh = (x: { syncedAt: number } | null) => !!x && t - x.syncedAt <= this.maxAgeMs;
       const titlesRow = got[TITLES_ROW];
       if (!fresh(titlesRow)) throw new Error('STALE_COPY');

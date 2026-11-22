@@ -13,7 +13,9 @@ import type { DataSource, WorkbookKey } from '../data/types';
 import { TITLES_ROW, describeDbError, encodeGrid, type SheetStore } from './sheetStore';
 
 export interface SyncResult { ok: boolean; rows: Record<string, number>; mismatches: string[]; error: string; at: number }
-export interface SyncOptions { discover?: boolean; exclude?: RegExp | null; onDone?: (startedAt: number, ok: boolean) => void }
+export interface SyncOptions { discover?: boolean; exclude?: RegExp | null; onDone?: (startedAt: number, ok: boolean) => void;
+  /** v0.23.2: a tab that was copied AND checked identical — the reader keeps it in memory (no database read per request). */
+  onStored?: (book: string, sheet: string, values: unknown[][], timeZone: string, at: number) => void }
 
 const hash = (values: unknown[][]): string => createHash('sha256').update(encodeGrid(values)).digest('hex');
 export const syncDay = (t: number): string => new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -46,6 +48,7 @@ export class SheetSync {
       }
       const snap = await this.source.readSheets(this.book as WorkbookKey, names);
       await this.store.put(this.book, TITLES_ROW, { values: [snap.titles || []], timeZone: snap.timeZone });
+      if (this.opts.onStored) { try { this.opts.onStored(this.book, TITLES_ROW, [snap.titles || []], snap.timeZone, startedAt); } catch { /* cache only */ } }
       const want: Record<string, string> = {};
       for (const n of names) {
         const g = snap.sheets[n];
@@ -58,6 +61,7 @@ export class SheetSync {
       for (const n of Object.keys(res.rows)) {
         const same = !!back[n] && back[n]!.values.length === res.rows[n] && hash(back[n]!.values) === want[n];
         if (!same) res.mismatches.push(n);
+        else if (this.opts.onStored) { try { this.opts.onStored(this.book, n, back[n]!.values, snap.timeZone, startedAt); } catch { /* cache only */ } }
         if (this.store.logSync) await this.store.logSync(day, this.book, n, res.rows[n], same).catch(() => undefined);
       }
       res.ok = res.mismatches.length === 0;
