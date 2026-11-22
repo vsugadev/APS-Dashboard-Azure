@@ -12,7 +12,18 @@ item below costs nothing.
 | 5 | Portal: **Always On**, **HTTP/2**, **ARR affinity off** | App Service → Configuration → General settings | **you** |
 | 6 | Move the busiest Apps Script pass-through screens onto Azure | chosen from #7 | next |
 | 7 | **Measurement:** an hourly `[Perf]` summary (calls, average, p95 and max per screen, plus cache hits) and `[Perf] slow:` for any request over 5 s | `src/api/perf.ts` | v0.24.0 |
-| 8 | Web app and database in the same Azure region | portal | **you** (check) |
+| 8 | Web app and database in the same Azure region | portal | **parked** (see below) |
+
+**Global students (rule B0.5):** APS students are all over the world: US (EST, CST, PST), Canada, India and other countries.
+Every change is judged by the delay the farthest students feel. That means fewer round trips per screen, small answers,
+fixed files cached in the browser, and few server-side calls. A round trip from India to any US region is about 200–250 ms,
+so each round trip saved helps them most.
+
+**Region (#8), parked 2026-11-22:** the web app `aps-dashboard-ap` is in East US and the database
+`aps-dashboard-sql-ap01/aps-dashboard` is in Central US. The web app stays where it is: no US region is closest for a global
+student body, and moving it means a new address plus sign-in, bridge, deploy and Key Vault changes. Moving the database to
+East US is parked until `[Perf]` shows the cross-region database delay matters. A portal Copy loses the free offer
+(estimated $5–10 a month); the alternative is a new free-offer database plus a table-copy tool.
 
 **Not reused (#2), on purpose:**
 

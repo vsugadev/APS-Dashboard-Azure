@@ -17,6 +17,19 @@ APS is a volunteer-run non-profit. For every design, release and recommendation,
    run (fewer reruns, fewer API calls, reuse, compression, caching) before any hardware or service upgrade.
 3. Every release states its cost impact ("no new cost" or the exact monthly amount) and its performance effect.
 4. Do not add unnecessary API calls, database calls, services, dependencies or background jobs (each costs quota or money).
+5. **Global students — minimal delay for every APS student, wherever they are** (agreed 2026-11-22). APS serves students all
+   over the world (US: EST / CST / PST; Canada; India; other countries). Judge every design, release and analysis by the delay
+   the FARTHEST students feel, not only the US East Coast:
+   - Fewer browser ↔ server round trips per screen (one call that returns what the screen needs, not a chain of calls). A
+     round trip from India to any US region is ~200–250 ms, so every extra round trip costs far students the most.
+   - Small payloads: compression, no unused data, send only what the screen shows; cache fixed files in the browser.
+   - Few, close server-side calls (Google Sheets, Apps Script bridge, database) — these repeat on every request.
+   - Never assume a US time zone or US network speed in features, schedules, timeouts or messages shown to students.
+   - Measure: `[Perf]` per screen (and per region when the free Application Insights tier is used); every performance
+     analysis states the effect on the farthest students.
+   - Free first applies here too: a CDN / edge front door or a second region is proposed only with measurements from far
+     students showing the free changes are not enough, plus the monthly cost.
+   - Azure region: no single US region is "closest" for a global student body; moving the web app is not a speed fix.
 
 ### Free performance changes (biggest effect first) — agreed 2026-11-22
 | # | Change | Status |
@@ -28,7 +41,7 @@ APS is a volunteer-run non-profit. For every design, release and recommendation,
 | 5 | Portal (no code): Always On, HTTP/2, ARR affinity off | user |
 | 6 | Move the busiest Apps Script pass-through screens onto Azure, chosen from the measurements in 7 | after measuring |
 | 7 | Measure every screen: `[Perf]` hourly summary (calls, average, p95, max per function) + a line for any request over 5 s | v0.24.0 |
-| 8 | Same Azure region for the web app and the database | user check |
+| 8 | Same Azure region for the web app and the database | PARKED 2026-11-22 — web app `aps-dashboard-ap` East US, database `aps-dashboard-sql-ap01/aps-dashboard` Central US. Web app stays (moving it = new address, sign-in redirect, bridge, deploy, Key Vault; no gain for global students). Database move to East US (portal Copy runbook given 2026-11-22; a Copy loses the free offer, est. $5–10/month, or new free-offer DB + table-copy tool) is parked until `[Perf]` shows the cross-region DB delay matters. Do not raise again without measurements. |
 
 Paid — only if measured: B1 → B2 (+$12/month) at go-live if CPU stays above ~70% at class start; Redis only with 2+ instances;
 no bigger database (CPU 4%); no Premium plans or CDN at this size.
