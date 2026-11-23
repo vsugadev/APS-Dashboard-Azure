@@ -10,6 +10,8 @@
  * Any OTHER scriptlet in the file stops start-up, so a new template value cannot slip through unnoticed.
  */
 import * as fs from 'fs';
+import * as nodePath from 'path';
+import { createHash } from 'crypto';
 
 export interface BootValues { authUrl: string; token: string | null; user: unknown; error: unknown; ticket?: string | null; parallel?: { officialUrl: string } | null }
 const KNOWN = new Set([
@@ -79,7 +81,10 @@ export class DashboardPage {
     this.html = azureWording(this.html);
     if (opts.theme !== false) { // v0.25.0: APS theme (AZURE_THEME=off serves the page exactly as Apps Script does)
       this.html = themeStyles(this.html);
-      this.html = /<\/head>/i.test(this.html) ? this.html.replace(/<\/head>/i, THEME_LINK + '</head>') : this.html;
+      // v0.25.1: the link carries the theme file's content hash, so a changed theme is never hidden by the 1-hour browser cache
+      let v = ''; try { v = createHash('sha256').update(fs.readFileSync(nodePath.join(nodePath.dirname(path), 'aps-theme.css'))).digest('hex').slice(0, 10); } catch { v = ''; }
+      const link = v ? THEME_LINK.replace('/aps-theme.css', '/aps-theme.css?v=' + v) : THEME_LINK;
+      this.html = /<\/head>/i.test(this.html) ? this.html.replace(/<\/head>/i, link + '</head>') : this.html;
     }
     const unknown = checkTemplate(this.html);
     if (unknown.length) throw new Error('Dashboard.html has template values Azure does not fill yet: ' + unknown.slice(0, 3).join(' | '));

@@ -9,12 +9,13 @@ const HTML = path.join(__dirname, '..', '..', 'public', 'Dashboard.html');
 const CSS = path.join(__dirname, '..', '..', 'public', 'aps-theme.css');
 const base = { authUrl: '#', token: null, user: null, error: null };
 const scripts = (s: string) => (s.match(/<script\b[\s\S]*?<\/script>/gi) || []).join('\n');
-const strip = (s: string) => s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(THEME_LINK, '');
+const strip = (s: string) => s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<link rel="stylesheet" href="\/aps-theme\.css[^"]*">/, '');
 
 test('theme on: the stylesheet is linked LAST in <head> (wins over the page styles); scripts and markup are byte-for-byte the same as theme off', () => {
   const on = new DashboardPage(HTML).render(base), off = new DashboardPage(HTML, { theme: false }).render(base);
-  assert.ok(on.includes(THEME_LINK + '</head>')); assert.ok(!off.includes('aps-theme.css'));
-  assert.ok(on.lastIndexOf('</style>', on.indexOf(THEME_LINK)) > -1, 'after the page styles');
+  const m = on.match(/<link rel="stylesheet" href="\/aps-theme\.css\?v=([0-9a-f]{10})"><\/head>/); assert.ok(m, 'linked last in <head>, with the file hash'); assert.ok(!off.includes('aps-theme.css'));
+  const hash = require('crypto').createHash('sha256').update(fs.readFileSync(CSS)).digest('hex').slice(0, 10); assert.equal(m![1], hash, 'a changed theme file gets a new address (never a stale browser copy)');
+  assert.ok(on.lastIndexOf('</style>', on.indexOf('/aps-theme.css')) > -1, 'after the page styles');
   assert.equal(scripts(on), scripts(off), 'no script changed'); assert.equal(strip(on), strip(off), 'no markup changed');
 });
 

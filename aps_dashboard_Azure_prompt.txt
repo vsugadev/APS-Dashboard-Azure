@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 3ff892b5d84cb8b956b54e7444640dda
+#   Part B md5    : 711fd6570a79e56c6a6d3e709e4b75fd
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -840,6 +840,7 @@ Rules:
   navigation scrolls in one row.
 - **How it is applied:** `src/web/render.ts` links `/aps-theme.css` last in `<head>` and points the page's own hard-coded brand
   blues (`THEME_COLOR_MAP`, `<style>` blocks outside `<script>` only) at the tokens, keeping each old colour as a fallback.
+  The link carries the file's content hash (`?v=<sha256 10>`, v0.25.1) so a theme change is never hidden by the browser cache.
   `Dashboard.html`, its markup, ids, text and scripts are NOT changed for the theme. `AZURE_THEME=off` serves the page exactly as
   Apps Script does. A new hard-coded blue found in the page is added to `THEME_COLOR_MAP`, not patched in Dashboard.html.
 - **Every UI change** keeps `test/theme.test.ts` passing (no colours outside `:root`, no gradients or animations, scripts and
