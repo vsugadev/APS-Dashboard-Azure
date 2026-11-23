@@ -20,6 +20,10 @@ export interface SheetStore {
   get(book: string, names: string[]): Promise<Record<string, StoredSheet | null>>;
   /** v0.18.0 (Phase 5): one verification result per sheet per copy — counted per day (the "two clean weeks" evidence). */
   logSync?(day: string, book: string, sheet: string, rows: number, ok: boolean): Promise<void>;
+  /** v0.24.2: many results in ONE database round trip (was one per tab per copy). */
+  logSyncMany?(day: string, book: string, rows: { sheet: string; rows: number; ok: boolean }[]): Promise<void>;
+  /** v0.24.2: tabs unchanged since their last verified copy — only their "copied at" time is renewed (no grid rewritten). */
+  touch?(book: string, sheets: string[]): Promise<void>;
   syncReport?(sinceDay: string): Promise<SyncDayRow[]>;
 }
 export interface SyncDayRow { day: string; book: string; sheet: string; copies: number; mismatches: number; rows: number }
@@ -54,8 +58,11 @@ export class MemorySheetStore implements SheetStore, OwnedStore {
   async put(book: string, sheet: string, snap: { values: unknown[][]; timeZone: string }): Promise<number> {
     if (this.failNext) { this.failNext = false; throw new Error('memory store failure'); }
     this.rows.set(book + '\u0000' + sheet, { grid: encodeGrid(snap.values), tz: snap.timeZone, at: this.now(), n: snap.values.length });
+    this.puts++;
     return snap.values.length;
   }
+  puts = 0;
+  async touch(book: string, sheets: string[]): Promise<void> { for (const n of sheets) { const r = this.rows.get(book + '\u0000' + n); if (r) r.at = this.now(); } }
   private owned = new Map<string, { grid: string; tz: string; v: number; at: number; by: string }>();
   async ensureOwnedSchema(): Promise<void> { /* nothing */ }
   async getOwned(book: string, names: string[]): Promise<Record<string, OwnedSheet | null>> {
@@ -163,6 +170,28 @@ export class MssqlSheetStore implements SheetStore, OwnedStore {
     await pool.request().input('d', S.Date, day).input('b', S.NVarChar(200), book).input('s', S.NVarChar(200), sheet).input('n', S.Int, rows).input('m', S.Int, ok ? 0 : 1)
       .query('MERGE dbo.sheet_sync_log WITH (HOLDLOCK) AS t USING (SELECT @d AS day, @b AS book, @s AS sheet) AS x ON t.day = x.day AND t.book = x.book AND t.sheet = x.sheet ' +
         'WHEN MATCHED THEN UPDATE SET copies = copies + 1, mismatches = mismatches + @m, row_count = @n WHEN NOT MATCHED THEN INSERT (day, book, sheet, copies, mismatches, row_count) VALUES (@d, @b, @s, 1, @m, @n);');
+  }
+  async logSyncMany(day: string, book: string, rows: { sheet: string; rows: number; ok: boolean }[]): Promise<void> {
+    const S = this.sql;
+    for (let i = 0; i < rows.length; i += 100) {
+      const part = rows.slice(i, i + 100);
+      const pool = await this.logPool(); const req = pool.request().input('d', S.Date, day).input('b', S.NVarChar(200), book);
+      const q = part.map((r, k) => {
+        req.input('s' + k, S.NVarChar(200), r.sheet).input('n' + k, S.Int, r.rows).input('m' + k, S.Int, r.ok ? 0 : 1);
+        return 'MERGE dbo.sheet_sync_log WITH (HOLDLOCK) AS t USING (SELECT @d AS day, @b AS book, @s' + k + ' AS sheet) AS x ON t.day = x.day AND t.book = x.book AND t.sheet = x.sheet ' +
+          'WHEN MATCHED THEN UPDATE SET copies = copies + 1, mismatches = mismatches + @m' + k + ', row_count = @n' + k + ' WHEN NOT MATCHED THEN INSERT (day, book, sheet, copies, mismatches, row_count) VALUES (@d, @b, @s' + k + ', 1, @m' + k + ', @n' + k + ');';
+      }).join(' ');
+      await req.query(q);
+    }
+  }
+  async touch(book: string, sheets: string[]): Promise<void> {
+    const S = this.sql;
+    for (let i = 0; i < sheets.length; i += 200) {
+      const part = sheets.slice(i, i + 200);
+      const pool = await this.connect(); const req = pool.request().input('book', S.NVarChar(200), book);
+      part.forEach((n, k) => req.input('n' + k, S.NVarChar(200), n));
+      await req.query('UPDATE dbo.sheet_snapshot SET synced_at = SYSUTCDATETIME() WHERE book = @book AND sheet IN (' + part.map((_n, k) => '@n' + k).join(', ') + ');');
+    }
   }
   async syncReport(sinceDay: string): Promise<SyncDayRow[]> {
     const pool = await this.logPool();

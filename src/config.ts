@@ -53,6 +53,8 @@ export interface AppConfig {
   dbSyncMinutes: number;
   dbCopyBooks: string[];               // DB_COPY — v0.18.0 (Phase 5): spreadsheets copied whole into Azure SQL and checked ('main', 'attendance')
   dbReadBooks: string[];               // DB_READS — of those, the ones whose reads come from the copy
+  dbReadAfterSave: 'session' | 'all';
+  theme: boolean;                      // AZURE_THEME — v0.25.0: APS visual theme (default on; 'off' = the page exactly as Apps Script serves it)  // DB_READ_AFTER_SAVE — v0.24.2: after a save only the saver reads Google ('session', default) or everyone ('all', before v0.24.2)
   dbCopyExclude: string;               // DB_COPY_EXCLUDE — tabs not copied (regular expression on the tab name)              // DB_SYNC_MINUTES — how often Special Classes are copied into the database (default 5, 1–60)       // AZURE_WRITE_THROUGH (default on; "off" = Saves answer "not on Azure yet") — write phase          // AZURE_HEARTBEAT (default on; "off" = never send heartbeats to Apps Script) — Phase 3 step 2      // APPS_SCRIPT_BRIDGE_SECRET — Key Vault reference; same value as Script Property AZURE_BRIDGE_SECRET
   mailEnabled: boolean;                // AZURE_MAIL — v0.19.0 (Phase 4 step 3): 'on' = Azure signs in as MAIL_FROM through the Gmail API (default off)
   mailFrom: string;                    // MAIL_FROM (default donotreply@avvaiyarpadasalai.org = Code.gs TICKET_MAIL_FROM default)
@@ -176,6 +178,8 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     sqlDatabase: String(env.SQL_DATABASE || '').trim(),
     dbSyncMinutes: Math.min(60, Math.max(1, Math.floor(Number(env.DB_SYNC_MINUTES) || 5))),
     dbCopyBooks: String(env.DB_COPY || '').toLowerCase().split(/[\s,]+/).filter((b) => b === 'main' || b === 'attendance'),
+    theme: String(env.AZURE_THEME || '').trim().toLowerCase() !== 'off',
+    dbReadAfterSave: String(env.DB_READ_AFTER_SAVE || '').trim().toLowerCase() === 'all' ? 'all' : 'session',
     dbReadBooks: String(env.DB_READS || '').toLowerCase().split(/[\s,]+/).filter((b) => b === 'main' || b === 'attendance'),
     dbCopyExclude: String(env.DB_COPY_EXCLUDE || '').trim(), // v0.8.3: a space / line break pasted into Key Vault never breaks the signature
     sessionStore: String(env.AZURE_SESSION_STORE || '').trim().toLowerCase() === 'memory' ? 'memory' : 'sql',

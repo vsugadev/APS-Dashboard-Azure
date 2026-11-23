@@ -2,6 +2,7 @@
  * Shared services for one running app: config, data source, sessions, Google sign-in.
  * Built once at start-up (src/server.ts) or per test with fakes.
  */
+import { REQUEST } from './requestContext';
 import type { AppConfig } from '../config';
 import type { DataSource } from '../data/types';
 import type { LiveSource } from '../live/liveSource';
@@ -119,6 +120,7 @@ export async function requireSession(ctx: AppContext, token: unknown): Promise<S
   const s = typeof token === 'string' ? await ctx.sessions.get(token) : null;
   if (!s) throw new Error(SESSION_EXPIRED_MSG);
   if (!inParallelGroup(ctx.cfg, s.email, s.role)) throw new Error(PR_NOT_IN_GROUP_MSG); // v0.21.0: the test group, checked on every call
+  const rq = REQUEST.getStore(); if (rq) rq.email = s.email; // v0.24.2: who this request is for (own saves read from Google)
   return s;
 }
 /** apsRequireTabForToken_ — every tab-specific endpoint starts with this (server-side; never trusts the browser). */

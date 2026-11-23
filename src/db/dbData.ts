@@ -6,6 +6,7 @@
 import type { DataSource, SheetGrid, SheetSnapshot, WorkbookKey, ValuesRequest, AccessOverrides, Course } from '../data/types';
 import { TITLES_ROW, describeDbError, type SheetStore, type OwnedStore, type OwnedSheet } from './sheetStore';
 import { dateToSerial } from '../gas/runtime';
+import { requestEmail } from '../app/requestContext';
 
 export class DbBackedDataSource implements DataSource {
   book = '';                       // 'id:<spreadsheet id>' — set once the copied code's own ID function is known
@@ -17,7 +18,19 @@ export class DbBackedDataSource implements DataSource {
   ownedReady = false;
   /** v0.18.0 (Phase 5 step 1): whole-spreadsheet copies ('main', 'attendance'). `reads` = serve reads from the copy
    *  (DB_READS); a save marks the copy dirty and reads go to Google until a copy that STARTED after the save has finished. */
-  copies = new Map<string, { names: () => Set<string>; reads: boolean; dirtySince: number }>();
+  copies = new Map<string, { names: () => Set<string>; reads: boolean; dirtySince: number; cleanStartedAt: number }>();
+  /** v0.24.2 (DB_READ_AFTER_SAVE): 'session' (default) = after a save only THE PERSON WHO SAVED reads from Google until a
+   *  copy that started after their save has finished — everyone else keeps reading the copy (they see the change at the
+   *  next copy, like a change made on the Apps Script dashboard). 'all' = as before v0.24.2 (everyone reads Google). */
+  afterSave: 'session' | 'all' = 'session';
+  private savedBy = new Map<string, number>();
+  /** A copy of `book` may answer this request (not dirty for everyone, and not newer than the copy for this person). */
+  private copyUsable(c: { reads: boolean; dirtySince: number; cleanStartedAt: number }): boolean {
+    if (!c.reads || c.dirtySince) return false;
+    const who = requestEmail(); if (!who) return true;
+    const at = this.savedBy.get(who);
+    return !at || c.cleanStartedAt >= at;
+  }
   onDirty: (() => void) | null = null;
   private lastLogged = 0;
   /** v0.23.2: decoded copies kept in memory (filled by this instance's own copy job, and by database reads). A read then
@@ -35,7 +48,7 @@ export class DbBackedDataSource implements DataSource {
    *  answered from the verified copy when its reads are on and clean; anything else, or any doubt, goes to Google as before. */
   async readValues(book: WorkbookKey, req: ValuesRequest) {
     const c = this.copies.get(book);
-    if (c && c.reads && !c.dirtySince && valuesFromCopyOk(req)) {
+    if (c && this.copyUsable(c) && valuesFromCopyOk(req)) {
       const parsed = req.ranges.map(parseA1);
       const names = Array.from(new Set(parsed.map((p) => (p ? p.sheet : ''))));
       const have = c.names();
@@ -50,13 +63,23 @@ export class DbBackedDataSource implements DataSource {
     return this.inner.readValues(book, req);
   }
   valuesFromCopy = 0;
-  invalidate(): void {
+  invalidate(email?: string): void {
     this.inner.invalidate?.();
-    if (this.copies.size) { const t = this.now(); for (const c of this.copies.values()) c.dirtySince = t; this.onDirty?.(); }
+    if (!this.copies.size) return;
+    const t = this.now();
+    if (this.afterSave === 'session' && email) {
+      this.savedBy.set(email, t);
+      if (this.savedBy.size > 2000) for (const [k, v] of this.savedBy) if (t - v > 3_600_000) this.savedBy.delete(k);
+    } else for (const c of this.copies.values()) c.dirtySince = t;
+    this.onDirty?.();
   }
-  addCopy(book: string, names: () => Set<string>, reads: boolean): void { this.copies.set(book, { names, reads, dirtySince: 0 }); }
+  addCopy(book: string, names: () => Set<string>, reads: boolean): void { this.copies.set(book, { names, reads, dirtySince: 0, cleanStartedAt: 0 }); }
   /** A copy of `book` that started at `startedAt` finished; clean again only when it started after the last save. */
-  copyDone(book: string, startedAt: number, ok: boolean): void { const c = this.copies.get(book); if (c && ok && c.dirtySince && startedAt >= c.dirtySince) c.dirtySince = 0; }
+  copyDone(book: string, startedAt: number, ok: boolean): void {
+    const c = this.copies.get(book); if (!c || !ok) return;
+    c.cleanStartedAt = Math.max(c.cleanStartedAt, startedAt);
+    if (c.dirtySince && startedAt >= c.dirtySince) c.dirtySince = 0;
+  }
   /** The Google Sheets source behind (the sync reads from it — never from the copy). */
   innerSource(): DataSource { return this.inner; }
   /** The database store (one connection pool, shared with the sync). */
@@ -73,7 +96,7 @@ export class DbBackedDataSource implements DataSource {
     if (this.owned.size && this.book && book === this.book) return this.readWithOwned(book, names);
     const c = this.copies.get(book);
     if (c) {
-      if (!c.reads || c.dirtySince) return this.inner.readSheets(book, names);
+      if (!this.copyUsable(c)) return this.inner.readSheets(book, names);
       return this.readStored(book, names, book, c.names(), true); // tabs that do not exist are answered from the stored tab list
     }
     return this.readCopy(book, names);

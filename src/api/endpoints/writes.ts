@@ -104,7 +104,7 @@ function registerThrough(reg: Registry, name: string, isWrite: boolean, fetchImp
       r = q;
     }
     if (r && typeof r.error === 'string') throw new Error(r.error);
-    if (isWrite) { ctx.live.invalidate?.(); if (LIGHT_FNS.indexOf(name) < 0) ctx.data.invalidate?.(); responseCache.clear(); } // v0.24.0: reused answers cleared at once
+    if (isWrite) { ctx.live.invalidate?.(); if (LIGHT_FNS.indexOf(name) < 0) ctx.data.invalidate?.(s.email); responseCache.clear(); } // v0.24.0: reused answers cleared at once
     return r ? r.value : null;
   });
 }

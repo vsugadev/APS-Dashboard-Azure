@@ -48,12 +48,36 @@ export function azureWording(html: string): string {
     .replace('<span>Required Web App setting</span>', '<span>Setting to check: </span>');
 }
 
+/** v0.25.0 APS theme: the page's own hard-coded brand blues (inside <style> blocks only — scripts and markup untouched)
+ *  point at the theme tokens, so ONE value in public/aps-theme.css sets the brand colour everywhere. Each keeps its old
+ *  colour as the fallback, so the page looks exactly as before if the theme file is missing. */
+export const THEME_COLOR_MAP: Record<string, string> = {
+  '#1a73e8': 'var(--aps-primary, #1a73e8)',
+  '#1967d2': 'var(--aps-primary-hover, #1967d2)',
+  '#174ea6': 'var(--aps-primary-hover, #174ea6)',
+  '#1a56c4': 'var(--aps-primary-hover, #1a56c4)',
+  '#e8f0fe': 'var(--aps-primary-light, #e8f0fe)',
+  '#d2e3fc': 'var(--aps-primary-border, #d2e3fc)',
+};
+export function themeStyles(html: string): string {
+  const re = new RegExp('(' + Object.keys(THEME_COLOR_MAP).join('|') + ')(?![0-9a-f])', 'gi');
+  // only <style> blocks OUTSIDE <script> blocks (a script may build HTML that contains "<style" text)
+  return html.split(/(<script\b[\s\S]*?<\/script>)/i).map((part, i) => (i % 2 === 1 ? part
+    : part.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, open: string, css: string, close: string) =>
+      open + css.replace(re, (hex: string) => THEME_COLOR_MAP[hex.toLowerCase()]) + close))).join('');
+}
+export const THEME_LINK = '<link rel="stylesheet" href="/aps-theme.css">';
+
 export class DashboardPage {
   private html: string;
-  constructor(path: string) {
+  constructor(path: string, opts: { theme?: boolean } = {}) {
     if (!fs.existsSync(path)) throw new Error(`Dashboard.html not found at ${path} (set DASHBOARD_HTML_PATH).`);
     this.html = fs.readFileSync(path, 'utf8');
     this.html = azureWording(this.html);
+    if (opts.theme !== false) { // v0.25.0: APS theme (AZURE_THEME=off serves the page exactly as Apps Script does)
+      this.html = themeStyles(this.html);
+      this.html = /<\/head>/i.test(this.html) ? this.html.replace(/<\/head>/i, THEME_LINK + '</head>') : this.html;
+    }
     const unknown = checkTemplate(this.html);
     if (unknown.length) throw new Error('Dashboard.html has template values Azure does not fill yet: ' + unknown.slice(0, 3).join(' | '));
   }

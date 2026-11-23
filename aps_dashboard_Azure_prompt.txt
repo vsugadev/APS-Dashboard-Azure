@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : e6e244f82b86e7cc534bdc42f5c32bb2
+#   Part B md5    : 806afded19ba9008cef76684ae5756fb
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -788,6 +788,9 @@ APS is a volunteer-run non-profit. For every design, release and recommendation,
 | 10 | Remembered screen needs survive restarts (`dbo.app_state` 'learned_preload', saved ≤ every 5 min when changed; restored entries checked; a stored spreadsheet ID opens only if the settings name it) | v0.24.1 |
 | 11 | One background warm-up ~20 s after start (courses, roles, Access Control, usual + remembered sheets); no repeating reads | v0.24.1 |
 | 12 | `DB_READS=main,attendance`: screens read the verified Azure copy (milliseconds) instead of Google (seconds); after a save → Google until a fresh copy. App setting only — owner decision (freshness = copy interval, `DB_SYNC_MINUTES`, default 5) | user decision |
+| 13 | After a save only THE SAVER reads Google until a newer copy exists; everyone else stays on the copy (`DB_READ_AFTER_SAVE=session`, default; `all` = before) | v0.24.2 |
+| 14 | Copies rewrite only CHANGED tabs (hash of last verified copy); unchanged = one `touch` UPDATE; day counts in one round trip; reconciliation re-copy forces all | v0.24.2 |
+| 15 | `[Perf] slow:` says where the time went (waiting for data, runs, answer KB); hourly line adds copy timings | v0.24.2 |
 | 8 | Same Azure region for the web app and the database | PARKED 2026-11-22 — web app `aps-dashboard-ap` East US, database `aps-dashboard-sql-ap01/aps-dashboard` Central US. Web app stays (moving it = new address, sign-in redirect, bridge, deploy, Key Vault; no gain for global students). Database move to East US (portal Copy runbook given 2026-11-22; a Copy loses the free offer, est. $5–10/month, or new free-offer DB + table-copy tool) is parked until `[Perf]` shows the cross-region DB delay matters. Do not raise again without measurements. |
 
 Paid — only if measured: B1 → B2 (+$12/month) at go-live if CPU stays above ~70% at class start; Redis only with 2+ instances;
@@ -1149,4 +1152,26 @@ header is longer, or Code.gs fails quietly in the mock.
   src/gas/learnedStore.ts: MssqlAppState (dbo.app_state, parameterised upsert), LearnedPersistence (load at start, save every
   5 min only when changed, ≤400 KB), warmUp (bg, once, 20 s after start). Local: a screen during a copy 493 → 200 ms. No new cost
   (one small SQL row; ~6 Google calls per restart).
+- v0.24.2 (2026-11-23, LIVE): "reading from the DB is slow" — after ANY save by anyone, both copies were dirty for everyone
+  (reads → Google) until a full re-copy (~1–2 min: all ~90 tabs / 60,000 rows rewritten + read back + 90 log MERGEs) finished; with
+  live traffic that was most of the time. src/app/requestContext.ts REQUEST (AsyncLocalStorage {email, dataMs, runs}) run by
+  Registry.call; requireSession fills email (server-side). DbBackedDataSource.afterSave 'session' (DB_READ_AFTER_SAVE, default) →
+  invalidate(email) records savedBy[email]; copyUsable(): reads stay on the copy unless THIS person saved after the last clean
+  copy start (copyDone sets cleanStartedAt); 'all' or no email = old dirtySince for everyone. writes.ts / scOwner.ts pass the
+  saver. sync.ts: verified hash per tab → unchanged tabs not rewritten/read back (store.touch renews synced_at; onStored keeps
+  memory fresh), logSyncMany (one round trip), runOnce(force) clears hashes (Reconciler copyAgain). run.ts adds data wait to
+  REQUEST.dataMs/runs; PerfMonitor.record(detail) → slow line "(waiting for data X s, N run(s), answer K KB)"; perf.extra adds
+  "database copies: main N× avg s, W of T tabs rewritten". Trade-off documented: other people see a save at the next copy
+  (usually ≤ 1–2 min) — same class as changes made in Apps Script. Cost: fewer SQL writes (less database CPU); no new resource.
+- v0.25.0 (2026-11-23): APS VISUAL THEME (UI only). public/aps-theme.css = the ONLY place for colours/spacing/type: tokens
+  --aps-primary (TO CONFIRM from the official logo — the logo could not be fetched from the sandbox), -primary-hover/-light/-border
+  (color-mix), --aps-background/-surface/-text-primary/-text-secondary/-border, semantic --aps-success/-warning/-danger; the page's
+  own tokens (--blue, --bg, --border, --gray, --nav-*, every --acc-*/--tint-*) point at them. render.ts: THEME_LINK appended LAST
+  in <head>; themeStyles() rewrites THEME_COLOR_MAP hexes (#1a73e8, #1967d2, #174ea6, #1a56c4, #e8f0fe, #d2e3fc) inside <style>
+  blocks OUTSIDE <script> only, each as var(--aps-…, <old hex>) so a missing theme file looks exactly as before. AZURE_THEME=off
+  serves the page exactly as Apps Script. Dashboard.html file, markup, ids, text and scripts unchanged (tests compare on/off).
+  Header = compact white bar with a 3 px brand line; one brand accent for all nav areas (active tab filled primary); cards white
+  + subtle shadow (accent borders kept); one primary + one secondary button style; tables light rules + primary-light hover;
+  badges semantic (info = primary). No gradients/animations; system font stack (Inter if installed — no font download, rule B0).
+  Phone: header stacks, nav scrolls in one row, no page-level horizontal scroll. Future UI work: change tokens, not hex values.
 

@@ -25,11 +25,22 @@ export class SheetSync {
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<SyncResult> | null = null;
   private again = false;
+  /** v0.24.2: per tab, the hash of the grid last copied AND checked identical. A tab whose Google grid has the same hash is
+   *  NOT rewritten (only its "copied at" time is renewed) — before, every copy rewrote and re-read all ~90 tabs (~60,000 rows)
+   *  every 5 minutes and after every save. */
+  private verified = new Map<string, string>();
+  stats = { copies: 0, ms: 0, tabs: 0, written: 0 };
+  /** One short line for the hourly [Perf] summary; counters restart. */
+  takeStats(): string {
+    const s = this.stats; this.stats = { copies: 0, ms: 0, tabs: 0, written: 0 };
+    return s.copies ? this.book + ' ' + s.copies + '× avg ' + (s.ms / s.copies / 1000).toFixed(1) + ' s, ' + s.written + ' of ' + s.tabs + ' tabs rewritten' : this.book + ' no copy';
+  }
   constructor(private source: DataSource, private store: SheetStore, public book: string, public names: string[],
     private log: (m: string) => void = console.log, private now: () => number = Date.now, private label = 'Special Classes', private opts: SyncOptions = {}) {}
 
   /** One copy; a call while one runs waits for it and then runs once more (so a save is always included). */
-  runOnce(): Promise<SyncResult> {
+  runOnce(force = false): Promise<SyncResult> {
+    if (force) this.verified.clear(); // reconciliation found a difference: rewrite every tab
     if (this.running) { this.again = true; return this.running.then(() => this.runOnce()); }
     this.again = false;
     this.running = this.copy().finally(() => { this.running = null; });
@@ -50,20 +61,36 @@ export class SheetSync {
       await this.store.put(this.book, TITLES_ROW, { values: [snap.titles || []], timeZone: snap.timeZone });
       if (this.opts.onStored) { try { this.opts.onStored(this.book, TITLES_ROW, [snap.titles || []], snap.timeZone, startedAt); } catch { /* cache only */ } }
       const want: Record<string, string> = {};
+      const same: string[] = [];
       for (const n of names) {
         const g = snap.sheets[n];
         if (!g) continue; // not in the spreadsheet (the titles row records that)
+        const h = hash(g.values);
+        if (this.verified.get(n) === h && this.store.touch) { same.push(n); res.rows[n] = g.values.length; continue; } // v0.24.2: unchanged
         res.rows[n] = await this.store.put(this.book, n, { values: g.values, timeZone: snap.timeZone });
-        want[n] = hash(g.values);
+        want[n] = h;
       }
-      const back = await this.store.get(this.book, Object.keys(res.rows));
+      if (same.length) await this.store.touch!(this.book, same);
+      const written = Object.keys(want);
+      const back = written.length ? await this.store.get(this.book, written) : {};
       const day = syncDay(startedAt);
-      for (const n of Object.keys(res.rows)) {
-        const same = !!back[n] && back[n]!.values.length === res.rows[n] && hash(back[n]!.values) === want[n];
-        if (!same) res.mismatches.push(n);
-        else if (this.opts.onStored) { try { this.opts.onStored(this.book, n, back[n]!.values, snap.timeZone, startedAt); } catch { /* cache only */ } }
-        if (this.store.logSync) await this.store.logSync(day, this.book, n, res.rows[n], same).catch(() => undefined);
+      const logRows: { sheet: string; rows: number; ok: boolean }[] = [];
+      for (const n of same) {
+        if (this.opts.onStored) { try { this.opts.onStored(this.book, n, snap.sheets[n]!.values, snap.timeZone, startedAt); } catch { /* cache only */ } }
+        logRows.push({ sheet: n, rows: res.rows[n], ok: true });
       }
+      for (const n of written) {
+        const ok = !!back[n] && back[n]!.values.length === res.rows[n] && hash(back[n]!.values) === want[n];
+        if (!ok) { res.mismatches.push(n); this.verified.delete(n); }
+        else {
+          this.verified.set(n, want[n]);
+          if (this.opts.onStored) { try { this.opts.onStored(this.book, n, back[n]!.values, snap.timeZone, startedAt); } catch { /* cache only */ } }
+        }
+        logRows.push({ sheet: n, rows: res.rows[n], ok });
+      }
+      if (this.store.logSyncMany) await this.store.logSyncMany(day, this.book, logRows).catch(() => undefined);
+      else if (this.store.logSync) for (const r of logRows) await this.store.logSync(day, this.book, r.sheet, r.rows, r.ok).catch(() => undefined);
+      this.stats.copies++; this.stats.ms += this.now() - startedAt; this.stats.tabs += logRows.length; this.stats.written += written.length;
       res.ok = res.mismatches.length === 0;
       if (!res.ok) res.error = 'copy differs from the sheet after reading it back: ' + res.mismatches.join(', ');
     } catch (e) { res.error = describeDbError(e); }

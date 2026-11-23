@@ -1,0 +1,168 @@
+/* =====================================================================================================================
+   APS THEME (Azure v0.25.0) — visual layer only. Loaded after Dashboard.html's own styles (src/web/render.ts, AZURE_THEME).
+   No markup, ids, text, scripts or behaviour change. Every colour comes from the tokens below: change the brand here only.
+   The page's own hard-coded brand blues are pointed at these tokens when the page is served (render.ts THEME_COLOR_MAP).
+   ===================================================================================================================== */
+:root {
+  /* ---- APS brand (from the official logo / website) ---- */
+  --aps-primary: #1a73e8;          /* TO CONFIRM against the official logo — the only value to change for the brand colour */
+  --aps-primary-hover: color-mix(in srgb, var(--aps-primary) 84%, #000);
+  --aps-primary-light: color-mix(in srgb, var(--aps-primary) 9%, #fff);   /* selected / hover / subtle highlight */
+  --aps-primary-border: color-mix(in srgb, var(--aps-primary) 32%, #fff);
+  /* ---- neutrals ---- */
+  --aps-background: color-mix(in srgb, var(--aps-primary) 3%, #f6f6f4);    /* soft, unsaturated app background */
+  --aps-surface: #ffffff;
+  --aps-text-primary: #1f2328;
+  --aps-text-secondary: #5c6370;
+  --aps-border: #e2e4e8;
+  /* ---- semantic (status only) ---- */
+  --aps-success: #1e8e3e;
+  --aps-warning: #b06000;
+  --aps-danger: #c5221f;
+  /* ---- shape, spacing, type ---- */
+  --aps-radius: 10px;
+  --aps-radius-sm: 8px;
+  --aps-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+  --aps-shadow-raised: 0 6px 20px rgba(16, 24, 40, .12);
+  --aps-space-1: 4px; --aps-space-2: 8px; --aps-space-3: 12px; --aps-space-4: 16px; --aps-space-5: 24px;
+  --aps-font: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Tamil', Arial, sans-serif;
+
+  /* ---- the page's existing tokens, pointed at the APS palette (one source of truth) ---- */
+  --blue: var(--aps-primary);
+  --blue-bg: var(--aps-primary-light);
+  --bg: var(--aps-background);
+  --card: var(--aps-surface);
+  --border: var(--aps-border);
+  --gray: var(--aps-text-secondary);
+  --green: var(--aps-success);
+  --red: var(--aps-danger);
+  --amber: var(--aps-warning);
+  --nav-bg: var(--aps-surface);
+  --nav-border: var(--aps-border);
+  --nav-text: var(--aps-text-primary);
+  /* one restrained accent for every navigation area (was a different colour per area) */
+  --acc-class: var(--aps-primary);  --tint-class: var(--aps-primary-light);
+  --acc-stud: var(--aps-primary);   --tint-stud: var(--aps-primary-light);
+  --acc-know: var(--aps-primary);   --tint-know: var(--aps-primary-light);
+  --acc-letter: var(--aps-primary); --tint-letter: var(--aps-primary-light);
+  --acc-eval: var(--aps-primary);   --tint-eval: var(--aps-primary-light);
+  --acc-admin: var(--aps-primary);  --tint-admin: var(--aps-primary-light);
+}
+
+/* ---------- base ---------- */
+body { font-family: var(--aps-font); color: var(--aps-text-primary); background: var(--aps-background); line-height: 1.45; }
+img { max-width: 100%; }
+a { color: var(--aps-primary); }
+:focus-visible { outline: 2px solid var(--aps-primary); outline-offset: 2px; }
+
+/* ---------- header: compact white bar, brand accent line, logo left, user right ---------- */
+.app-header {
+  background: var(--aps-surface); border: 1px solid var(--aps-border); border-top: 3px solid var(--aps-primary);
+  border-radius: var(--aps-radius); padding: var(--aps-space-3) var(--aps-space-4); box-shadow: var(--aps-shadow);
+  margin-bottom: var(--aps-space-4);
+}
+.app-header-top { align-items: center; }
+.brand-row { gap: var(--aps-space-3); }
+.brand-logo { height: 44px; width: auto; border-radius: 0; object-fit: contain; }   /* never cropped / recoloured */
+#dashboardTitle { font-size: 19px; font-weight: 650; color: var(--aps-text-primary); letter-spacing: -.005em; margin: 0; line-height: 1.25; }
+.brand-accreditation { font-size: 12px; color: var(--aps-text-secondary); margin-top: 2px; }
+.app-header .subtitle { font-size: 12.5px; color: var(--aps-text-secondary); }
+.viewer-badge { background: var(--aps-primary-light); color: var(--aps-primary-hover); border: 1px solid var(--aps-primary-border); border-radius: 999px; font-weight: 600; }
+.header-actions { margin-top: var(--aps-space-3); gap: var(--aps-space-2); }
+.header-link-btn { background: var(--aps-surface); color: var(--aps-primary-hover); border: 1px solid var(--aps-border); border-radius: var(--aps-radius-sm); padding: 7px 12px; font-weight: 600; }
+.header-link-btn:hover { background: var(--aps-primary-light); border-color: var(--aps-primary-border); }
+
+/* ---------- main navigation ---------- */
+.view-tabs { background: var(--aps-surface); border: 1px solid var(--aps-border); border-radius: var(--aps-radius); padding: 28px var(--aps-space-2) var(--aps-space-2); gap: 6px; box-shadow: var(--aps-shadow); }
+.view-tabs::before { color: var(--aps-text-secondary); letter-spacing: .07em; }
+.view-tab {
+  background: var(--aps-surface); color: var(--aps-text-primary); border: 1px solid var(--aps-border); border-left: 1px solid var(--aps-border);
+  border-radius: var(--aps-radius-sm); padding: 8px 12px; min-height: 38px; font-weight: 600; box-shadow: none; transform: none;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.view-tab:hover:not(.active) { background: var(--aps-background); border-color: var(--aps-primary-border); border-left-color: var(--aps-primary-border); box-shadow: none; transform: none; color: var(--aps-text-primary); }
+.view-tab.active {
+  background: var(--aps-primary); color: #fff; border-color: var(--aps-primary); border-left-width: 1px; font-weight: 650;
+  box-shadow: none; transform: none;
+}
+#tabTickets { --acc: var(--aps-primary); --tint: var(--aps-primary-light); }
+
+/* ---------- sub-navigation (Classes, Active Directory, Tickets, Examination, Letters) ---------- */
+.cls-subtabs, .ad-subtabs, .tk-subtabs, #examinationView .exam-card-head .exam-seg { background: var(--aps-surface); border-color: var(--aps-border); border-radius: var(--aps-radius); }
+.tk-subtabs { --acc: var(--aps-primary); --tint: var(--aps-primary-light); }
+.ad-subtabs::before, .tk-subtabs::before { color: var(--aps-primary) !important; }
+
+/* ---------- cards / panels: white, subtle border, small shadow, consistent radius ---------- */
+.card, .ad-card, .tk-card, .att-card, .exam-card, .td-card, .tcc-card, .am-card, .ad-person, .report-table-wrap, .am-table-wrap, .att-table-wrap, .exam-table-wrap {
+  background: var(--aps-surface); border-radius: var(--aps-radius); box-shadow: var(--aps-shadow);   /* borders keep their accents */
+}
+.ad-person, .ad-person.ad-teacher { border-left: 3px solid var(--aps-primary-border); }
+.card.live { border-color: var(--aps-success); box-shadow: 0 0 0 1px var(--aps-success); }
+.card.warn { border-color: var(--aps-danger); }
+.course-name, .exam-card-title, .att-card-title, .sc-h2 { color: var(--aps-text-primary); font-weight: 650; }
+.course-meta, .class-meta, .exam-hint, .att-summary-hint { color: var(--aps-text-secondary); }
+
+/* ---------- buttons: one primary, one secondary, semantic only where meaningful ---------- */
+.gtr-btn, .toolbar button, .cct-btn, .modal-close, .aps-gate-btn, .ad-copy {
+  border-radius: var(--aps-radius-sm); border: 1px solid var(--aps-border); background: var(--aps-surface); color: var(--aps-primary-hover);
+  font-family: inherit; font-weight: 600; transition: background-color .15s ease, border-color .15s ease;
+}
+.gtr-btn:hover:not(:disabled), .toolbar button:hover:not(:disabled):not(.active):not(.primary), .cct-btn:hover:not(:disabled), .modal-close:hover {
+  background: var(--aps-primary-light); border-color: var(--aps-primary-border);
+}
+.gtr-btn.primary, .toolbar button.primary, .aps-gate-btn, button.primary {
+  background: var(--aps-primary); border-color: var(--aps-primary); color: #fff;
+}
+.gtr-btn.primary:hover:not(:disabled), .toolbar button.primary:hover:not(:disabled), .aps-gate-btn:hover, button.primary:hover:not(:disabled) {
+  background: var(--aps-primary-hover); border-color: var(--aps-primary-hover);
+}
+.gtr-btn.exam-qp-tc-ok { background: var(--aps-danger); border-color: var(--aps-danger); color: #fff; }   /* stays semantic red */
+
+/* ---------- form fields ---------- */
+input[type="text"], input[type="search"], input[type="email"], input[type="number"], input[type="date"], input[type="url"], select, textarea {
+  font-family: inherit; border: 1px solid var(--aps-border); border-radius: var(--aps-radius-sm); background: var(--aps-surface); color: var(--aps-text-primary);
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--aps-primary); box-shadow: 0 0 0 3px var(--aps-primary-light); }
+
+/* ---------- tables: white, light rules, clear headers, subtle hover ---------- */
+.report-table, .am-table, .att-table, table.exam-table { background: var(--aps-surface); }
+.report-table thead th, .am-table thead th, .att-table thead th, .exam-table-wrap thead th {
+  background: var(--aps-background); color: var(--aps-text-secondary); font-weight: 650; font-size: 12px; letter-spacing: .02em; border-bottom: 1px solid var(--aps-border);
+}
+.report-table th, .report-table td, .am-table td, .att-table td { border-bottom-color: var(--aps-border); }
+.report-table tbody tr:hover, .am-table tbody tr:hover, .att-table tbody tr:hover, .exam-table-wrap tbody tr:hover { background: var(--aps-primary-light); }
+
+/* ---------- status badges: semantic colours stay; information = APS primary ---------- */
+.badge.info, .gtr-status-badge.status-awaiting, .gtr-status-badge.status-processing { background: var(--aps-primary-light); color: var(--aps-primary-hover); }
+
+/* ---------- modals ---------- */
+.modal-overlay { background: rgba(17, 24, 39, .45); }
+.modal { border-radius: 12px; box-shadow: var(--aps-shadow-raised); border: 1px solid var(--aps-border); }
+.modal h3 { color: var(--aps-text-primary); font-weight: 650; }
+
+/* ---------- sign-in gate ---------- */
+.aps-gate { background: var(--aps-background); }
+.aps-gate-card { border-top: 3px solid var(--aps-primary); border-radius: 12px; box-shadow: var(--aps-shadow-raised); }
+.aps-gate-logo { object-fit: contain; }
+a.aps-gate-btn, a.header-link-btn { text-decoration: none; }
+
+/* ---------- loading / empty / error ---------- */
+.loading { color: var(--aps-text-secondary); }
+.gcm-empty, .ad-empty { color: var(--aps-text-secondary); border-color: var(--aps-border); background: var(--aps-surface); }
+
+/* ---------- smaller screens: less padding, header stacks, nav scrolls in one row ---------- */
+@media (max-width: 900px) {
+  body { padding: 12px 14px 110px; }
+  #dashboardTitle { font-size: 17px; }
+}
+@media (max-width: 640px) {
+  body { padding: 10px 10px 110px; }
+  .app-header { padding: var(--aps-space-3); }
+  .brand-logo { height: 36px; }
+  #dashboardTitle { font-size: 15.5px; }
+  .brand-accreditation { display: none; }
+  .header-link-btn { padding: 6px 10px; font-size: 12.5px; }
+  .view-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-top: 26px; }
+  .view-tab { flex: 0 0 auto; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

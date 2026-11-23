@@ -210,3 +210,7 @@ The `[ParallelRun]` readiness block now shows two expected CHECK lines: "Test gr
 | Apps Script kept deployed with its triggers, as the fallback, for 30 days (until 2026-12-23) | APS admin | never undeploy; saves, job bodies and live Meet status still run there |
 
 Rollback stays as in §6, by area.
+
+**v0.24.2 expected difference:** with `DB_READS` on, a save is seen at once by the person who saved. Other people see it at the
+next copy, usually within 1–2 minutes. A change made in the Apps Script dashboard or the sheet appears within about 5 minutes.
+To make everyone read Google after any save, as before, set `DB_READ_AFTER_SAVE=all`.

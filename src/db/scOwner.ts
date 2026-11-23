@@ -58,7 +58,7 @@ export async function runOwnedSave(ctx: AppContext, session: { email: string; ro
       console.error('[SC owner] ' + fn + ' not stored: ' + describeDbError(e));
       throw new Error('The change could not be saved right now (database). Please try again in a minute.');
     }
-    ctx.data.invalidate?.();
+    ctx.data.invalidate?.(session.email);
     console.log('[SC owner] ' + fn + ' by ' + session.email + ' stored in Azure SQL (' + (order.join(', ') || 'no change') + ')');
     return value;
   });

@@ -122,10 +122,10 @@ test('Phase 5 step 1: every tab discovered (new ones too, excluded ones skipped)
   const sync = new SheetSync(src, store, 'main', [], (m) => logs.push(m), () => now, 'Spreadsheet "main"', { discover: true, exclude: /^__/ });
   let r = await sync.runOnce(); assert.equal(r.ok, true, r.error); assert.deepEqual(Object.keys(r.rows).sort(), ['Courses', 'Tickets']);
   data.sheets.main.Leave = [['L'], ['x']]; r = await sync.runOnce(); assert.ok('Leave' in r.rows, 'new tab picked up');
-  store.corruptNext = 'Tickets'; r = await sync.runOnce();
+  data.sheets.main.Tickets.push(['c']); store.corruptNext = 'Tickets'; r = await sync.runOnce(); // v0.24.2: only changed tabs are rewritten + read back
   assert.equal(r.ok, false); assert.deepEqual(r.mismatches, ['Tickets']); assert.match(logs.join('\n'), /copy differs from the sheet after reading it back: Tickets/);
   const rep = await store.syncReport('2000-01-01'); const t = rep.find((x) => x.sheet === 'Tickets')!;
-  assert.deepEqual([t.copies, t.mismatches, t.rows], [3, 1, 3]);
+  assert.deepEqual([t.copies, t.mismatches, t.rows], [3, 1, 4]);
   const db = new DbBackedDataSource(src, store, 15 * 60_000, () => now, () => {});
   db.addCopy('main', () => new Set(sync.names), true);
   await sync.runOnce(); let calls = 0; const orig = src.readSheets.bind(src); (src as any).readSheets = async (b: any, n: string[]) => { calls++; return orig(b, n); };

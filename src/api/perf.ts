@@ -10,7 +10,7 @@ export class PerfMonitor {
   /** v0.24.1: extra facts appended to the hourly line (Google Sheets calls for people vs background, waiting). */
   extra: (() => string) | null = null;
   constructor(private log: (m: string) => void = console.log, private now: () => number = Date.now, public slowMs = 5000) {}
-  record(name: string, ms: number, ok: boolean, cached = false): void {
+  record(name: string, ms: number, ok: boolean, cached = false, detail: (() => string) | null = null): void {
     const s = this.by.get(name) || { n: 0, total: 0, max: 0, errs: 0, hits: 0, last: [] };
     s.n++; s.total += ms; s.max = Math.max(s.max, ms); if (!ok) s.errs++; if (cached) s.hits++;
     s.last.push(ms); if (s.last.length > 200) s.last.shift();
@@ -18,7 +18,8 @@ export class PerfMonitor {
     if (ms >= this.slowMs && !cached) {
       const t = this.now();
       const prevAt = this.slowLogged.get(name);
-      if (prevAt === undefined || t - prevAt > 600_000) { this.slowLogged.set(name, t); this.log('[Perf] slow: ' + name + ' took ' + (ms / 1000).toFixed(1) + ' s'); }
+      if (prevAt === undefined || t - prevAt > 600_000) { this.slowLogged.set(name, t); let d = ''; try { d = detail ? detail() : ''; } catch { d = ''; }
+        this.log('[Perf] slow: ' + name + ' took ' + (ms / 1000).toFixed(1) + ' s' + (d ? ' (' + d + ')' : '')); }
     }
   }
   summary(top = 10): { name: string; calls: number; avgMs: number; p95Ms: number; maxMs: number; errors: number; cacheHits: number }[] {

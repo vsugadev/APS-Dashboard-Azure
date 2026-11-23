@@ -215,9 +215,10 @@ if (require.main === module) {
     process.exit(1);
   }
   for (const w of configWarnings(cfg)) console.warn('[Config] ' + w);
-  const page = new DashboardPage(path.resolve(cfg.dashboardHtmlPath));
+  const page = new DashboardPage(path.resolve(cfg.dashboardHtmlPath), { theme: cfg.theme }); // v0.25.0 APS theme
   const ctx = createContext(cfg);
   const reg = buildRegistry();
+  let copySyncs: { takeStats(): string }[] = []; // v0.24.2: copy timings for the hourly [Perf] line
   { // v0.24.0: performance — reused answers (#2) + measurement (#7)
     responseCache.ttlMs = cfg.perfCacheSeconds * 1000;
     if (cfg.perfCacheSeconds > 0) { reg.cache = responseCache; for (const n of cacheableNames()) reg.cacheable.add(n); }
@@ -225,9 +226,12 @@ if (require.main === module) {
     { // v0.24.1: the hourly line also says how many Google Sheets calls were made for people vs background, and how long people waited
       const inner = ctx.data instanceof DbBackedDataSource ? ctx.data.innerSource() : ctx.data;
       const gate = (inner as unknown as { gate?: ApiGate }).gate;
-      if (gate && typeof gate.takeStats === 'function') perf.extra = () => gate.takeStats();
+      perf.extra = () => [gate && typeof gate.takeStats === 'function' ? gate.takeStats() : '', copySyncs.length ? 'database copies: ' + copySyncs.map((c) => c.takeStats()).join('; ') : ''].filter(Boolean).join(' | ');
     }
-    reg.addObserver((_c, name, _a, out, ms, cached) => perf.record(name, ms, !('err' in out), !!cached));
+    reg.addObserver((_c, name, _a, out, ms, cached, info) => perf.record(name, ms, !('err' in out), !!cached, () => { // v0.24.2: where the time went (only for slow calls)
+      let kb = 0; try { kb = Math.round(JSON.stringify(out).length / 1024); } catch { /* size unknown */ }
+      return 'waiting for data ' + ((info ? info.dataMs : 0) / 1000).toFixed(1) + ' s, ' + (info ? info.runs : 0) + ' run(s), answer ' + kb + ' KB';
+    }));
     console.log('[Perf] measuring every screen ([Perf] hourly summary); answers reused ' + (cfg.perfCacheSeconds > 0 ? cfg.perfCacheSeconds + ' s for ' + reg.cacheable.size + ' read screens' : 'OFF (PERF_CACHE_SECONDS=0)') + '; responses compressed.');
   }
   if (cfg.shadowSample > 0 && bridgeUsable(cfg) && ctx.data instanceof DbBackedDataSource) { // v0.22.0: shadow comparison (parallel run)
@@ -287,9 +291,10 @@ if (require.main === module) {
     }
     if (ctx.data instanceof DbBackedDataSource) { // v0.24.1: remembered screen needs survive restarts + one background warm-up
       const db = ctx.data;
+      db.afterSave = cfg.dbReadAfterSave; // v0.24.2
       const lp = new LearnedPersistence(new MssqlAppState(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()));
       void lp.load().then(() => { lp.start(); setTimeout(() => { void warmUp(ctx, { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS }); }, 20_000).unref?.(); });
     }
-    if (ctx.data instanceof DbBackedDataSource) { const db = ctx.data; void startDatabase(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000).finally(() => startCopies(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000)); }
+    if (ctx.data instanceof DbBackedDataSource) { const db = ctx.data; void startDatabase(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000).catch(() => null).then(() => startCopies(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000)).then((x) => { copySyncs = x; }); }
   });
 }

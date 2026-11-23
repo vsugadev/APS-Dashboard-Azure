@@ -7,6 +7,7 @@
 import type { AppContext } from '../app/context';
 import type { WorkbookKey, ValuesRequest } from '../data/types';
 import { makeGasScope } from './scope.generated';
+import { REQUEST } from '../app/requestContext';
 import { makeRuntime, SnapWorkbook, NeedData, valuesKey, type NeedRequest, type RuntimeDeps } from './runtime';
 
 export const MAX_LOADS = 30;
@@ -94,8 +95,10 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
   }
   const usedValues: { book: WorkbookKey; req: ValuesRequest }[] = [];
   runStats.runs++;
+  const rq = REQUEST.getStore(); // v0.24.2: time spent waiting for data, for the [Perf] slow line
+  const timed = async <X>(p: Promise<X>): Promise<X> => { const t = Date.now(); try { return await p; } finally { if (rq) rq.dataMs += Date.now() - t; } };
   for (let attempt = 0; attempt <= MAX_LOADS; attempt++) {
-    runStats.attempts++;
+    runStats.attempts++; if (rq) rq.runs++;
     const pending: NeedRequest[] = [];
     const need = (n: NeedRequest) => { pending.push(n); };
     let att: SnapWorkbook | null = null;
@@ -109,12 +112,12 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
       }
     };
     // v0.24.0: the workbooks are read in parallel (were one after another)
-    const [m] = await Promise.all([
+    const [m] = await timed(Promise.all([
       ctx.data.readSheets('main', Array.from(loaded.main)),
       attOn ? ctx.data.readSheets('attendance', Array.from(loaded.attendance)).then((a) => { att = new SnapWorkbook(idOf('attendance'), a.sheets, a.timeZone, a.titles, 'attendance', need); },
         (e) => { console.warn('[Gas] attendance workbook not readable: ' + String((e as Error).message).slice(0, 120)); }) : Promise.resolve(),
       ...Array.from(opened).map(openExtra),
-    ]);
+    ]));
     const S = makeGasScope(makeRuntime({ ...opts.deps, main: new SnapWorkbook(idOf('main'), m.sheets, m.timeZone, m.titles, 'main', need), attendance: att, values, bookIds, need, extra, extraIds }));
     if (!idsDone) {
       idsDone = true;
@@ -124,7 +127,7 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
       for (const k of EXTRA_BOOK_ID_PROPS) add(String(opts.deps.settings[k] || live[k] || '').trim());
       // v0.24.1: a remembered spreadsheet is opened now that the settings have named it (first run after a restart)
       const late = learned ? learned.books.filter((id) => extraIds.indexOf(id) > -1 && !opened.has(id)) : [];
-      if (late.length) { for (const id of late) opened.add(id); await Promise.all(late.map(openExtra)); }
+      if (late.length) { for (const id of late) opened.add(id); await timed(Promise.all(late.map(openExtra))); }
     }
     let result: T | undefined, error: unknown = null;
     try { result = await fn(S); } catch (e) { error = e; }
@@ -147,7 +150,7 @@ export async function runGas<T>(ctx: AppContext, opts: GasRunOptions, fn: (S: an
         if (!(k in values)) { values[k] = null; progressed = true; usedValues.push({ book: n.book, req: n.req }); valueLoads.push(ctx.data.readValues(n.book, n.req).then((v) => { values[k] = v; })); }
       }
     }
-    await Promise.all(valueLoads);
+    await timed(Promise.all(valueLoads));
     if (!progressed) throw new Error('Azure runtime: data requested again after loading (' + JSON.stringify(pending[0]).slice(0, 120) + ').');
     void NeedData;
   }
