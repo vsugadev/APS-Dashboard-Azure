@@ -1,4 +1,4 @@
-# Performance (v0.24.0): free changes first
+# Performance (v0.24.0 / v0.24.1): free changes first
 
 APS is a non-profit. **Use free resources first, and never trade away performance.** This is rule B0 in the prompt file. Every
 item below costs nothing.
@@ -13,6 +13,10 @@ item below costs nothing.
 | 6 | Move the busiest Apps Script pass-through screens onto Azure | chosen from #7 | next |
 | 7 | **Measurement:** an hourly `[Perf]` summary (calls, average, p95 and max per screen, plus cache hits) and `[Perf] slow:` for any request over 5 s | `src/api/perf.ts` | v0.24.0 |
 | 8 | Web app and database in the same Azure region | portal | **parked** (see below) |
+| 9 | **People first at the Google gate:** the spreadsheet copies (every 5 min, plus one after every save), the reconciliation and the warm-up run as background work. They use at most 2 of the 4 slots and leave 15 calls of every minute for people, and a person waiting is always served before a job. | `src/google/apiGate.ts`, `src/data/background.ts` | v0.24.1 |
+| 10 | **Remembered screen needs survive restarts:** saved in Azure SQL (`dbo.app_state`) at most every 5 minutes when changed, and restored at start. A stored entry can never open a spreadsheet the settings don't name. | `src/gas/learnedStore.ts`, `src/gas/run.ts` | v0.24.1 |
+| 11 | **One warm-up after start** (background, about 20 s after start): courses, roles, Access Control and the sheets the screens use are read once. | `src/gas/learnedStore.ts` | v0.24.1 |
+| 12 | **Read from the verified Azure copy** (`DB_READS=main,attendance`): milliseconds instead of seconds. After a save, reads go to Google until a fresh copy is made. | app setting | **your decision** |
 
 **Global students (rule B0.5):** APS students are all over the world: US (EST, CST, PST), Canada, India and other countries.
 Every change is judged by the delay the farthest students feel. That means fewer round trips per screen, small answers,
@@ -24,6 +28,17 @@ so each round trip saved helps them most.
 student body, and moving it means a new address plus sign-in, bridge, deploy and Key Vault changes. Moving the database to
 East US is parked until `[Perf]` shows the cross-region database delay matters. A portal Copy loses the free offer
 (estimated $5–10 a month); the alternative is a new free-offer database plus a table-copy tool.
+
+**Why v0.24.1 (live logs, 2026-11-23):** the first screens after a restart took 7–44 s, and even tiny calls such as
+`getCourseNameSuffix` took 30 s. They were waiting in the same queue as the background spreadsheet copies, which run every
+5 minutes and once more after every save. People are now served first (#9). Locally, a screen opened while a copy runs went
+from 493 ms to 200 ms. The hourly `[Perf]` line now ends with `Google Sheets calls: N for people (waited X s in total), M
+background`.
+
+**About #12 (your decision):** the copy is refreshed every `DB_SYNC_MINUTES` (default 5) and checked against the sheet. A
+save made on Azure switches reads back to Google until a newer copy exists, so Azure users always see their own saves. A
+change made on the Apps Script dashboard, or straight in the sheet, appears on Azure after the next copy, within about 5
+minutes.
 
 **Not reused (#2), on purpose:**
 

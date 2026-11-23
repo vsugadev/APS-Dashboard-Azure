@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 347e746db98529d7ac03ef66792ea49b
+#   Part B md5    : 616f60c62e461ad4423477d681dd63e5
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -784,6 +784,10 @@ APS is a volunteer-run non-profit. For every design, release and recommendation,
 | 5 | Portal (no code): Always On, HTTP/2, ARR affinity off | user |
 | 6 | Move the busiest Apps Script pass-through screens onto Azure, chosen from the measurements in 7 | after measuring |
 | 7 | Measure every screen: `[Perf]` hourly summary (calls, average, p95, max per function) + a line for any request over 5 s | v0.24.0 |
+| 9 | People first at the Google gate: copies, reconciliation and warm-up are BACKGROUND (`inBackground`, `backgroundSource`) — at most 2 of 4 slots, 15 calls a minute kept for people, a waiting person goes first | v0.24.1 |
+| 10 | Remembered screen needs survive restarts (`dbo.app_state` 'learned_preload', saved ≤ every 5 min when changed; restored entries checked; a stored spreadsheet ID opens only if the settings name it) | v0.24.1 |
+| 11 | One background warm-up ~20 s after start (courses, roles, Access Control, usual + remembered sheets); no repeating reads | v0.24.1 |
+| 12 | `DB_READS=main,attendance`: screens read the verified Azure copy (milliseconds) instead of Google (seconds); after a save → Google until a fresh copy. App setting only — owner decision (freshness = copy interval, `DB_SYNC_MINUTES`, default 5) | user decision |
 | 8 | Same Azure region for the web app and the database | PARKED 2026-11-22 — web app `aps-dashboard-ap` East US, database `aps-dashboard-sql-ap01/aps-dashboard` Central US. Web app stays (moving it = new address, sign-in redirect, bridge, deploy, Key Vault; no gain for global students). Database move to East US (portal Copy runbook given 2026-11-22; a Copy loses the free offer, est. $5–10/month, or new free-offer DB + table-copy tool) is parked until `[Perf]` shows the cross-region DB delay matters. Do not raise again without measurements. |
 
 Paid — only if measured: B1 → B2 (+$12/month) at go-live if CPU stays above ~70% at class start; Redis only with 2+ instances;
@@ -1128,4 +1132,15 @@ header is longer, or Code.gs fails quietly in the mock.
   hit; cleared by writes.ts isWrite + scOwner save); cacheableNames() = READS2 + ATTENDANCE_READS + directory, CTA view, access
   control, country preference (NOT getDashboardData / realtime / chat / pass-through). compression 1.8.1 (threshold 1 KB);
   public static maxAge 1h + ETag. src/api/perf.ts PerfMonitor ([Perf] hourly top-10 by p95, slow > 5 s once / 10 min). No new cost.
+- v0.24.1 (2026-11-23): PERFORMANCE (cold start + saves). Live logs: first screens after a restart 7–44 s (tiny calls like
+  getCourseNameSuffix 30 s) = waiting behind Google reads incl. the background copies (every 5 min + one after every save) in the
+  same ApiGate queue. apiGate.ts: AsyncLocalStorage lane — inBackground()/isBackground(); bg max bgConcurrent 2, leaves userReserve
+  15/min, people's queue released first; takeStats() → appended to the hourly [Perf] line (calls for people vs background, total
+  wait). src/data/background.ts backgroundSource() (Proxy: read methods in the bg lane) used by start.ts for both SheetSyncs,
+  importOwned and the Reconciler. run.ts: learnedSnapshot/loadLearned (every entry validated: book key regex, ≤60 sheets, ≤10 ids,
+  ≤6 value requests)/learnedVersion/learnedSheets; ALLOWED_BOOKS = IDs worked out from settings/Code.gs this process — remembered
+  books/value requests used only for those; remembered spreadsheets opened in the FIRST run once the IDs are known (openExtra).
+  src/gas/learnedStore.ts: MssqlAppState (dbo.app_state, parameterised upsert), LearnedPersistence (load at start, save every
+  5 min only when changed, ≤400 KB), warmUp (bg, once, 20 s after start). Local: a screen during a copy 493 → 200 ms. No new cost
+  (one small SQL row; ~6 Google calls per restart).
 

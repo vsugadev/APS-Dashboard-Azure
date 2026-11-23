@@ -7,6 +7,8 @@ export class PerfMonitor {
   private by = new Map<string, { n: number; total: number; max: number; errs: number; hits: number; last: number[] }>();
   private slowLogged = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
+  /** v0.24.1: extra facts appended to the hourly line (Google Sheets calls for people vs background, waiting). */
+  extra: (() => string) | null = null;
   constructor(private log: (m: string) => void = console.log, private now: () => number = Date.now, public slowMs = 5000) {}
   record(name: string, ms: number, ok: boolean, cached = false): void {
     const s = this.by.get(name) || { n: 0, total: 0, max: 0, errs: 0, hits: 0, last: [] };
@@ -30,7 +32,7 @@ export class PerfMonitor {
     const rows = this.summary();
     if (!rows.length) return;
     const total = Array.from(this.by.values()).reduce((a, s) => a + s.n, 0);
-    this.log('[Perf] last hour: ' + total + ' calls; slowest (p95): ' + rows.map((r) => r.name + ' ' + r.calls + '× avg ' + r.avgMs + ' / p95 ' + r.p95Ms + ' / max ' + r.maxMs + ' ms' + (r.cacheHits ? ' (' + r.cacheHits + ' from cache)' : '') + (r.errors ? ' (' + r.errors + ' errors)' : '')).join('; '));
+    this.log('[Perf] last hour: ' + total + ' calls; slowest (p95): ' + rows.map((r) => r.name + ' ' + r.calls + '× avg ' + r.avgMs + ' / p95 ' + r.p95Ms + ' / max ' + r.maxMs + ' ms' + (r.cacheHits ? ' (' + r.cacheHits + ' from cache)' : '') + (r.errors ? ' (' + r.errors + ' errors)' : '')).join('; ') + (this.extra ? ' | ' + this.extra() : ''));
     this.by.clear();
   }
   start(everyMs = 3_600_000): void { if (this.timer) return; this.timer = setInterval(() => this.report(), everyMs); this.timer.unref?.(); }

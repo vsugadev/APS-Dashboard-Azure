@@ -10,7 +10,9 @@ import compression from 'compression';
 import { responseCache } from './api/responseCache';
 import { PerfMonitor } from './api/perf';
 import { READS2 } from './api/endpoints/reads';
-import { ATTENDANCE_READS } from './api/endpoints/classes';
+import { ATTENDANCE_READS, MAIN_SHEETS, ATTENDANCE_SHEETS } from './api/endpoints/classes';
+import { LearnedPersistence, MssqlAppState, warmUp } from './gas/learnedStore';
+import type { ApiGate } from './google/apiGate';
 import * as path from 'path';
 import { loadConfig, configProblems, configWarnings, type AppConfig } from './config';
 import { FixtureDataSource, SheetsDataSource } from './data/sources';
@@ -220,6 +222,11 @@ if (require.main === module) {
     responseCache.ttlMs = cfg.perfCacheSeconds * 1000;
     if (cfg.perfCacheSeconds > 0) { reg.cache = responseCache; for (const n of cacheableNames()) reg.cacheable.add(n); }
     const perf = new PerfMonitor(); perf.start();
+    { // v0.24.1: the hourly line also says how many Google Sheets calls were made for people vs background, and how long people waited
+      const inner = ctx.data instanceof DbBackedDataSource ? ctx.data.innerSource() : ctx.data;
+      const gate = (inner as unknown as { gate?: ApiGate }).gate;
+      if (gate && typeof gate.takeStats === 'function') perf.extra = () => gate.takeStats();
+    }
     reg.addObserver((_c, name, _a, out, ms, cached) => perf.record(name, ms, !('err' in out), !!cached));
     console.log('[Perf] measuring every screen ([Perf] hourly summary); answers reused ' + (cfg.perfCacheSeconds > 0 ? cfg.perfCacheSeconds + ' s for ' + reg.cacheable.size + ' read screens' : 'OFF (PERF_CACHE_SECONDS=0)') + '; responses compressed.');
   }
@@ -277,6 +284,11 @@ if (require.main === module) {
         new TimedJobScheduler(timed.on, new MssqlJobStore(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()), bridgeJobRunner(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret),
           bridgeScheduleSource(cfg.appsScriptBridgeUrl, cfg.appsScriptBridgeSecret)).start();
       } else if (timed.on.length) console.warn('[Jobs] AZURE_TIMED_JOBS is set but Azure SQL or the Apps Script bridge is not — Apps Script keeps running them.');
+    }
+    if (ctx.data instanceof DbBackedDataSource) { // v0.24.1: remembered screen needs survive restarts + one background warm-up
+      const db = ctx.data;
+      const lp = new LearnedPersistence(new MssqlAppState(() => (db.storeRef() as unknown as MssqlSheetStore).connectPool()));
+      void lp.load().then(() => { lp.start(); setTimeout(() => { void warmUp(ctx, { main: MAIN_SHEETS, attendance: ATTENDANCE_SHEETS }); }, 20_000).unref?.(); });
     }
     if (ctx.data instanceof DbBackedDataSource) { const db = ctx.data; void startDatabase(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000).finally(() => startCopies(ctx, db.storeRef(), db, cfg.dbSyncMinutes * 60_000)); }
   });

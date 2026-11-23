@@ -174,7 +174,10 @@ Apps Script r141 first. Then add the names to both `APS_JOBS_ON_AZURE` (Apps Scr
 ### 5.11 Performance (v0.24.0, free)
 
 App Service → Configuration → General settings: **Always On = On**, **HTTP version = 2.0**, **ARR affinity = Off** → Save.
-Check that the web app and the database are in the same region. Read the hourly `[Perf]` line. Details: `docs/PERFORMANCE.md`.
+Read the hourly `[Perf]` line. Details: `docs/PERFORMANCE.md`. (The region move is parked; see PERFORMANCE #8.)
+
+v0.24.1 needs no setting. The app creates `dbo.app_state` itself (the app's `db_ddladmin` role already allows it). Optional, and
+your decision: `DB_READS=main,attendance` makes screens read the verified Azure copy (PERFORMANCE #12).
 
 ### 5.9 Parallel run and cut-over (v0.21.0)
 
