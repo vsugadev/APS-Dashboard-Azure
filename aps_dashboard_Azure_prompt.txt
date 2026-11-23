@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 23ccd8ba1711cefa46234bb5c87263b1
+#   Part B md5    : 3ff892b5d84cb8b956b54e7444640dda
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -795,6 +795,55 @@ APS is a volunteer-run non-profit. For every design, release and recommendation,
 
 Paid — only if measured: B1 → B2 (+$12/month) at go-live if CPU stays above ~70% at class start; Redis only with 2+ instances;
 no bigger database (CPU 4%); no Premium plans or CDN at this size.
+
+---
+
+## B0.T APS VISUAL THEME — the primary colour coding for the Azure APS Dashboard (agreed 2026-11-23, v0.25.0)
+
+Every UI change on Azure uses this theme. Colours were sampled from the official APS logo
+(https://www.avvaiyarpadasalai.org/media/aps-logo.jpg). They live ONLY as tokens in `public/aps-theme.css`. Never write a
+hex colour in a component; use a token. A new colour is added only as a new token, with the reason.
+
+| Token | Value | Use |
+|---|---|---|
+| `--aps-primary` | `#400000` (APS maroon, logo outer ring) | header brand line, active navigation (filled, white text), primary buttons, links, Information badges |
+| `--aps-primary-hover` | primary mixed 82% with white | hover on primary buttons (lighter; darker would be black) |
+| `--aps-primary-light` | primary 7% on white | selected states, row hover, subtle highlights, Information badge background |
+| `--aps-primary-border` | primary 24% on white | borders of selected / hovered controls |
+| `--aps-brand-green` | `#648302` (logo letter) | source of the success colour only |
+| `--aps-brand-parchment` | `#e4c396` (logo scroll) | source of the background warmth only |
+| `--aps-brand-ring` | `#b7c9d7` (logo inner ring) | reserved; not for large areas |
+| `--aps-background` | parchment 8% on `#f8f8f7` | app background (soft, unsaturated) |
+| `--aps-surface` | `#ffffff` | cards, tables, modals, header, navigation |
+| `--aps-text-primary` | `#211c1c` | body text, titles |
+| `--aps-text-secondary` | `#5f5858` | secondary text, table headers |
+| `--aps-border` | `#e6e1dc` | all borders |
+| `--aps-success` | brand green darkened 20% (≈ `#506801`) | Completed / Available / Present |
+| `--aps-warning` | `#a35a00` | Pending / Waiting / Partial |
+| `--aps-danger` | `#c5221f` | Error / Not Available / Absent / destructive actions |
+
+Rules:
+- **Hierarchy:** soft background, then white surfaces, then maroon headings and actions, then neutral text. No colour-filled
+  cards. Branding shows through a small accent line, the active tab, primary actions and Information badges.
+- **Buttons:** one primary style (maroon, white text) and one secondary style (white, maroon text, neutral border). Red and green
+  are used only where the meaning calls for them. Third-party brand buttons (Zoom, Google) keep their own colour.
+- **Navigation:** one accent for every area. The active tab is filled maroon; hover is subtle.
+- **Status badges** stay semantic: green / amber / red / gray. Information = primary. Never maroon for every status.
+- **Readability:** at least WCAG AA contrast on white (checked: primary 17:1, success 6.3:1, warning 5.2:1, danger 5.8:1,
+  secondary text 6.9:1).
+- **Type and spacing:** system font stack (`Inter` if installed, then system-ui / Segoe UI / Roboto / Noto Sans Tamil / Arial;
+  no font download, rule B0); spacing tokens `--aps-space-1..5`; radius 10 px (8 px for controls); shadows subtle only.
+- **No gradients, glass effects, animated backgrounds or large shadows.** Transitions are 0.15 s and only on hover/focus;
+  `prefers-reduced-motion` turns them off.
+- **Logo:** use the official file as-is: no recolouring, cropping or distortion; keep its aspect ratio and whitespace.
+- **Responsive:** desktop, laptop, tablet and phone. No page-level horizontal scroll; on phones the header stacks and the
+  navigation scrolls in one row.
+- **How it is applied:** `src/web/render.ts` links `/aps-theme.css` last in `<head>` and points the page's own hard-coded brand
+  blues (`THEME_COLOR_MAP`, `<style>` blocks outside `<script>` only) at the tokens, keeping each old colour as a fallback.
+  `Dashboard.html`, its markup, ids, text and scripts are NOT changed for the theme. `AZURE_THEME=off` serves the page exactly as
+  Apps Script does. A new hard-coded blue found in the page is added to `THEME_COLOR_MAP`, not patched in Dashboard.html.
+- **Every UI change** keeps `test/theme.test.ts` passing (no colours outside `:root`, no gradients or animations, scripts and
+  markup unchanged), and is checked in a desktop and a phone screenshot before release.
 
 ---
 
