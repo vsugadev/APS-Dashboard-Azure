@@ -58,6 +58,9 @@ export const THEME_COLOR_MAP: Record<string, string> = {
   '#1a56c4': 'var(--aps-primary-hover, #1a56c4)',
   '#e8f0fe': 'var(--aps-primary-light, #e8f0fe)',
   '#d2e3fc': 'var(--aps-primary-border, #d2e3fc)',
+  '#c6dafc': 'var(--aps-primary-border, #c6dafc)',
+  '#aecbfa': 'var(--aps-primary-border, #aecbfa)',
+  '#0b57d0': 'var(--aps-primary, #0b57d0)',
 };
 export function themeStyles(html: string): string {
   const re = new RegExp('(' + Object.keys(THEME_COLOR_MAP).join('|') + ')(?![0-9a-f])', 'gi');

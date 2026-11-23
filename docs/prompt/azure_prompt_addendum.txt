@@ -421,10 +421,10 @@ header is longer, or Code.gs fails quietly in the mock.
   "database copies: main N× avg s, W of T tabs rewritten". Trade-off documented: other people see a save at the next copy
   (usually ≤ 1–2 min) — same class as changes made in Apps Script. Cost: fewer SQL writes (less database CPU); no new resource.
 - v0.25.0 (2026-11-23): APS VISUAL THEME (UI only). public/aps-theme.css = the ONLY place for colours/spacing/type: tokens
-  --aps-primary (TO CONFIRM from the official logo — the logo could not be fetched from the sandbox), -primary-hover/-light/-border
+  --aps-primary #400000 (APS maroon, sampled from the official logo the user attached; green #648302 → success, parchment #e4c396 → background warmth, ring #b7c9d7), -primary-hover/-light/-border
   (color-mix), --aps-background/-surface/-text-primary/-text-secondary/-border, semantic --aps-success/-warning/-danger; the page's
   own tokens (--blue, --bg, --border, --gray, --nav-*, every --acc-*/--tint-*) point at them. render.ts: THEME_LINK appended LAST
-  in <head>; themeStyles() rewrites THEME_COLOR_MAP hexes (#1a73e8, #1967d2, #174ea6, #1a56c4, #e8f0fe, #d2e3fc) inside <style>
+  in <head>; themeStyles() rewrites THEME_COLOR_MAP hexes (#1a73e8, #1967d2, #174ea6, #1a56c4, #0b57d0, #e8f0fe, #d2e3fc, #c6dafc, #aecbfa) inside <style>
   blocks OUTSIDE <script> only, each as var(--aps-…, <old hex>) so a missing theme file looks exactly as before. AZURE_THEME=off
   serves the page exactly as Apps Script. Dashboard.html file, markup, ids, text and scripts unchanged (tests compare on/off).
   Header = compact white bar with a 3 px brand line; one brand accent for all nav areas (active tab filled primary); cards white

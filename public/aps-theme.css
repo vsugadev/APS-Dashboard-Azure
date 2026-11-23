@@ -4,20 +4,23 @@
    The page's own hard-coded brand blues are pointed at these tokens when the page is served (render.ts THEME_COLOR_MAP).
    ===================================================================================================================== */
 :root {
-  /* ---- APS brand (from the official logo / website) ---- */
-  --aps-primary: #1a73e8;          /* TO CONFIRM against the official logo — the only value to change for the brand colour */
-  --aps-primary-hover: color-mix(in srgb, var(--aps-primary) 84%, #000);
-  --aps-primary-light: color-mix(in srgb, var(--aps-primary) 9%, #fff);   /* selected / hover / subtle highlight */
-  --aps-primary-border: color-mix(in srgb, var(--aps-primary) 32%, #fff);
+  /* ---- APS brand — sampled from the official logo (aps-logo.jpg, 2026-11-23) ---- */
+  --aps-primary: #400000;          /* logo outer ring — deep APS maroon: header line, active navigation, primary actions */
+  --aps-primary-hover: color-mix(in srgb, var(--aps-primary) 82%, #fff);   /* lighter maroon for hover (darker would be black) */
+  --aps-primary-light: color-mix(in srgb, var(--aps-primary) 7%, #fff);    /* selected / hover / subtle highlight */
+  --aps-primary-border: color-mix(in srgb, var(--aps-primary) 24%, #fff);
+  --aps-brand-green: #648302;      /* logo letter — used only as the success colour (darkened for readable text) */
+  --aps-brand-ring: #b7c9d7;       /* logo inner ring — not used for large areas */
+  --aps-brand-parchment: #e4c396;  /* logo scroll — the warm tone behind the neutral background */
   /* ---- neutrals ---- */
-  --aps-background: color-mix(in srgb, var(--aps-primary) 3%, #f6f6f4);    /* soft, unsaturated app background */
+  --aps-background: color-mix(in srgb, var(--aps-brand-parchment) 8%, #f8f8f7);  /* very light warm off-white */
   --aps-surface: #ffffff;
-  --aps-text-primary: #1f2328;
-  --aps-text-secondary: #5c6370;
-  --aps-border: #e2e4e8;
+  --aps-text-primary: #211c1c;
+  --aps-text-secondary: #5f5858;
+  --aps-border: #e6e1dc;
   /* ---- semantic (status only) ---- */
-  --aps-success: #1e8e3e;
-  --aps-warning: #b06000;
+  --aps-success: color-mix(in srgb, var(--aps-brand-green) 80%, #000);   /* APS green, AA contrast on white */
+  --aps-warning: #a35a00;
   --aps-danger: #c5221f;
   /* ---- shape, spacing, type ---- */
   --aps-radius: 10px;
@@ -67,9 +70,9 @@ a { color: var(--aps-primary); }
 #dashboardTitle { font-size: 19px; font-weight: 650; color: var(--aps-text-primary); letter-spacing: -.005em; margin: 0; line-height: 1.25; }
 .brand-accreditation { font-size: 12px; color: var(--aps-text-secondary); margin-top: 2px; }
 .app-header .subtitle { font-size: 12.5px; color: var(--aps-text-secondary); }
-.viewer-badge { background: var(--aps-primary-light); color: var(--aps-primary-hover); border: 1px solid var(--aps-primary-border); border-radius: 999px; font-weight: 600; }
+.viewer-badge { background: var(--aps-primary-light); color: var(--aps-primary); border: 1px solid var(--aps-primary-border); border-radius: 999px; font-weight: 600; }
 .header-actions { margin-top: var(--aps-space-3); gap: var(--aps-space-2); }
-.header-link-btn { background: var(--aps-surface); color: var(--aps-primary-hover); border: 1px solid var(--aps-border); border-radius: var(--aps-radius-sm); padding: 7px 12px; font-weight: 600; }
+.header-link-btn { background: var(--aps-surface); color: var(--aps-primary); border: 1px solid var(--aps-border); border-radius: var(--aps-radius-sm); padding: 7px 12px; font-weight: 600; }
 .header-link-btn:hover { background: var(--aps-primary-light); border-color: var(--aps-primary-border); }
 
 /* ---------- main navigation ---------- */
@@ -104,7 +107,7 @@ a { color: var(--aps-primary); }
 
 /* ---------- buttons: one primary, one secondary, semantic only where meaningful ---------- */
 .gtr-btn, .toolbar button, .cct-btn, .modal-close, .aps-gate-btn, .ad-copy {
-  border-radius: var(--aps-radius-sm); border: 1px solid var(--aps-border); background: var(--aps-surface); color: var(--aps-primary-hover);
+  border-radius: var(--aps-radius-sm); border: 1px solid var(--aps-border); background: var(--aps-surface); color: var(--aps-primary);
   font-family: inherit; font-weight: 600; transition: background-color .15s ease, border-color .15s ease;
 }
 .gtr-btn:hover:not(:disabled), .toolbar button:hover:not(:disabled):not(.active):not(.primary), .cct-btn:hover:not(:disabled), .modal-close:hover {
@@ -114,7 +117,7 @@ a { color: var(--aps-primary); }
   background: var(--aps-primary); border-color: var(--aps-primary); color: #fff;
 }
 .gtr-btn.primary:hover:not(:disabled), .toolbar button.primary:hover:not(:disabled), .aps-gate-btn:hover, button.primary:hover:not(:disabled) {
-  background: var(--aps-primary-hover); border-color: var(--aps-primary-hover);
+  background: var(--aps-primary-hover); border-color: var(--aps-primary);
 }
 .gtr-btn.exam-qp-tc-ok { background: var(--aps-danger); border-color: var(--aps-danger); color: #fff; }   /* stays semantic red */
 
@@ -133,7 +136,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .report-table tbody tr:hover, .am-table tbody tr:hover, .att-table tbody tr:hover, .exam-table-wrap tbody tr:hover { background: var(--aps-primary-light); }
 
 /* ---------- status badges: semantic colours stay; information = APS primary ---------- */
-.badge.info, .gtr-status-badge.status-awaiting, .gtr-status-badge.status-processing { background: var(--aps-primary-light); color: var(--aps-primary-hover); }
+.badge.info, .gtr-status-badge.status-awaiting, .gtr-status-badge.status-processing { background: var(--aps-primary-light); color: var(--aps-primary); }
 
 /* ---------- modals ---------- */
 .modal-overlay { background: rgba(17, 24, 39, .45); }
