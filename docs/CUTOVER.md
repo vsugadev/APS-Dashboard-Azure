@@ -180,3 +180,33 @@ Known expected differences so far:
 
 - **Live Google Meet status.** Azure shows Apps Script's own result. If Apps Script doesn't answer within 5 minutes, Azure falls back to the schedule, the same as Apps Script without Meet data.
 - **Multiple Classrooms audit row.** It shows "Azure weekly job" as Requested_By.
+
+## 11. Go-live record (2026-11-23)
+
+**Decision: GO.** Checks 1–7 were confirmed OK by the APS admin:
+
+1. v0.24.1 deployed
+2. speed after v0.24.1
+3. no open BLOCKER/HIGH in `dbo.parallel_feedback`
+4. reconciliation IDENTICAL
+5. shadow differences gone or explained
+6. Monday Multiple Classrooms preview identical
+7. fixed-time jobs ran ok on Azure
+
+**Done:** Azure was opened to everyone in one step, not in the staff-first stages of §4. `PARALLEL_RUN_USERS` was removed and
+`PARALLEL_RUN=off` was set, so there is no test group and no test-run bar.
+
+The `[ParallelRun]` readiness block now shows two expected CHECK lines: "Test group: EVERYONE can sign in" and "Test-run bar".
+
+**Still to do / confirm:**
+
+| Item | Owner | Notes |
+|---|---|---|
+| namaps.org/dashboard and the APS Gate page → `https://aps-dashboard-ap.azurewebsites.net` | APS admin | rollback: point back to the Apps Script /exec |
+| `AZURE_TIMED_JOBS` (12 fixed-time jobs) + the same names in Apps Script `APS_JOBS_ON_AZURE` | APS admin | §4 AZURE_PRIMARY |
+| Monday report: `removeMultipleClassroomReportTrigger`, then remove `MAIL_JOBS_PREVIEW_TO` | APS admin | only after a matching preview |
+| §9 security (personal Gmail refused, SQL networking, Zoho key rotation) and rollback rehearsal | APS admin | not in checks 1–7 |
+| First class start on Azure: watch `[Perf]`, `[Perf] slow:` and App Service CPU; B1 → B2 (+$12/month) only if CPU stays above ~70% | APS admin + Claude | rule B0 |
+| Apps Script kept deployed with its triggers, as the fallback, for 30 days (until 2026-12-23) | APS admin | never undeploy; saves, job bodies and live Meet status still run there |
+
+Rollback stays as in §6, by area.

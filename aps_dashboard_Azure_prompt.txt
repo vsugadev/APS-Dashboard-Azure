@@ -4,7 +4,7 @@
 #   Part A source : ..\APS-Classroom-Dashboard\CURRENT_PROD_CODE\aps_dashboard_generic_claude_prompt.txt
 #   Part A md5    : 422baae2530bb9008d76a546102ccd5c
 #   Part B source : docs\prompt\azure_prompt_addendum.txt
-#   Part B md5    : 616f60c62e461ad4423477d681dd63e5
+#   Part B md5    : e6e244f82b86e7cc534bdc42f5c32bb2
 ##############################################################################
 
 # PART A — Generic APS Dashboard prompt (copied word for word; applies in full)
@@ -993,6 +993,12 @@ header is longer, or Code.gs fails quietly in the mock.
 ---
 
 ## B12. Current state (keep updated)
+
+- **LIVE ON AZURE since 2026-11-23** (GO recorded in `docs/CUTOVER.md` §11). Everyone signs in to Azure
+  (`PARALLEL_RUN_USERS` cleared, `PARALLEL_RUN=off`). Apps Script stays deployed with its triggers: every save, the job
+  bodies and the live Meet status still run there (decision A). It is the fallback for 30 days, until 2026-12-23. Never
+  propose undeploying it. Open items: CUTOVER.md §11. From now on every change is a PRODUCTION change: rule B0 (cost +
+  performance, global students), parity, rollback path stated.
 
 - Azure web app `aps-dashboard-ap` (resource group `rg-aps-dashboard`, Key Vault `kv-apsdashboardapu7zau2j`),
   Node 22 LTS, deployed by GitHub Actions (`vsugadev/APS-Dashboard-Azure`, managed identity `id-aps-github`, OIDC).

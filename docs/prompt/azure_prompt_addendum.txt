@@ -251,6 +251,12 @@ header is longer, or Code.gs fails quietly in the mock.
 
 ## B12. Current state (keep updated)
 
+- **LIVE ON AZURE since 2026-11-23** (GO recorded in `docs/CUTOVER.md` §11). Everyone signs in to Azure
+  (`PARALLEL_RUN_USERS` cleared, `PARALLEL_RUN=off`). Apps Script stays deployed with its triggers: every save, the job
+  bodies and the live Meet status still run there (decision A). It is the fallback for 30 days, until 2026-12-23. Never
+  propose undeploying it. Open items: CUTOVER.md §11. From now on every change is a PRODUCTION change: rule B0 (cost +
+  performance, global students), parity, rollback path stated.
+
 - Azure web app `aps-dashboard-ap` (resource group `rg-aps-dashboard`, Key Vault `kv-apsdashboardapu7zau2j`),
   Node 22 LTS, deployed by GitHub Actions (`vsugadev/APS-Dashboard-Azure`, managed identity `id-aps-github`, OIDC).
 - On Azure (read-only): sign-in, sessions, roles, Access Control (view), Classes view (`getDashboardData`) incl.
