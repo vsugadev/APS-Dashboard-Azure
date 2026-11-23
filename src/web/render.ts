@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import { createHash } from 'crypto';
 
-export interface BootValues { authUrl: string; token: string | null; user: unknown; error: unknown; ticket?: string | null; parallel?: { officialUrl: string } | null }
+export interface BootValues { authUrl: string; token: string | null; user: unknown; error: unknown; ticket?: string | null; parallel?: { officialUrl: string; mode?: 'test' | 'live' } | null }
 const KNOWN = new Set([
   '<?= APS_OAUTH_AUTH_URL ?>',
   '<?!= JSON.stringify(APS_BOOT_SESSION_TOKEN) ?>',
@@ -96,7 +96,7 @@ export class DashboardPage {
       .split('<?!= JSON.stringify(APS_BOOT_USER) ?>').join(jsonForScript(v.user))
       .split('<?!= JSON.stringify(APS_BOOT_ERROR) ?>').join(jsonForScript(v.error))
       .split("<?!= JSON.stringify(typeof APS_BOOT_TICKET === 'undefined' ? null : APS_BOOT_TICKET) ?>").join(jsonForScript(v.ticket || null));
-    const pr = v.parallel ? '<script src="/aps-parallel.js" defer data-official="' + escHtml(/^https:\/\//.test(v.parallel.officialUrl) ? v.parallel.officialUrl : '') + '"></script>' : ''; // v0.21.0 test-run bar
+    const pr = v.parallel ? '<script src="/aps-parallel.js" defer data-official="' + escHtml(/^https:\/\//.test(v.parallel.officialUrl) ? v.parallel.officialUrl : '') + '"' + (v.parallel.mode === 'live' ? ' data-mode="live"' : '') + '></script>' : ''; // v0.21.0 test-run bar
     const head = '<meta name="viewport" content="width=device-width, initial-scale=1"><script src="/aps-gas-shim.js"></script>' + pr;
     out = out.replace(/<head>/i, '<head>' + head + (/<title>/i.test(out) ? '' : `<title>${PAGE_TITLE}</title>`));
     return out;

@@ -59,7 +59,7 @@ export function registerParallelRun(reg: Registry, now: () => number = Date.now,
     if (used >= PR_MAX_PER_DAY) throw new Error('You have sent ' + PR_MAX_PER_DAY + ' reports today — thank you! Please send more tomorrow, or tell the APS admin team directly.');
     perDay.set(k, { day, n: used + 1 });
     const id = await st.add({ at: now(), email: s.email, role: s.role, screen: clean(x.screen, 200) || '(not given)', text, userAgent: clean(x.userAgent, 300) });
-    log('[ParallelRun] difference #' + id + ' reported by ' + s.email + ' (' + s.role + ') on "' + (clean(x.screen, 60) || '?') + '"');
+    log('[Report] #' + id + ' reported by ' + s.email + ' (' + s.role + ') on "' + (clean(x.screen, 60) || '?') + '"');
     return { ok: true, id };
   });
 }
@@ -83,7 +83,7 @@ export function readinessLines(cfg: AppConfig, f: ReadinessFacts): string[] {
   ok(f.mailJobs.length > 0, 'Email jobs on Azure: ' + (f.mailJobs.join(', ') || 'none') + (f.mailJobsPreview ? ' (PREVIEW)' : ''), 'optional: AZURE_MAIL_JOBS');
   ok(f.dbCopy.length > 0, 'Spreadsheet copies in Azure SQL: ' + (f.dbCopy.join(', ') || 'none') + (f.dbReads.length ? '; reads from the copy: ' + f.dbReads.join(', ') : ''), 'optional: DB_COPY');
   const g = parseParallelUsers(cfg.parallelRunUsers);
-  ok(cfg.parallelRunOn, 'Test-run bar + "Report a difference"', 'set PARALLEL_RUN=on');
+  ok(cfg.parallelRunOn || cfg.reportProblems, cfg.parallelRunOn ? 'Test-run bar + "Report a difference"' : '"Report a problem" button for everyone', 'set REPORT_PROBLEMS=on (live) or PARALLEL_RUN=on (test run)');
   ok(g.emails.size + g.roles.size > 0, 'Test group: ' + (g.emails.size + g.roles.size ? [...g.roles].join(', ') + (g.roles.size && g.emails.size ? ', ' : '') + (g.emails.size ? g.emails.size + ' named person(s)' : '') : 'EVERYONE can sign in'), 'set PARALLEL_RUN_USERS to limit the test group');
   ok(f.feedbackReady, 'Difference reports stored (dbo.parallel_feedback)', 'needs Azure SQL');
   return L;

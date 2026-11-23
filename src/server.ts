@@ -142,7 +142,8 @@ export function createApp(ctx: AppContext, page: DashboardPage | null, reg: Regi
     const boot = result && result.ok ? { token: result.token, user: result.user, error: null }
       : { token: null, user: null, error: result ? { code: result.code, ...(result.message ? { message: result.message } : {}) } : null };
     res.setHeader('Cache-Control', 'no-store');
-    const parallel = ctx.cfg.parallelRunOn ? { officialUrl: ctx.cfg.parallelRunOfficialUrl || ctx.cfg.appsScriptBridgeUrl } : null;
+    const parallel = ctx.cfg.parallelRunOn ? { officialUrl: ctx.cfg.parallelRunOfficialUrl || ctx.cfg.appsScriptBridgeUrl }
+      : ctx.cfg.reportProblems ? { officialUrl: '', mode: 'live' as const } : null; // v0.25.2: live "Report a problem"
     res.type('html').send(page.render({ authUrl, ...boot, ticket, parallel }));
   };
 

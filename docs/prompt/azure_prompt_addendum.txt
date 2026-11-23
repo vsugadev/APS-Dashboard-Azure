@@ -481,4 +481,11 @@ header is longer, or Code.gs fails quietly in the mock.
   + subtle shadow (accent borders kept); one primary + one secondary button style; tables light rules + primary-light hover;
   badges semantic (info = primary). No gradients/animations; system font stack (Inter if installed — no font download, rule B0).
   Phone: header stacks, nav scrolls in one row, no page-level horizontal scroll. Future UI work: change tokens, not hex values.
+- v0.25.1: theme link carries the file's content hash (?v=…) — never a stale browser copy.
+- v0.25.2 (LIVE, Apps Script r143): 16 page-called functions added to the dashboard after v0.14.0 were missing from
+  WRITE_THROUGH / READ_THROUGH (NOT_ON_AZURE_YET) — added on both sides (AzureBridge.gs AZURE_BRIDGE_CALLS_/READS_ r143).
+  test/coverage.test.ts: every non-underscore Code.gs function referenced by Dashboard.html must be registered on Azure, and the
+  two bridge lists must equal AzureBridge.gs. RULE: a new Code.gs browser function is added to the Azure registry (native or
+  through) AND to AzureBridge.gs in the same release. REPORT_PROBLEMS=on → aps-parallel.js data-mode="live" ("Report a problem",
+  theme colours, no test-run text); endpoint azureReportDifference unchanged (session required, 30/day); log "[Report] #id".
 

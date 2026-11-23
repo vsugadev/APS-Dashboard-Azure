@@ -1,5 +1,5 @@
 /**
- * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run; r141: the fixed-time daily / weekly jobs on Azure's timetable; r142: + the Tamil Thadam / quiz material / daily summary spreadsheet IDs in the export list). A separate file of the SAME Dashboard Apps Script project (globals are
+ * AzureBridge.gs — APS Classroom Dashboard r122 (r127: + the r123 Teacher Copy / Send to Student settings in the export list; r131: heartbeat action; r132: write-through of Admin settings saves; r133: read-through of the remaining read screens; r134: teacher class-card write-through + the REVERSE bridge for Special Classes owned by Azure SQL; r135: every remaining dashboard action + Promise results + large uploads; r136: chat owned by Azure SQL; r137: live Google Meet class status for Azure + jobs run on Azure's timetable; r138: + classMeetEndedMarkMap in the export list; r139: email jobs sent by Azure — action mailJob + SPECIAL_CLASS_COURSE_IDS / CLASSROOM_TYPE_OVERRIDES in the export list; r140: shadow comparison — the read screens Azure compares with this project during the parallel run; r141: the fixed-time daily / weekly jobs on Azure's timetable; r142: + the Tamil Thadam / quiz material / daily summary spreadsheet IDs in the export list; r143: + School Leave admin, Temp Teacher, Examination announcement / publish and letter actions in the call / read lists). A separate file of the SAME Dashboard Apps Script project (globals are
  * shared across .gs files; it reuses the Parent Portal bridge helpers portalErr_ / portalHex_ and zhSafeErr_).
  * Kept out of Code.gs so adding / removing the Azure bridge never touches the main file.
  */
@@ -100,7 +100,12 @@ var AZURE_BRIDGE_CALLS_ = [
   'setMyDefaultCountry', 'setUserCountryByAdmin', 'startZohoSyncJob', 'stepZohoSyncJob', 'submitAdminInitiatedReferenceLetter',
   'submitClassTeacherAvailability', 'submitGradeChangeRequest', 'submitLeaveRequest', 'submitParentFeedback',
   'submitReferenceLetterRequest', 'submitTimingChangeRequest', 'submitUserIdea', 'syncGrading', 'testZohoFieldMapping',
-  'updateSpecialClassEnrollment', 'updateTicket'
+  'updateSpecialClassEnrollment', 'updateTicket',
+  // r143: dashboard actions added after r135 (School Leave admin, Temp Teacher, Examination announcements / publish, letters)
+  'approveSchoolLeave', 'cancelSchoolLeave', 'deleteSchoolLeaveDraft', 'saveSchoolLeave', 'sendSchoolLeaveNotification',
+  'cancelTempTeacherAssignment', 'removeTempTeacherNow',
+  'deleteExaminationAnnouncement', 'modifyExaminationAnnouncement', 'postExaminationAnnouncement', 'publishExaminationToCourses',
+  'retryFailedExaminationPublish', 'generateAppreciationCertificate', 'generateTeacherAppreciationLetter'
 ];
 /** r133 — read screens that need Google services / locks Azure does not use yet (Phase 2 "still not on Azure"). */
 var AZURE_BRIDGE_READS_ = [
@@ -110,7 +115,9 @@ var AZURE_BRIDGE_READS_ = [
   'getTicketAttachment', 'getZohoFieldMapping', 'getZohoSyncStatus', 'previewExaminationAnnouncement',
   'previewExaminationClasswork', 'previewZohoStudentSync', 'searchExaminationAnnouncement',
   // r135
-  'getChatMessages', 'getMyExamQuestionPapers', 'getWeeklyPanelData', 'resolveTicketStudent'
+  'getChatMessages', 'getMyExamQuestionPapers', 'getWeeklyPanelData', 'resolveTicketStudent',
+  // r143: read screens added after r135 (letters)
+  'getAppreciationCertificateStudents', 'getTeacherAppreciationTeachers'
 ];
 /** r135 — a function that answers with a Promise (PDF stamping: preview / download / send question paper): the call
  *  answers { pending: job } at once; Apps Script finishes the Promise in the same execution and keeps the result for

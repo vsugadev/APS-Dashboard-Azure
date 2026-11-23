@@ -65,6 +65,7 @@ export interface AppConfig {
   shadowDailyCap: number;              // SHADOW_DAILY_CAP — at most this many comparisons per day (default 400)
   shadowIgnore: string;                // SHADOW_IGNORE — regular expression of result paths not compared (expected differences)
   reconcileHours: number;              // RECONCILE_HOURS — v0.21.0: record-level reconciliation of the DB_COPY copies every N hours (default 6; 0 = off)
+  reportProblems: boolean;             // REPORT_PROBLEMS — v0.25.2: 'on' = a small "Report a problem" button for every signed-in person (live; no test-run text)
   parallelRunOn: boolean;              // PARALLEL_RUN — v0.21.0: 'on' = test-run bar + "Report a difference" on every Azure page
   parallelRunUsers: string;            // PARALLEL_RUN_USERS — e-mails and/or role names allowed on Azure during the test run (empty = everyone)
   parallelRunOfficialUrl: string;      // PARALLEL_RUN_OFFICIAL_URL — the official dashboard linked from the bar (default: APPS_SCRIPT_BRIDGE_URL)
@@ -197,6 +198,7 @@ export function loadConfig(envIn: NodeJS.ProcessEnv = process.env): AppConfig {
     shadowDailyCap: Math.min(5000, Math.max(1, Math.floor(Number(env.SHADOW_DAILY_CAP) || 400))),
     shadowIgnore: String(env.SHADOW_IGNORE || '').trim(),
     reconcileHours: env.RECONCILE_HOURS === undefined || String(env.RECONCILE_HOURS).trim() === '' ? 6 : Math.min(168, Math.max(0, Math.floor(Number(env.RECONCILE_HOURS) || 0))),
+    reportProblems: String(env.REPORT_PROBLEMS || '').trim().toLowerCase() === 'on',
     parallelRunOn: String(env.PARALLEL_RUN || '').trim().toLowerCase() === 'on',
     parallelRunUsers: String(env.PARALLEL_RUN_USERS || '').trim(),
     parallelRunOfficialUrl: String(env.PARALLEL_RUN_OFFICIAL_URL || '').trim(),

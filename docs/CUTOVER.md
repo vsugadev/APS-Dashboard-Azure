@@ -214,3 +214,8 @@ Rollback stays as in §6, by area.
 **v0.24.2 expected difference:** with `DB_READS` on, a save is seen at once by the person who saved. Other people see it at the
 next copy, usually within 1–2 minutes. A change made in the Apps Script dashboard or the sheet appears within about 5 minutes.
 To make everyone read Google after any save, as before, set `DB_READ_AFTER_SAVE=all`.
+
+**v0.25.2 (live):** `REPORT_PROBLEMS=on` gives every signed-in person a "Report a problem" button. Reports are stored in
+`dbo.parallel_feedback`, 30 per person per day. Triage them with
+`SELECT id, created_at, email, role, screen, status, LEFT(text,80) FROM dbo.parallel_feedback WHERE status <> 'FIXED' ORDER BY id DESC;`
+and mark each one: `UPDATE dbo.parallel_feedback SET status='FIXED' WHERE id = <n>;`.

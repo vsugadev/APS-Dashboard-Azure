@@ -67,7 +67,7 @@ test('readiness: every module listed OK / CHECK with the fix; the test group and
   assert.ok(ready.some((l) => /Test group: admin, headmaster, 1 named person/.test(l)));
   const open = readinessLines(testConfig(), { ...f, googleOk: false, feedbackReady: false });
   assert.ok(open.some((l) => /^CHECK  Test group: EVERYONE can sign in — set PARALLEL_RUN_USERS/.test(l)));
-  assert.ok(open.some((l) => /^CHECK  Google sign-in data/.test(l))); assert.ok(open.some((l) => /^CHECK  Test-run bar .* set PARALLEL_RUN=on/.test(l)));
+  assert.ok(open.some((l) => /^CHECK  Google sign-in data/.test(l))); assert.ok(open.some((l) => /^CHECK  .*set REPORT_PROBLEMS=on \(live\) or PARALLEL_RUN=on/.test(l)));
 });
 
 test('SQL: reports table created once; parameterised insert', async () => {

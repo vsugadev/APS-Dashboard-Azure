@@ -36,6 +36,12 @@ export const WRITE_THROUGH: string[] = [
   'setUserCountryByAdmin', 'startZohoSyncJob', 'stepZohoSyncJob', 'submitAdminInitiatedReferenceLetter', 'submitClassTeacherAvailability', 'submitGradeChangeRequest',
   'submitLeaveRequest', 'submitParentFeedback', 'submitReferenceLetterRequest', 'submitTimingChangeRequest', 'submitUserIdea', 'syncGrading',
   'testZohoFieldMapping', 'updateSpecialClassEnrollment', 'updateTicket',
+  // v0.25.2 (Apps Script r143): actions added to the dashboard after v0.14.0 — School Leave admin, Temp Teacher,
+  // Examination announcements / publish, appreciation letters (were "NOT_ON_AZURE_YET")
+  'approveSchoolLeave', 'cancelSchoolLeave', 'deleteSchoolLeaveDraft', 'saveSchoolLeave', 'sendSchoolLeaveNotification',
+  'cancelTempTeacherAssignment', 'removeTempTeacherNow',
+  'deleteExaminationAnnouncement', 'modifyExaminationAnnouncement', 'postExaminationAnnouncement', 'publishExaminationToCourses',
+  'retryFailedExaminationPublish', 'generateAppreciationCertificate', 'generateTeacherAppreciationLetter',
 ];
 
 /**
@@ -50,6 +56,7 @@ export const READ_THROUGH: string[] = [
   'getTamilThadam', 'getTeacherAppreciationData', 'getTicketAttachment', 'getZohoFieldMapping', 'getZohoSyncStatus', 'previewExaminationAnnouncement',
   'previewExaminationClasswork', 'previewZohoStudentSync', 'searchExaminationAnnouncement', 'getChatMessages', 'getMyExamQuestionPapers', 'getWeeklyPanelData',
   'resolveTicketStudent',
+  'getAppreciationCertificateStudents', 'getTeacherAppreciationTeachers', // v0.25.2 (r143)
 ];
 /** v0.14.0: Azure's front door ends a browser request after ~230 s, so Azure gives up at 220 s. Apps Script keeps going
  *  (≤ 6 minutes) and the action still completes there. */
